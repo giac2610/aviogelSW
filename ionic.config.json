@@ -1,0 +1,7 @@
+{
+  "name": "aviogelFrontend",
+  "integrations": {
+    "capacitor": {}
+  },
+  "type": "angular"
+}
