@@ -1,8 +1,9 @@
 import { Component, inject } from '@angular/core';
-import { RefresherCustomEvent } from '@ionic/angular';
+import { AlertController, RefresherCustomEvent } from '@ionic/angular';
 import { MessageComponent } from '../message/message.component';
 
 import { DataService, Message } from '../services/data.service';
+import { RestAPIfromDjangoService, User } from '../services/rest-apifrom-django.service';
 
 @Component({
   selector: 'app-home',
@@ -12,15 +13,41 @@ import { DataService, Message } from '../services/data.service';
 })
 export class HomePage {
   private data = inject(DataService);
-  constructor() {}
+  users: User[] = [];
+  
+  constructor(private usersService: RestAPIfromDjangoService,  private alertCtrl: AlertController) {}
 
-  refresh(ev: any) {
-    setTimeout(() => {
-      (ev as RefresherCustomEvent).detail.complete();
-    }, 3000);
+  ngOnInit() {
+    this.loadUsers();
   }
 
-  getMessages(): Message[] {
-    return this.data.getMessages();
-  }
+  loadUsers() {
+    this.usersService.getUsers().subscribe((data: User[]) => {
+      this.users = data;
+    });
+}
+
+
+async openAddUserModal() {
+  const alert = await this.alertCtrl.create({
+    header: 'Aggiungi Utente',
+    inputs: [
+      { name: 'name', type: 'text', placeholder: 'Nome' },
+      { name: 'gender', type: 'radio', label: 'Maschio', value: 'male', checked: true },
+      { name: 'gender', type: 'radio', label: 'Femmina', value: 'female' }
+    ],
+    buttons: [
+      { text: 'Annulla', role: 'cancel' },
+      { text: 'Aggiungi', handler: (data) => this.addUser(data.name, data.gender) }
+    ]
+  });
+
+
+  await alert.present();
+}
+addUser(name: string, gender: string) {
+  this.usersService.addUser(name, gender).subscribe(newUser => {
+    this.users.push(newUser);
+  });
+}
 }
