@@ -1,0 +1,110 @@
+.home-container{
+     padding: 20px;
+     height: 480px;
+     width: 800px;
+     background: rgb(228,250,244);
+     background: linear-gradient(180deg, rgba(228,250,244,1) 0%, rgba(181,178,237,1) 100%);
+
+     .slider-section {
+     h1 {
+       display: flex;
+     //   justify-content: space-between;
+       justify-self: center;
+       font-size: 30px;
+       margin-bottom: 10px;
+       color: #262626;
+     }
+ 
+     .view-all {
+       color: #007bff;
+       cursor: pointer;
+     }
+ 
+   }
+
+     .swiperWrapper {
+     display: flex;
+     flex-wrap: nowrap;
+     overflow-x: auto;
+ 
+     -webkit-overflow-scrolling: touch;
+     &::-webkit-scrollbar {
+       display: none;
+     }
+     padding: 10px;
+     .swiperCard {
+       flex: 0 0 auto;
+       margin-right: 25px;
+       box-shadow: 0px 4px 4px 0px #00000025;
+       border-radius: 25px;
+     //   padding: 10px;
+       ion-card {
+         height: 324px;
+         width: 242px;
+         margin: 0;
+         border-radius: 25px;
+         position: relative;
+         overflow: hidden;
+         background-color: #FDEDCD;
+         align-content: space-between;
+         padding-top: 25px;
+         padding-bottom: 25px;
+         .card-background {
+           justify-items: center;
+           background-size: cover;
+           background-position: center;
+           text-align: center;
+          ion-icon{
+               width: 190px;
+               height: 190px;
+          }
+           ion-avatar{
+               width: 190px;
+               height: 190px;
+               img {
+                    box-shadow: 0px 4px 4px 0px #00000025;
+                    width: 190px;
+                    height: 190px;
+                    max-width: 200px !important;  //any size
+                    max-height: 200px !important;
+                    object-fit: cover; /* Assicura che l'immagine si adatti bene */
+                    border-radius: 50%;
+                  }
+           }
+         }
+ 
+         .card-content {
+           position: absolute;
+           bottom: 0;
+           width: 100%;
+           padding: 10px;
+           // background: rgba(255, 255, 255, 0.8);
+           box-sizing: border-box;
+         }
+ 
+         .card-footer {
+           display: flex;
+          //  justify-content: space-between;
+          // align-self: flex-end;
+          margin-top: 35px;
+           align-items: center;
+           width: 100%;
+           color: rgb(47, 47, 47);
+           text-align: center;
+           h2 {
+             margin: 0;
+             font-size: 16px;
+             font-weight: bold;
+             width: 100%;
+           }
+ 
+           p {
+             margin: 0;
+             font-size: 14px;
+             // color: #262626;
+           }
+         }
+       }
+     }
+   }
+ }

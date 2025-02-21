@@ -1,8 +1,6 @@
 import { Component, inject } from '@angular/core';
 import { AlertController, RefresherCustomEvent } from '@ionic/angular';
-import { MessageComponent } from '../message/message.component';
-
-import { DataService, Message } from '../services/data.service';
+import { Router} from '@angular/router';
 import { RestAPIfromDjangoService, User } from '../services/rest-apifrom-django.service';
 
 @Component({
@@ -12,7 +10,6 @@ import { RestAPIfromDjangoService, User } from '../services/rest-apifrom-django.
   standalone: false,
 })
 export class HomePage {
-  private data = inject(DataService);
   users: User[] = [];
   
   constructor(private usersService: RestAPIfromDjangoService,  private alertCtrl: AlertController) {}
@@ -50,4 +47,6 @@ addUser(name: string, gender: string) {
     this.users.push(newUser);
   });
 }
+
+
 }

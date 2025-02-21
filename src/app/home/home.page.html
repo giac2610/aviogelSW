@@ -1,28 +1,37 @@
-<ion-header>
-  <ion-toolbar>
-    <ion-title>Lista Utenti</ion-title>
-  </ion-toolbar>
-</ion-header>
-
 <ion-content>
-  <div class="horizontal-scroll">
-    <!-- Card per ogni utente -->
-    <ion-card *ngFor="let user of users">
-      <ion-img [src]="user.avatar_url"></ion-img>
-      <ion-card-header>
-        <ion-title>{{ user.name }}</ion-title>
-      </ion-card-header>
-    </ion-card>
-
-    <!-- Card per aggiungere un nuovo utente -->
-    <ion-card (click)="openAddUserModal()">
-      <ion-card-header>
-        <ion-title> Placeholder </ion-title>
-      </ion-card-header>
-      <ion-content class="ion-text-center">
-        <ion-icon name="add-circle-outline" size="large"></ion-icon>
-        <p>Aggiungi Utente</p>
-      </ion-content>
-    </ion-card>
+  <div class="home-container">
+    <div class="slider-section">
+      <h1>Chi userà il macchinario?</h1>
+    </div>
+    <div class="swiperWrapper">
+      <!-- Card per ogni utente -->
+      <div class="swiperCard" *ngFor="let user of users">
+        <ion-card>
+          <div class="card-background">
+            <ion-avatar>
+              <img [src]="user.avatar_url">
+            </ion-avatar>
+          </div>
+          <ion-card-header>
+            <div class="card-footer">
+              <h2>{{user.name}}</h2>
+            </div>
+          </ion-card-header>
+        </ion-card>
+      </div>
+      <div class="swiperCard">
+        <ion-card  (click)="openAddUserModal()">
+          <div class="card-background">
+            <ion-icon name="add-circle-outline" slot="center" size="large"></ion-icon>
+          </div>
+          <ion-card-header>
+            <div class="card-footer"> 
+              <h2> Aggiugni Utente </h2> 
+            </div>
+          </ion-card-header>
+        </ion-card>
+      </div>
   </div>
+  </div>
+ 
 </ion-content>
