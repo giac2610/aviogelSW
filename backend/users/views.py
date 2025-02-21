@@ -15,8 +15,9 @@ def get_users(request):
 def add_user(request):
     name = request.data.get('name')
     gender = request.data.get('gender', None)  # Può essere "male", "female" o None
-
-    user = UserProfile(name=name, gender=gender)
+    expertUser = request.data.get('expertUser', None)
+    
+    user = UserProfile(name=name, gender=gender, expertUser=expertUser)
     user.save()
 
     return Response(UserProfileSerializer(user).data)

@@ -10,7 +10,8 @@ class UserProfile(models.Model):
     name = models.CharField(max_length=100)
     gender = models.CharField(max_length=10, choices=GENDER_CHOICES, blank=True)
     avatar = models.CharField(max_length=100, blank=True)
-
+    expertUser = models.BooleanField(default=False, blank=True)
+    
     def save(self, *args, **kwargs):
         if not self.avatar:
             default_avatars = {
