@@ -2,22 +2,18 @@
      padding: 20px;
      height: 480px;
      width: 800px;
-     background: rgb(228,250,244);
+    //  background: rgb(228,250,244);
      background: linear-gradient(180deg, rgba(228,250,244,1) 0%, rgba(181,178,237,1) 100%);
 
      .slider-section {
      h1 {
        display: flex;
+       margin-top: 0px;
      //   justify-content: space-between;
        justify-self: center;
        font-size: 30px;
        margin-bottom: 10px;
        color: #262626;
-     }
- 
-     .view-all {
-       color: #007bff;
-       cursor: pointer;
      }
  
    }

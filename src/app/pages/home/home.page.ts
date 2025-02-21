@@ -1,7 +1,7 @@
 import { Component, inject } from '@angular/core';
 import { AlertController, RefresherCustomEvent } from '@ionic/angular';
 import { Router} from '@angular/router';
-import { RestAPIfromDjangoService, User } from '../services/rest-apifrom-django.service';
+import { RestAPIfromDjangoService, User } from '../../services/rest-apifrom-django.service';
 
 @Component({
   selector: 'app-home',
@@ -12,7 +12,7 @@ import { RestAPIfromDjangoService, User } from '../services/rest-apifrom-django.
 export class HomePage {
   users: User[] = [];
   
-  constructor(private usersService: RestAPIfromDjangoService,  private alertCtrl: AlertController) {}
+  constructor(private usersService: RestAPIfromDjangoService,  private alertCtrl: AlertController, private router: Router) {}
 
   ngOnInit() {
     this.loadUsers();
@@ -22,6 +22,8 @@ export class HomePage {
     this.usersService.getUsers().subscribe((data: User[]) => {
       this.users = data;
     });
+
+
 }
 
 
@@ -42,11 +44,19 @@ async openAddUserModal() {
 
   await alert.present();
 }
+
 addUser(name: string, gender: string) {
   this.usersService.addUser(name, gender).subscribe(newUser => {
     this.users.push(newUser);
   });
 }
 
+navigateNextPage(user: User){
+  // fare set di user.id nel backend per raccogliere dati
+
+  // navigazione in base all'attributo
+  user.expertUser ? this.router.navigate(['/expert']) : this.router.navigate(['/tutorial'])
+
+}
 
 }

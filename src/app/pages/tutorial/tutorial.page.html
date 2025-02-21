@@ -1,0 +1,27 @@
+<ion-content>
+  <div class="page-container">
+    <div class="slider-section">
+      <h1>Fase Preliminare</h1>
+    </div>
+    <div class="progress-container">
+      <!-- Linea di progresso -->
+      <div class="progress-bar">
+        <div class="progress-line" [style.width.%]="(currentStep / (steps.length - 1)) * 100"></div>
+      </div>
+  
+      <!-- Step -->
+      <div class="steps-container">
+        <div *ngFor="let step of steps; let i = index" class="step"
+             [class.completed]="i <= currentStep">
+          {{ i + 1 }}
+        </div>
+      </div>
+    </div>
+  
+    <!-- Pulsanti di controllo -->
+    <div class="buttons-container">
+      <ion-button expand="full" color="medium" (click)="prevStep()" [disabled]="currentStep === 0">Indietro</ion-button>
+      <ion-button expand="full" color="primary" (click)="nextStep()" [disabled]="currentStep === steps.length - 1">Avanti</ion-button>
+    </div>
+  </div>
+</ion-content>

@@ -6,7 +6,7 @@
     <div class="swiperWrapper">
       <!-- Card per ogni utente -->
       <div class="swiperCard" *ngFor="let user of users">
-        <ion-card>
+        <ion-card (click)="navigateNextPage(user)">
           <div class="card-background">
             <ion-avatar>
               <img [src]="user.avatar_url">
