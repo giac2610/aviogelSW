@@ -3,5 +3,5 @@ from .views import get_users, add_user
 
 urlpatterns = [
     path('list/', get_users, name='get_users'),
-    path('add/', add_user, name='add_user'),  # Endpoint per aggiungere un utente
+    path('add/', add_user, name='add_user'), 
 ]

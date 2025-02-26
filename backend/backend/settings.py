@@ -28,7 +28,7 @@ SECRET_KEY = 'django-insecure-c738o*$ch^g#f+=64l-eg&5f#x-e3@#6n_+ny4=(b00itx^7)!
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = []
+ALLOWED_HOSTS = ['*']
 
 
 # Application definition
@@ -58,6 +58,7 @@ MIDDLEWARE = [
 
 CORS_ALLOWED_ORIGINS = [
     "http://localhost:8100",  # Se usi Ionic serve questa porta
+    "http://192.168.159.173:8100",
 ]
 
 ROOT_URLCONF = 'backend.urls'
