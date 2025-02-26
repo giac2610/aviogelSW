@@ -6,6 +6,7 @@
      // background: rgb(228,250,244);
      background: linear-gradient(180deg, rgba(228,250,244,1) 0%, rgba(181,178,237,1) 100%);
      justify-content: flex-start;
+     justify-content: space-between;
      flex-direction: column;
      align-items: center;
 
@@ -17,6 +18,7 @@
             font-size: 30px;
             margin-bottom: 10px;
             color: #262626;
+            height: 20px;
           }
       
         }
@@ -24,8 +26,6 @@
      .progress-container {
           position: relative;
           width: 80%;
-          // max-width: 500px;
-          margin-bottom: 20px;
       }
 
       .steps-container {
@@ -33,6 +33,7 @@
           justify-content: space-between;
           position: relative;
           z-index: 1;
+          
       }
 
       .progress-bar {
@@ -55,17 +56,18 @@
       }
 
       .step {
-          width: 40px;
-          height: 40px;
-          background: #ddd;
+          width: 50px;
+          height: 50px;
+          background: #FDEDCD;
           border-radius: 50%;
           display: flex;
           align-items: center;
           justify-content: center;
           font-size: 14px;
           font-weight: bold;
-          color: white;
+          color: black;
           transition: background 0.3s ease-in-out;
+          box-shadow: 0px 4px 4px 0px #00000025;
       }
 
       .step.completed {
@@ -74,24 +76,79 @@
 
       .buttons-container {
           display: flex;
-          justify-content: center;
-          gap: 10px;
+          flex-direction: row;
+          width: 100%;
+          justify-content: space-around;
+        //   gap: 10px;
           margin-top: 30px;
+          ion-button {
+            // padding: 10px 20px;
+            font-size: 16px;
+            // border: none;
+            background: #007BFF;
+            border-radius: 25px;
+            // color: white;
+            // cursor: pointer;
+            // transition: background 0.3s ease-in-out;
+        }
+  
+        button:disabled {
+            background: #aaa;
+            cursor: not-allowed;
+        }
       }
 
-      button {
-          padding: 10px 20px;
-          font-size: 16px;
-          border: none;
-          background: #007BFF;
-          color: white;
-          cursor: pointer;
-          border-radius: 5px;
-          transition: background 0.3s ease-in-out;
-      }
+.index{
+    width: 80%;
+    display: flex;
+    flex-direction: row;
+    justify-content: center;
 
-      button:disabled {
-          background: #aaa;
-          cursor: not-allowed;
-      }
+    ion-card{
+        width: 100%;
+        padding: 10px;
+        display: flex;
+        flex-direction: row;
+        justify-content: center;
+        align-items: center;
+        border-radius: 25px;
+        background-color: #FDEDCD;
+        margin: 0px;
+        box-shadow: 0px 4px 4px 0px #00000025;
+        img{
+            max-height: 100px;
+            max-width: 100px;
+            // padding: 5px;
+        }
+        p{
+            vertical-align: middle;
+            font-size:larger;
+            padding-left: 20px;
+            color: #262626;
+        }
+    }
+
 }
+
+
+}
+
+.custom-alert {
+    --backdrop-opacity: 0.5; // Opacità dello sfondo
+    --width: 90%; // Larghezza della finestra di alert
+    --max-width: 400px;
+    --border-radius: 12px; // Angoli arrotondati
+    --background: #222; // Sfondo scuro per il tema dark
+    --color: white; // Testo bianco
+  }
+  
+  .alert-button-cancel {
+    color: red !important; // Cambia colore al bottone "Annulla"
+    font-weight: bold;
+  }
+  
+  .alert-button-confirm {
+    color: green !important; // Cambia colore al bottone "OK"
+    font-weight: bold;
+  }
+  

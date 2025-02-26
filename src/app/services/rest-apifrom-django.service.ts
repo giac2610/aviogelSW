@@ -14,7 +14,8 @@ export interface User {
   providedIn: 'root'
 })
 export class RestAPIfromDjangoService {
-  private apiUrl = 'http://localhost:8000/'; // URL base delle API Django
+  // private apiUrl = 'http://localhost:8000/'; // URL base delle API Django
+  private apiUrl = `http://${window.location.hostname}:8000/` //
 
   constructor(private http: HttpClient) {}
 
