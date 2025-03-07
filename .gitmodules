@@ -1,0 +1,4 @@
+[submodule "aviogelFrontend"]
+	path = aviogelFrontend
+	url = https://github.com/giac2610/aviogelSW
+	branch = master
