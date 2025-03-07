@@ -58,7 +58,7 @@ MIDDLEWARE = [
 
 CORS_ALLOWED_ORIGINS = [
     "http://localhost:8100",  # Se usi Ionic serve questa porta
-    "http://192.168.159.173:8100",
+    "http://192.168.159.47:8100",
 ]
 
 ROOT_URLCONF = 'backend.urls'
