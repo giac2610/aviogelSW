@@ -22,8 +22,9 @@
      display: flex;
      flex-wrap: nowrap;
      overflow-x: auto;
- 
+    //  touch-action: pan-y; /* Permette lo scrolling verticale */
      -webkit-overflow-scrolling: touch;
+    //  overflow-y: auto;
      &::-webkit-scrollbar {
        display: none;
      }

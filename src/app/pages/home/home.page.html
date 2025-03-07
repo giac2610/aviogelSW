@@ -20,7 +20,7 @@
         </ion-card>
       </div>
       <div class="swiperCard">
-        <ion-card  (click)="openAddUserModal()">
+        <ion-card  id="open-modal">
           <div class="card-background">
             <ion-icon name="add-circle-outline" slot="center" size="large"></ion-icon>
           </div>
@@ -30,6 +30,27 @@
             </div>
           </ion-card-header>
         </ion-card>
+        <ion-modal #modal trigger="open-modal">
+          <ng-template>
+            <ion-content>
+              <ion-toolbar>
+                <ion-title>Aggiungi Utente</ion-title>
+                <ion-buttons slot="end">
+                  <ion-button color="light" (click)="modal.dismiss()">Close</ion-button>
+                </ion-buttons>
+              </ion-toolbar>
+              <ion-list class="ion-padding">
+                  <ion-input placeholder="Nome"></ion-input>
+                  <ion-select label="Genere" label-placement="floating">
+                    <ion-select-option value="male">Maschio</ion-select-option>
+                    <ion-select-option value="female">Femmina</ion-select-option>
+                    <ion-select-option value="other">Preferisco Non Specificare</ion-select-option>
+                  </ion-select>
+                  <ion-toggle [(ngModel)]="isExpert">Utente Esperto</ion-toggle>
+              </ion-list>
+            </ion-content>
+          </ng-template>
+        </ion-modal>
       </div>
   </div>
   </div>

@@ -26,9 +26,9 @@ export class RestAPIfromDjangoService {
   }
 
   // Metodo per aggiungere un nuovo utente
-  addUser(name: string, gender: string): Observable<User> {
+  addUser(name: string, gender: string, expertUser: string): Observable<User> {
     const url = `${this.apiUrl}users/add/`;
-    const body = { name, gender };
+    const body = { name, gender, expertUser};
     return this.http.post<User>(url, body);
   }
 }
