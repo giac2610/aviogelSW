@@ -1,5 +1,5 @@
 import { Component, OnInit } from '@angular/core';
-
+import { RestAPIfromDjangoService, User } from '../../services/rest-apifrom-django.service';
 @Component({
   selector: 'app-expert',
   templateUrl: './expert.page.html',
@@ -7,10 +7,15 @@ import { Component, OnInit } from '@angular/core';
   standalone: false,
 })
 export class ExpertPage implements OnInit {
+ currentUser: User | null = null
 
-  constructor() { }
+  constructor(private usersService: RestAPIfromDjangoService, ) { }
 
   ngOnInit() {
+    this.currentUser = this.usersService.getCurrentUser()
   }
 
+
+
+  
 }

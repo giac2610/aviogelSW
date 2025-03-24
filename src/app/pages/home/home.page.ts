@@ -12,13 +12,16 @@ import { Keyboard } from '@capacitor/keyboard';
 })
 export class HomePage {
 
-
   users: User[] = [];
   isModalOpen = false;
-  isExpert = false;
+
+  newUserData ={
+    name: '',
+    gender: '',
+    isExpert:  false
+  };
 
   constructor(private usersService: RestAPIfromDjangoService,  private modalCtrl: ModalController, private router: Router) {}
-
   
   ngOnInit() {
     this.loadUsers();
@@ -32,34 +35,16 @@ export class HomePage {
 
 }
 
-
-// async openAddUserModal() {
-//   const alert = await this.modalCtrl.create({
-//     // header: 'Aggiungi Utente',
-//     inputs: [
-//       { name: 'name', type: 'text', placeholder: 'Nome' },
-//       { type: 'radio', label: 'Maschio', value: 'male' },
-//       { type: 'radio', label: 'Femmina', value: 'female' }
-//     ],
-//     buttons: [
-//       { text: 'Annulla', role: 'cancel' },
-//       { text: 'Aggiungi', handler: (data) => this.addUser(data.name, data.gender, data.expertUser) }
-//     ]
-//   });
-
-
-//   await alert.present();
-// }
-
-addUser(name: string, gender: string, expertUser: string) {
-  this.usersService.addUser(name, gender, expertUser).subscribe(newUser => {
+addUser(name: string, gender: string, expertUser: boolean) {
+  let isExpertStr: string = expertUser ? "True" : "False";
+  this.usersService.addUser(name, gender, isExpertStr).subscribe(newUser => {
     this.users.push(newUser);
   });
 }
 
 navigateNextPage(user: User){
   // fare set di user.id nel backend per raccogliere dati
-
+  this.usersService.setCurrentUser(user)
   // navigazione in base all'attributo
   user.expertUser ? this.router.navigate(['/expert']) : this.router.navigate(['/tutorial'])
 

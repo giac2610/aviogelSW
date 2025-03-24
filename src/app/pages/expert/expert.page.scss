@@ -1,0 +1,83 @@
+.page-container{
+     display: flex;
+     padding: 20px;
+     height: 480px;
+     width: 800px;
+     // background: rgb(228,250,244);
+     background: linear-gradient(180deg, rgba(228,250,244,1) 0%, rgba(181,178,237,1) 100%);
+     justify-content: flex-start;
+     justify-content: space-between;
+     flex-direction: column;
+     align-items: center;
+
+     .slider-section {
+          h1 {
+            display: flex;
+          //   justify-content: space-between;
+            justify-self: center;
+            font-size: 30px;
+            margin-bottom: 10px;
+            color: #3A2E39;
+            height: 20px;
+          }
+      
+        }
+        
+     .expert-choise-container{
+          width:100%;
+          height: 80%;
+          display: flex;
+          flex-direction: row;
+          flex-wrap: wrap;
+          justify-content: center;
+          // gap: 15px 45px;
+          ion-card{
+               min-width: 35%;
+               min-height: 25%;
+               padding: 15px;
+               display: flex;
+               flex-direction: row;
+               justify-content: center;
+               text-align: center;
+               align-items: center;
+               border-radius: 25px;
+               background-color: #FDEDCD;
+               margin: 10px;
+               box-shadow: 0px 4px 4px 0px #00000025;
+               img{
+                   max-height: 70px;
+                  //  max-width: 80px;
+                   padding-inline: 5px;
+               }
+               p{
+                   vertical-align: middle;
+                   text-align: center;
+                   font-size: large;
+                   font-weight: bold;
+               //     padding-left: 20px;
+                   color: #3A2E39;
+               }
+           }
+
+     }
+}
+
+.custom-alert {
+    --backdrop-opacity: 0.5; // Opacità dello sfondo
+    --width: 90%; // Larghezza della finestra di alert
+    --max-width: 400px;
+    --border-radius: 12px; // Angoli arrotondati
+    --background: #222; // Sfondo scuro per il tema dark
+    --color: white; // Testo bianco
+  }
+  
+  .alert-button-cancel {
+    color: red !important; // Cambia colore al bottone "Annulla"
+    font-weight: bold;
+  }
+  
+  .alert-button-confirm {
+    color: green !important; // Cambia colore al bottone "OK"
+    font-weight: bold;
+  }
+  

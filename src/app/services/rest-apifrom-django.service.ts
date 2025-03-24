@@ -1,3 +1,4 @@
+// import { User } from './rest-apifrom-django.service';
 import { Injectable } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { Observable } from 'rxjs';
@@ -16,6 +17,8 @@ export interface User {
 export class RestAPIfromDjangoService {
   // private apiUrl = 'http://localhost:8000/'; // URL base delle API Django
   private apiUrl = `http://${window.location.hostname}:8000/` //
+  private currentUser: User | null = null;
+
 
   constructor(private http: HttpClient) {}
 
@@ -30,5 +33,13 @@ export class RestAPIfromDjangoService {
     const url = `${this.apiUrl}users/add/`;
     const body = { name, gender, expertUser};
     return this.http.post<User>(url, body);
+  }
+
+  setCurrentUser(user: User){
+    this.currentUser = user
+  }
+
+  getCurrentUser(){
+    return this.currentUser
   }
 }

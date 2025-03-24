@@ -1,14 +1,27 @@
-<ion-header [translucent]="true">
-  <ion-toolbar>
-    <ion-title>expert</ion-title>
-  </ion-toolbar>
-</ion-header>
+<ion-content>
+  <div class="page-container">
+    <div class="slider-section">
+      <h1>Seleziona la Fase</h1>
+    </div>
 
-<ion-content [fullscreen]="true">
-  <ion-header collapse="condense">
-    <ion-toolbar>
-      <ion-title size="large">expert</ion-title>
-    </ion-toolbar>
-  </ion-header>
+  <div class="expert-choise-container">
+    <ion-card>
+      <img src="../../assets/icon/extruder-icon.png" alt="Extruder Icon">
+      <p>Riempimento Estrusore</p>
+    </ion-card>
+    <ion-card>
+      <img style="width: 70px;" src="../../assets/icon/play-button-icon.png" alt="Setting Icon">
+      <p>Avvia Dosaggio</p>
+    </ion-card>
+    <ion-card>
+      <img style="width: 70px;" src="../../assets/icon/setting-line-icon.png" alt="Setting Icon">
+      <p>Impostazioni Stampo</p>
+    </ion-card>
+    <ion-card>
+      <img *ngIf="currentUser?.gender == 'female'" style="width: 70px;" src="../../assets/icon/edit-user-female-icon.png" alt="Setting Icon">
+      <img *ngIf="currentUser?.gender == 'male'" style="width: 70px;" src="../../assets/icon/edit-user-icon.png" alt="Setting Icon">
+      <p>Personalizza Profilo</p>
+    </ion-card>
+  </div>
+</div>
 </ion-content>
-ss
