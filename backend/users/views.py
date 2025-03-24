@@ -21,3 +21,13 @@ def add_user(request):
     user.save()
 
     return Response(UserProfileSerializer(user).data)
+
+@api_view(['DELETE'])
+def delete_user(request, user_id):
+    """Elimina un utente dato il suo ID"""
+    try:
+        user = UserProfile.objects.get(id=user_id)
+        user.delete()
+        return Response({"message": "Utente eliminato con successo"}, status=status.HTTP_204_NO_CONTENT)
+    except UserProfile.DoesNotExist:
+        return Response({"error": "Utente non trovato"}, status=status.HTTP_404_NOT_FOUND)
