@@ -1,0 +1,39 @@
+{
+    "motors": {
+        "extruder": {
+            "stepOneRev": 200.0,
+            "microstep": 8,
+            "maxSpeed": 250.0,
+            "acceleration": 2000.0,
+            "deceleration": 2000.0
+        },
+        "conveyor": {
+            "stepOneRev": 200.0,
+            "microstep": 8,
+            "maxSpeed": 250.0,
+            "acceleration": 2000.0,
+            "deceleration": 2000.0
+        },
+        "syringe": {
+            "stepOneRev": 200.0,
+            "microstep": 8,
+            "maxSpeed": 250.0,
+            "acceleration": 2000.0,
+            "deceleration": 2000.0
+        }
+
+    },
+    "camera": {
+        "minThreshold": 0,
+        "maxThreshold": 280,
+        "areaFilter": true,
+        "minArea": 2000.0,
+        "maxArea": 11000.0,
+        "circularityFilter": true,
+        "minCircularity": 0.001,
+        "maxCircularity": 30.0,
+        "inertiaFilter": true,
+        "minInertia": 0.01,
+        "maxInertia": 0.5
+    }
+}
