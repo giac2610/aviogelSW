@@ -32,12 +32,13 @@
           justify-content: center;
           // gap: 15px 45px;
           ion-card{
+              width: 40% ;
                min-width: 35%;
                min-height: 25%;
                padding: 15px;
                display: flex;
                flex-direction: row;
-               justify-content: center;
+               justify-content: space-around;
                text-align: center;
                align-items: center;
                border-radius: 25px;

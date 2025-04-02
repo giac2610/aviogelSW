@@ -1,7 +1,7 @@
 <ion-content>
   <div class="page-container">
     <div class="slider-section">
-      <h1>Fase Preliminare</h1>
+      <h1>Preliminary Phase</h1>
     </div>
     <div class="progress-container">
       <!-- Linea di progresso -->
@@ -21,7 +21,7 @@
     <div class="index">
       <ion-card class="instruction" *ngIf="currentStep==1-1">
         <img  src="../../assets/icon/visual-inspection-icon.png" alt="visual inspection" style="flex-grow: 4;">
-        <p> Assicurati di aver <b>ispezionato visivamente</b> il macchinario e che non ci siano impedimenti al processo</p>
+        <p> make sure you have <b>visually inspected</b> the machinery and that there are no impediments to the process</p>
       </ion-card>
       
       <ion-card class="instruction" *ngIf="currentStep==2-1">
@@ -44,8 +44,8 @@
     </div>
     <!-- Pulsanti di controllo -->
     <div class="buttons-container">
-      <ion-button color="medium" (click)="prevStep()" [disabled]="currentStep === 0">Indietro</ion-button>
-      <ion-button color="primary" (click)="nextStep()" [disabled]="currentStep === steps.length - 1">Avanti</ion-button>
+      <ion-button (click)="prevStep()" [disabled]="currentStep === 0">Back</ion-button>
+      <ion-button (click)="nextStep()" [disabled]="currentStep === steps.length - 1">Next</ion-button>
     </div>
   </div>
 </ion-content>

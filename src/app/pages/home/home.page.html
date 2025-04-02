@@ -1,7 +1,7 @@
 <ion-content>
   <div class="home-container">
     <div class="slider-section">
-      <h1>Chi userà il macchinario?</h1>
+      <h1>Who are you?</h1>
     </div>
     <div class="swiperWrapper">
       <!-- Card per ogni utente -->
@@ -26,7 +26,7 @@
           </div>
           <ion-card-header>
             <div class="card-footer"> 
-              <h2> Aggiugni Utente </h2> 
+              <h2> Add User </h2> 
             </div>
           </ion-card-header>
         </ion-card>
@@ -34,7 +34,7 @@
           <ng-template>
             <ion-content>
               <ion-toolbar>
-                <ion-title>Aggiungi Utente</ion-title>
+                <ion-title>Add user</ion-title>
                 <ion-buttons slot="end">
                   <ion-button color="light" (click)="modal.dismiss()">Close</ion-button>
                 </ion-buttons>
@@ -44,9 +44,9 @@
                   <ion-select label="Genere" label-placement="floating" [(ngModel)]="newUserData.gender">
                     <ion-select-option value="male">Maschio</ion-select-option>
                     <ion-select-option value="female">Femmina</ion-select-option>
-                    <ion-select-option value="other">Preferisco Non Specificare</ion-select-option>
+                    <ion-select-option value="other">other</ion-select-option>
                   </ion-select>
-                  <ion-toggle [(ngModel)]="newUserData.isExpert">Utente Esperto</ion-toggle>
+                  <ion-toggle [(ngModel)]="newUserData.isExpert">Expert User</ion-toggle>
 
                   <ion-button expand="block" class="ion-padding-vertical" (click)="addUser(newUserData.name, newUserData.gender, newUserData.isExpert)"> Aggiungi </ion-button>
               </ion-list>

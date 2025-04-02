@@ -11,6 +11,8 @@ export interface User {
   avatar_url: string;
 }
 
+
+
 @Injectable({
   providedIn: 'root'
 })
@@ -35,6 +37,10 @@ export class RestAPIfromDjangoService {
     return this.http.post<User>(url, body);
   }
 
+  deleteUser(){
+    // TODO
+  }
+
   setCurrentUser(user: User){
     this.currentUser = user
   }
@@ -42,4 +48,5 @@ export class RestAPIfromDjangoService {
   getCurrentUser(){
     return this.currentUser
   }
+
 }

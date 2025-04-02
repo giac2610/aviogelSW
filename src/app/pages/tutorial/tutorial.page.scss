@@ -51,7 +51,7 @@
           left: 0;
           height: 100%;
           width: 0%;
-          background: #4CAF50;
+          background: #D8FFC7;
           transition: width 0.4s ease-in-out;
       }
 
@@ -71,7 +71,7 @@
       }
 
       .step.completed {
-          background: #4CAF50;
+          background: #D8FFC7;
       }
 
       .buttons-container {
@@ -82,11 +82,15 @@
         //   gap: 10px;
           margin-top: 30px;
           ion-button {
-            // padding: 10px 20px;
-            font-size: 16px;
+            width: 30%;
+            height: 40px;
+            // --padding-top: 20px;
+            // --padding-bottom: 20px
+            --font-size: 16px;
+            --color: #3A2E39;
             // border: none;
-            background: #007BFF;
-            border-radius: 25px;
+            --background: #FDEDCD !important;
+            --border-radius: 25px;
             // color: white;
             // cursor: pointer;
             // transition: background 0.3s ease-in-out;

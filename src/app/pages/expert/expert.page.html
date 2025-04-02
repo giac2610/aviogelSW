@@ -1,26 +1,27 @@
 <ion-content>
   <div class="page-container">
     <div class="slider-section">
-      <h1>Seleziona la Fase</h1>
+      <h1>Select the phase</h1>
     </div>
 
   <div class="expert-choise-container">
     <ion-card>
       <img src="../../assets/icon/extruder-icon.png" alt="Extruder Icon">
-      <p>Riempimento Estrusore</p>
+      <p>Fill Extruder</p>
     </ion-card>
     <ion-card>
       <img style="width: 70px;" src="../../assets/icon/play-button-icon.png" alt="Setting Icon">
-      <p>Avvia Dosaggio</p>
+      <p>Start Dispensing</p>
     </ion-card>
     <ion-card>
       <img style="width: 70px;" src="../../assets/icon/setting-line-icon.png" alt="Setting Icon">
-      <p>Impostazioni Stampo</p>
+      <p>General Settings</p>
     </ion-card>
     <ion-card>
       <img *ngIf="currentUser?.gender == 'female'" style="width: 70px;" src="../../assets/icon/edit-user-female-icon.png" alt="Setting Icon">
       <img *ngIf="currentUser?.gender == 'male'" style="width: 70px;" src="../../assets/icon/edit-user-icon.png" alt="Setting Icon">
-      <p>Personalizza Profilo</p>
+      <p>Profile Personalization</p>
+      <!-- Impostazioni suoni -->
     </ion-card>
   </div>
 </div>
