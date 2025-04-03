@@ -1,0 +1,23 @@
+.buttonContainer{
+     display: flex;
+     justify-content: space-around;
+}
+
+.titleContainer{
+     display: flex;
+     justify-content: space-between;
+     ion-icon{
+          padding: 5px;
+     }
+}
+
+.iconContainer{
+     display: flex;
+     justify-content: space-between;
+     padding-top: 10px;
+     padding-bottom: 10px;
+     ion-icon{
+          // padding: 10px;
+          size: large;
+     }
+}

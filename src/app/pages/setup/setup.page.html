@@ -8,88 +8,311 @@
     <ion-buttons slot="primary">
       <ion-button fill="solid">
         Save
-        <ion-icon slot="end" name="save"></ion-icon>
+        <ion-icon slot="end"  name="save"></ion-icon>
       </ion-button>
     </ion-buttons>
   </ion-toolbar>
 </ion-header>
-<ion-content>
+
+<!-- LOADED -->
+<ion-content *ngIf="!isLoading">
   <!-- motor settings -->
     <ion-card>
-      <ion-card-header>
-        <ion-card-title>Motor Setting</ion-card-title>
-      </ion-card-header>
+      <div class="titleContainer">
+        <ion-card-header>
+          <ion-card-title *ngIf="!testMode">Motor Setting</ion-card-title>
+          <ion-card-title *ngIf="testMode">Motor Testing</ion-card-title>
+        </ion-card-header>
+          <ion-icon *ngIf="selectedMotor != 'none'" slot="end" size="large" name="chevron-up-outline" (click)="closeMotors()"></ion-icon>
+      </div>
     
       <ion-card-content>
         <ion-segment [(ngModel)]="selectedMotor">
-          <ion-segment-button value="motor1">
+          <ion-segment-button value="extruder">
             <ion-label>Extruder</ion-label>
           </ion-segment-button>
-          <ion-segment-button value="motor2">
-            <ion-label>Convey</ion-label>
+          <ion-segment-button value="conveyor">
+            <ion-label>Conveyor</ion-label>
           </ion-segment-button>
-          <ion-segment-button value="motor3">
+          <ion-segment-button value="syringe">
             <ion-label>Syringe</ion-label>
           </ion-segment-button>
         </ion-segment>
-    
-        <ion-list *ngIf="selectedMotor === 'motor1'">
-          <ion-item >
-            <ion-input label="Passi/giro" placeholder="Inserisci il numero di passi per fare un giro" type="number" ></ion-input>
-          </ion-item>
-          <ion-item>
-            <ion-input label="Microstep" placeholder="Inserisci il numero di microstep" type="number" ></ion-input>
-          </ion-item>
-          <ion-item>
-            <ion-input label="Max Speed" placeholder="Inserisci la velocità in mm/s" type="number" ></ion-input>
-          </ion-item>
-          <ion-item>
-            <ion-input label="Acceleration" placeholder="Inserisci l'accelerazione in mm/s^2"></ion-input>
-          </ion-item>
-          <ion-item>
-            <ion-input label="Deceleration" placeholder="Inserisci la decelerazione in mm/s^2"></ion-input>
-          </ion-item>
-          <ion-button expand="block" color="secondary" class="ion-margin-top">Test</ion-button>
+        
+        <!-- SETTINGS -->
+        <ion-list *ngIf="selectedMotor === 'extruder'">
+          <!-- Setting container -->
+          <div *ngIf="!testMode">
+            <ion-grid>
+              <ion-row>
+                <ion-col size="4">
+                  <ion-item>
+                    <ion-input label="Home Direction" placeholder="1 orario 0 antiorario" type="number" [(ngModel)]="settings.motors.extruder.homeDir"></ion-input>
+                  </ion-item>
+                </ion-col>
+                <ion-col size="4">
+                  <ion-item>
+                    <ion-input label="Passi/giro" placeholder="Inserisci il numero di passi per fare un giro" type="number" [(ngModel)]="settings.motors.extruder.stepOneRev"></ion-input>
+                  </ion-item>
+                </ion-col>
+                <ion-col size="4">
+                  <ion-item>
+                    <ion-input label="Microstep" placeholder="Inserisci il numero di microstep" type="number" [(ngModel)]="settings.motors.extruder.microstep"></ion-input>
+                  </ion-item>
+                </ion-col>
+              </ion-row>
+              <ion-row>
+                <ion-col size="4">
+                  <ion-item>
+                    <ion-input label="Max Travel" placeholder="Inserisci i mm massimi di spostamento" type="number" [(ngModel)]="settings.motors.extruder.maxTravel"></ion-input>
+                  </ion-item>
+                </ion-col>
+                <ion-col size="4">
+                  <ion-item>
+                    <ion-input label="Screw Pitch" placeholder="Inserisci il numero di mm al giro" type="number" [(ngModel)]="settings.motors.extruder.pitch"></ion-input>
+                  </ion-item>
+                </ion-col>
+                <ion-col size="4">
+                  <ion-item>
+                    <ion-input label="Max Speed" placeholder="Inserisci la velocità in mm/s" type="number" [(ngModel)]="settings.motors.extruder.maxSpeed"></ion-input>
+                  </ion-item>
+                </ion-col>
+              </ion-row>
+              <ion-row>
+                <ion-col size="4">
+                  <ion-item>
+                    <ion-input label="Acceleration" placeholder="Inserisci l'accelerazione in mm/s²" type="number" [(ngModel)]="settings.motors.extruder.acceleration"></ion-input>
+                  </ion-item>
+                </ion-col>
+                <ion-col size="4">
+                  <ion-item>
+                    <ion-input label="Deceleration" placeholder="Inserisci la decelerazione in mm/s²" type="number" [(ngModel)]="settings.motors.extruder.deceleration"></ion-input>
+                  </ion-item>
+                </ion-col>
+                <ion-col size="4">
+                  <ion-item>
+                    <ion-input disabled="true" label="Hertz" placeholder="" type="number" [(ngModel)]="settings.motors.extruder.hertz"></ion-input>
+                  </ion-item>
+                </ion-col>
+              </ion-row>
+            </ion-grid>
+          </div>
+          <!-- Testing Container -->
+           <div *ngIf="testMode">
+            <ion-item>
+              <ion-input label="spostamento in mm" placeholder="inserisci uno spostamento" type="number"></ion-input>
+            </ion-item>
+            <ion-item class="iconContainer">
+              <!-- <div class="iconContainer"> -->
+                <ion-button size="large">
+                  <ion-icon name="home"></ion-icon>
+                </ion-button>
+                <ion-range disabled="true" [max]="settings.motors.extruder.maxTravel"></ion-range>
+                <ion-button size="large">
+                  <ion-icon name="hand-left"></ion-icon>
+                </ion-button>
+                <ion-button size="large">
+                  <ion-icon name="arrow-forward-circle"></ion-icon>
+                </ion-button>
+              <!-- </div> -->
+            </ion-item>
+           </div>
+            <!-- button section -->
+          <div class="buttonContainer">
+            <ion-button *ngIf="!testMode"  color="secondary" class="ion-margin-top" (click)="changeMode('test')">Test
+              <ion-icon slot="end" name="play"></ion-icon>
+            </ion-button>
+            <ion-button *ngIf="testMode" color="secondary" class="ion-margin-top" (click)="changeMode('edit')">Edit
+              <ion-icon slot="end" name="create"></ion-icon>
+            </ion-button>
+            <ion-button  color="secondary" class="ion-margin-top">Save
+              <ion-icon slot="end" name="save"></ion-icon>
+            </ion-button>
+          </div>
         </ion-list>
-
-        <ion-list *ngIf="selectedMotor === 'motor2'">
-          <ion-item >
-            <ion-input label="Passi/giro" placeholder="Inserisci il numero di passi per fare un giro" type="number" ></ion-input>
-          </ion-item>
-          <ion-item>
-            <ion-input label="Microstep" placeholder="Inserisci il numero di microstep" type="number" ></ion-input>
-          </ion-item>
-          <ion-item>
-            <ion-input label="Max Speed" placeholder="Inserisci la velocità in mm/s" type="number" ></ion-input>
-          </ion-item>
-          <ion-item>
-            <ion-input label="Acceleration" placeholder="Inserisci l'accelerazione in mm/s^2"></ion-input>
-          </ion-item>
-          <ion-item>
-            <ion-input label="Deceleration" placeholder="Inserisci la decelerazione in mm/s^2"></ion-input>
-          </ion-item>
+        <ion-list *ngIf="selectedMotor === 'conveyor'">
+          <!-- setting Container -->
+          <div *ngIf="!testMode">
+            <ion-grid>
+              <ion-row>
+                <ion-col size="4">
+                  <ion-item>
+                    <ion-input label="Home Direction" placeholder="1 orario 0 antiorario" type="number" [(ngModel)]="settings.motors.conveyor.homeDir"></ion-input>
+                  </ion-item>
+                </ion-col>
+                <ion-col size="4">
+                  <ion-item>
+                    <ion-input label="Passi/giro" placeholder="Inserisci il numero di passi per fare un giro" type="number" [(ngModel)]="settings.motors.conveyor.stepOneRev"></ion-input>
+                  </ion-item>
+                </ion-col>
+                <ion-col size="4">
+                  <ion-item>
+                    <ion-input label="Microstep" placeholder="Inserisci il numero di microstep" type="number" [(ngModel)]="settings.motors.conveyor.microstep"></ion-input>
+                  </ion-item>
+                </ion-col>
+              </ion-row>
+              <ion-row>
+                <ion-col size="4">
+                  <ion-item>
+                    <ion-input label="Max Travel" placeholder="Inserisci i mm massimi di spostamento" type="number" [(ngModel)]="settings.motors.conveyor.maxTravel"></ion-input>
+                  </ion-item>
+                </ion-col>
+                <ion-col size="4">
+                  <ion-item>
+                    <ion-input label="Screw Pitch" placeholder="Inserisci il numero di mm al giro" type="number" [(ngModel)]="settings.motors.conveyor.pitch"></ion-input>
+                  </ion-item>
+                </ion-col>
+                <ion-col size="4">
+                  <ion-item>
+                    <ion-input label="Max Speed" placeholder="Inserisci la velocità in mm/s" type="number" [(ngModel)]="settings.motors.conveyor.maxSpeed"></ion-input>
+                  </ion-item>
+                </ion-col>
+              </ion-row>
+              <ion-row>
+                <ion-col size="4">
+                  <ion-item>
+                    <ion-input label="Acceleration" placeholder="Inserisci l'accelerazione in mm/s²" type="number" [(ngModel)]="settings.motors.conveyor.acceleration"></ion-input>
+                  </ion-item>
+                </ion-col>
+                <ion-col size="4">
+                  <ion-item>
+                    <ion-input label="Deceleration" placeholder="Inserisci la decelerazione in mm/s²" type="number" [(ngModel)]="settings.motors.conveyor.deceleration"></ion-input>
+                  </ion-item>
+                </ion-col>
+                <ion-col size="4">
+                  <ion-item>
+                    <ion-input disabled="true" label="Hertz" placeholder="" type="number" [(ngModel)]="settings.motors.conveyor.hertz"></ion-input>
+                  </ion-item>
+                </ion-col>
+              </ion-row>
+            </ion-grid>
+          </div>
+          <!-- Testing Container -->
+          <div *ngIf="testMode">
+            <ion-item>
+              <ion-input label="spostamento in mm" placeholder="inserisci uno spostamento" type="number"></ion-input>
+            </ion-item>
+            <ion-item class="iconContainer">
+              <!-- <div class="iconContainer"> -->
+                <ion-button size="large">
+                  <ion-icon name="home"></ion-icon>
+                </ion-button>
+                <ion-range disabled="true" [max]="settings.motors.extruder.maxTravel"></ion-range>
+                <ion-button size="large">
+                  <ion-icon name="hand-left"></ion-icon>
+                </ion-button>
+                <ion-button size="large">
+                  <ion-icon name="arrow-forward-circle"></ion-icon>
+                </ion-button>
+              <!-- </div> -->
+            </ion-item>
+          </div>
+          <!-- button container -->
+          <div class="buttonContainer">
+            <ion-button *ngIf="!testMode"  color="secondary" class="ion-margin-top" (click)="changeMode('test')">Test
+              <ion-icon slot="end" name="play"></ion-icon>
+            </ion-button>
+            <ion-button *ngIf="testMode" color="secondary" class="ion-margin-top" (click)="changeMode('edit')">Edit
+              <ion-icon slot="end" name="create"></ion-icon>
+            </ion-button>
+            <ion-button  color="secondary" class="ion-margin-top">Save
+              <ion-icon slot="end" name="save"></ion-icon>
+            </ion-button>
+          </div>
         </ion-list>
-
-        <ion-list *ngIf="selectedMotor === 'motor3'">
-          <ion-item >
-            <ion-input label="Passi/giro" placeholder="Inserisci il numero di passi per fare un giro" type="number" ></ion-input>
-          </ion-item>
-          <ion-item>
-            <ion-input label="Microstep" placeholder="Inserisci il numero di microstep" type="number" ></ion-input>
-          </ion-item>
-          <ion-item>
-            <ion-input label="Max Speed" placeholder="Inserisci la velocità in mm/s" type="number" ></ion-input>
-          </ion-item>
-          <ion-item>
-            <ion-input label="Acceleration" placeholder="Inserisci l'accelerazione in mm/s^2"></ion-input>
-          </ion-item>
-          <ion-item>
-            <ion-input label="Deceleration" placeholder="Inserisci la decelerazione in mm/s^2"></ion-input>
-          </ion-item>
+        <ion-list *ngIf="selectedMotor === 'syringe'">
+          <!-- setting container -->
+          <div *ngIf="!testMode">
+            <ion-grid>
+              <ion-row>
+                <ion-col size="4">
+                  <ion-item>
+                    <ion-input label="Home Direction" placeholder="1 orario 0 antiorario" type="number" [(ngModel)]="settings.motors.syringe.homeDir"></ion-input>
+                  </ion-item>
+                </ion-col>
+                <ion-col size="4">
+                  <ion-item>
+                    <ion-input label="Passi/giro" placeholder="Inserisci il numero di passi per fare un giro" type="number" [(ngModel)]="settings.motors.syringe.stepOneRev"></ion-input>
+                  </ion-item>
+                </ion-col>
+                <ion-col size="4">
+                  <ion-item>
+                    <ion-input label="Microstep" placeholder="Inserisci il numero di microstep" type="number" [(ngModel)]="settings.motors.syringe.microstep"></ion-input>
+                  </ion-item>
+                </ion-col>
+              </ion-row>
+              <ion-row>
+                <ion-col size="4">
+                  <ion-item>
+                    <ion-input label="Max Travel" placeholder="Inserisci i mm massimi di spostamento" type="number" [(ngModel)]="settings.motors.syringe.maxTravel"></ion-input>
+                  </ion-item>
+                </ion-col>
+                <ion-col size="4">
+                  <ion-item>
+                    <ion-input label="Screw Pitch" placeholder="Inserisci il numero di mm al giro" type="number" [(ngModel)]="settings.motors.syringe.pitch"></ion-input>
+                  </ion-item>
+                </ion-col>
+                <ion-col size="4">
+                  <ion-item>
+                    <ion-input label="Max Speed" placeholder="Inserisci la velocità in mm/s" type="number" [(ngModel)]="settings.motors.syringe.maxSpeed"></ion-input>
+                  </ion-item>
+                </ion-col>
+              </ion-row>
+              <ion-row>
+                <ion-col size="4">
+                  <ion-item>
+                    <ion-input label="Acceleration" placeholder="Inserisci l'accelerazione in mm/s²" type="number" [(ngModel)]="settings.motors.syringe.acceleration"></ion-input>
+                  </ion-item>
+                </ion-col>
+                <ion-col size="4">
+                  <ion-item>
+                    <ion-input label="Deceleration" placeholder="Inserisci la decelerazione in mm/s²" type="number" [(ngModel)]="settings.motors.syringe.deceleration"></ion-input>
+                  </ion-item>
+                </ion-col>
+                <ion-col size="4">
+                  <ion-item>
+                    <ion-input disabled="true" label="Hertz" placeholder="" type="number" [(ngModel)]="settings.motors.syringe.hertz"></ion-input>
+                  </ion-item>
+                </ion-col>
+              </ion-row>
+            </ion-grid>
+          </div>
+          <!-- Testing Container -->
+          <div *ngIf="testMode">
+            <ion-item>
+              <ion-input label="spostamento in mm" placeholder="inserisci uno spostamento" type="number" [(ngModel)]="travels.syringe"></ion-input>
+            </ion-item>
+            <ion-item class="iconContainer">
+              <!-- <div class="iconContainer"> -->
+                <ion-button size="large">
+                  <ion-icon slot="icon-only" name="home"></ion-icon>
+                </ion-button>
+                <ion-range disabled="true" [max]="settings.motors.syringe.maxTravel" [value]="positions.syringe" ></ion-range>
+                <ion-button size="large">
+                  <ion-icon  slot="icon-only" name="hand-left"></ion-icon>
+                </ion-button>
+                <ion-button size="large" (click)="goToPosition('syringe', travels.syringe)">
+                  <ion-icon slot="icon-only" name="arrow-forward-circle" ></ion-icon>
+                </ion-button>
+              <!-- </div> -->
+            </ion-item>
+          </div>
+          <!-- button container -->
+          <div class="buttonContainer">
+            <ion-button *ngIf="!testMode"  color="secondary" class="ion-margin-top" (click)="changeMode('test')">Test
+              <ion-icon slot="end" name="play"></ion-icon>
+            </ion-button>
+            <ion-button *ngIf="testMode" color="secondary" class="ion-margin-top" (click)="changeMode('edit')">Edit
+              <ion-icon slot="end" name="create"></ion-icon>
+            </ion-button>
+            <ion-button  color="secondary" class="ion-margin-top">Save
+              <ion-icon slot="end" name="save"></ion-icon>
+            </ion-button>
+          </div>
         </ion-list>
+        <!-- TEST -->
       </ion-card-content>
     </ion-card>
-
 
    <!-- camera settings -->
     <ion-card>
@@ -99,7 +322,92 @@
     
       <ion-card-content>
     
-        <ion-list *ngIf="selectedMotor === 'motor1'">
+        <ion-list>
+          <ion-item >
+            <ion-input label="Min Threshold" placeholder="Inserisci il valore di soglia minima" type="number"  [(ngModel)]="settings.camera.minThreshold"></ion-input>
+          </ion-item>
+          <ion-item>
+            <ion-input label="Max Threshold" placeholder="Inserisci il valore di soglia minima" type="number" [(ngModel)]="settings.camera.maxThreshold" ></ion-input>
+          </ion-item>
+          <ion-item>
+              <ion-toggle class="ion-padding-end" label="Area Filter" justify="space-between"  placeholder="Inserisci la velocità in mm/s" type="number" [(ngModel)]="settings.camera.areaFilter">Area Filter</ion-toggle>
+            <!-- </ion-item>
+            <ion-item> -->
+              <ion-input [disabled]="!settings.camera.areaFilter" label="Min Area" placeholder="Inserisci il valore di area minimo" type="number" [(ngModel)]="settings.camera.minArea"></ion-input>
+            <!-- </ion-item>
+            <ion-item> -->
+              <ion-input [disabled]="!settings.camera.areaFilter" label="Max Area" placeholder="Inserisci il valore di area massimo" type="number" [(ngModel)]="settings.camera.maxArea"></ion-input>
+          </ion-item>
+        </ion-list>
+
+      </ion-card-content>
+    </ion-card>
+    <!-- <ion-item>
+      <ion-label>Mega Man X</ion-label>
+    </ion-item>
+    <ion-item>
+      <ion-label>The Legend of Zelda</ion-label>
+    </ion-item>
+    <ion-item>
+      <ion-label>Pac-Man</ion-label>
+    </ion-item>
+    <ion-item>
+      <ion-label>Super Mario World</ion-label>
+    </ion-item> -->
+</ion-content>
+
+<!-- WHILE LOADING -->
+<ion-content *ngIf="isLoading">
+  <!-- motor settings -->
+    <ion-card>
+      <ion-card-header>
+        <ion-card-title>
+          <ion-skeleton-text [animated]="true" style="width: 80px"></ion-skeleton-text>
+        </ion-card-title>
+      </ion-card-header>
+      <ion-icon slot="end" name="chevron-up-outline"></ion-icon>
+    
+      <ion-card-content>
+        <ion-segment [(ngModel)]="selectedMotor">
+          <ion-segment-button value="extruder">
+            <ion-label>Extruder</ion-label>
+          </ion-segment-button>
+          <ion-segment-button value="conveyor">
+            <ion-label>Conveyor</ion-label>
+          </ion-segment-button>
+          <ion-segment-button value="syringe">
+            <ion-label>Syringe</ion-label>
+          </ion-segment-button>
+        </ion-segment>
+        
+        <!-- SETTINGS -->
+        <ion-list *ngIf="selectedMotor === 'extruder'">
+          <ion-item *ngIf="!testMode">
+            <ion-input  label="Passi/giro" placeholder="Inserisci il numero di passi per fare un giro" type="number" ></ion-input>
+          </ion-item>
+          <ion-item *ngIf="!testMode">
+            <ion-input  label="Microstep" placeholder="Inserisci il numero di microstep" type="number" ></ion-input>
+          </ion-item>
+          <ion-item *ngIf="!testMode" >
+            <ion-input label="Max Speed" placeholder="Inserisci la velocità in mm/s" type="number" ></ion-input>
+          </ion-item>
+          <ion-item *ngIf="!testMode" >
+            <ion-input  label="Acceleration" placeholder="Inserisci l'accelerazione in mm/s^2" ></ion-input>
+          </ion-item>
+          <ion-item *ngIf="!testMode" >
+            <ion-input  label="Deceleration" placeholder="Inserisci la decelerazione in mm/s^2" ></ion-input>
+          </ion-item>
+          <div class="buttonContainer">
+            <ion-button color="secondary" class="ion-margin-top" (click)="changeMode('test')">Test
+              <ion-icon slot="end" name="play"></ion-icon>
+            </ion-button>
+            <ion-button  color="secondary" class="ion-margin-top">Save
+              <ion-icon slot="end" name="save"></ion-icon>
+            </ion-button>
+          </div>
+        </ion-list>
+
+        <ion-list *ngIf="selectedMotor === 'conveyor'">
           <ion-item >
             <ion-input label="Passi/giro" placeholder="Inserisci il numero di passi per fare un giro" type="number" ></ion-input>
           </ion-item>
@@ -113,7 +421,50 @@
             <ion-input label="Acceleration" placeholder="Inserisci l'accelerazione in mm/s^2"></ion-input>
           </ion-item>
           <ion-item>
+            <ion-input label="Deceleration" placeholder="Inserisci la decelerazione in mm/s^2" ></ion-input>
+          </ion-item>
+          <ion-button expand="block" color="secondary" class="ion-margin-top">Test</ion-button>
+        </ion-list>
+
+        <ion-list *ngIf="selectedMotor === 'syringe'">
+          <ion-item >
+            <ion-input label="Passi/giro" placeholder="Inserisci il numero di passi per fare un giro" type="number" ></ion-input>
+          </ion-item>
+          <ion-item>
+            <ion-input label="Microstep" placeholder="Inserisci il numero di microstep" type="number" ></ion-input>
+          </ion-item>
+          <ion-item>
+            <ion-input label="Max Speed" placeholder="Inserisci la velocità in mm/s" type="number"  ></ion-input>
+          </ion-item>
+          <ion-item>
+            <ion-input label="Acceleration" placeholder="Inserisci l'accelerazione in mm/s^2"  ></ion-input>
+          </ion-item>
+          <ion-item>
             <ion-input label="Deceleration" placeholder="Inserisci la decelerazione in mm/s^2"></ion-input>
+          </ion-item>
+          <ion-button expand="block" color="secondary" class="ion-margin-top">Test</ion-button>
+        </ion-list>
+        <!-- TEST -->
+      </ion-card-content>
+    </ion-card>
+
+   <!-- camera settings -->
+    <ion-card>
+      <ion-card-header>
+        <ion-card-title>Camera Setting</ion-card-title>
+      </ion-card-header>
+    
+      <ion-card-content>
+    
+        <ion-list>
+          <ion-item >
+            <ion-input label="Min Threshold" placeholder="Inserisci il valore di soglia minima" type="number" ></ion-input>
+          </ion-item>
+          <ion-item>
+            <ion-input label="Max Threshold" placeholder="Inserisci il valore di soglia minima" type="number" ></ion-input>
+          </ion-item>
+          <ion-item>
+            <ion-toggle label="Area Filter" placeholder="Inserisci la velocità in mm/s" type="number"></ion-toggle>
           </ion-item>
         </ion-list>
 

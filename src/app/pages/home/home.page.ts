@@ -14,7 +14,8 @@ export class HomePage {
 
   users: User[] = [];
   isModalOpen = false;
-
+  requiredTap: number = 5;
+  numberOfTap = 0;
   newUserData ={
     name: '',
     gender: '',
@@ -35,7 +36,7 @@ export class HomePage {
 
 }
 
-addUser(name: string, gender: string, expertUser: boolean) {
+addUser(name: string, gender: string = 'male', expertUser: boolean = false) {
   let isExpertStr: string = expertUser ? "True" : "False";
   this.usersService.addUser(name, gender, isExpertStr).subscribe(newUser => {
     this.users.push(newUser);
@@ -50,4 +51,12 @@ navigateNextPage(user: User){
 
 }
 
+enterSetup(){
+  this.numberOfTap++;
+  // console.log(this.numberOfTap)
+  if(this.numberOfTap == this.requiredTap){
+    this.router.navigate(['/setup'])
+    this.numberOfTap = 0;
+  }
+}
 }

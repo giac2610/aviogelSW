@@ -5,25 +5,37 @@ import { Observable } from 'rxjs';
 export interface Settings {
   motors: {
     extruder:{
+      homeDir: 0 | 1,
       stepOneRev: number,
       microstep:  2 | 4 | 8 | 16 | 32 | 64 | 128,
+      pitch: number,
       maxSpeed: number,
       acceleration: number,
-      deceleration: number
+      deceleration: number,
+      maxTravel: number,
+      hertz: number
     },
     conveyor:{
+      homeDir: 0 | 1,
       stepOneRev: number,
       microstep:  2 | 4 | 8 | 16 | 32 | 64 | 128,
+      pitch: number,
       maxSpeed: number,
       acceleration: number,
-      deceleration: number
+      deceleration: number,
+      maxTravel: number,
+      hertz: number
     },
     syringe:{
+      homeDir: 0 | 1,
       stepOneRev: number,
       microstep:  2 | 4 | 8 | 16 | 32 | 64 | 128,
+      pitch: number,
       maxSpeed: number,
       acceleration: number,
-      deceleration: number
+      deceleration: number,
+      maxTravel: number,
+      hertz: number
     }
 
   }
@@ -52,14 +64,14 @@ export class SetupAPIService {
   constructor(private http: HttpClient) { }
   
   // Ottieni le impostazioni macchina
-  getSettings(): Observable<Settings[]>{
+  getSettings(): Observable<Settings>{
     const url = `${this.apiUrl}config/get/`
     console.log("url: ", url)
-    return this.http.get<Settings[]>(url);
+    return this.http.get<Settings>(url);
     }
   
     // Aggiorna le impostazioni macchina
-    updateSettings(newSettings: any): Observable<Settings[]> {
-      return this.http.post<Settings[]>(`${this.apiUrl}update/`, newSettings);
+    updateSettings(newSettings: any): Observable<Settings> {
+      return this.http.post<Settings>(`${this.apiUrl}update/`, newSettings);
     }
 }
