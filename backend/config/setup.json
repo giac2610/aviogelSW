@@ -1,25 +1,37 @@
 {
     "motors": {
         "extruder": {
+            "homeDir":  1,
             "stepOneRev": 200.0,
             "microstep": 8,
+            "pitch": 5,
             "maxSpeed": 250.0,
             "acceleration": 2000.0,
-            "deceleration": 2000.0
+            "deceleration": 2000.0,
+            "maxTravel": 100,
+            "hertz": 0
         },
         "conveyor": {
+            "homeDir":  1,
             "stepOneRev": 200.0,
             "microstep": 8,
+            "pitch": 5,
             "maxSpeed": 250.0,
             "acceleration": 2000.0,
-            "deceleration": 2000.0
+            "deceleration": 2000.0,
+            "maxTravel": 100,
+            "hertz": 0
         },
         "syringe": {
+            "homeDir":  1,
             "stepOneRev": 200.0,
             "microstep": 8,
+            "pitch": 5,
             "maxSpeed": 250.0,
             "acceleration": 2000.0,
-            "deceleration": 2000.0
+            "deceleration": 2000.0,
+            "maxTravel": 100,
+            "hertz": 0
         }
 
     },
