@@ -98,25 +98,25 @@
             </ion-grid>
           </div>
           <!-- Testing Container -->
-           <div *ngIf="testMode">
+          <div *ngIf="testMode">
             <ion-item>
-              <ion-input label="spostamento in mm" placeholder="inserisci uno spostamento" type="number"></ion-input>
+              <ion-input label="spostamento in mm" placeholder="inserisci uno spostamento" type="number" [(ngModel)]="travels.extruder"></ion-input>
             </ion-item>
             <ion-item class="iconContainer">
               <!-- <div class="iconContainer"> -->
-                <ion-button size="large">
-                  <ion-icon name="home"></ion-icon>
+                <ion-button size="large" (click)="goHome('extruder')">
+                  <ion-icon slot="icon-only" name="home"></ion-icon>
                 </ion-button>
-                <ion-range disabled="true" [max]="settings.motors.extruder.maxTravel"></ion-range>
+                <ion-range disabled="true" [max]="settings.motors.extruder.maxTravel" [value]="positions.extruder" ></ion-range>
                 <ion-button size="large">
-                  <ion-icon name="hand-left"></ion-icon>
+                  <ion-icon  slot="icon-only" name="hand-left"></ion-icon>
                 </ion-button>
-                <ion-button size="large">
-                  <ion-icon name="arrow-forward-circle"></ion-icon>
+                <ion-button size="large" (click)="goToPosition('extruder', travels.extruder)">
+                  <ion-icon slot="icon-only" name="arrow-forward-circle" ></ion-icon>
                 </ion-button>
               <!-- </div> -->
             </ion-item>
-           </div>
+          </div>
             <!-- button section -->
           <div class="buttonContainer">
             <ion-button *ngIf="!testMode"  color="secondary" class="ion-margin-top" (click)="changeMode('test')">Test
@@ -190,19 +190,19 @@
           <!-- Testing Container -->
           <div *ngIf="testMode">
             <ion-item>
-              <ion-input label="spostamento in mm" placeholder="inserisci uno spostamento" type="number"></ion-input>
+              <ion-input label="spostamento in mm" placeholder="inserisci uno spostamento" type="number" [(ngModel)]="travels.conveyor"></ion-input>
             </ion-item>
             <ion-item class="iconContainer">
               <!-- <div class="iconContainer"> -->
-                <ion-button size="large">
-                  <ion-icon name="home"></ion-icon>
+                <ion-button size="large"(click)="goHome('conveyor')">
+                  <ion-icon slot="icon-only" name="home"></ion-icon>
                 </ion-button>
-                <ion-range disabled="true" [max]="settings.motors.extruder.maxTravel"></ion-range>
+                <ion-range disabled="true" [max]="settings.motors.conveyor.maxTravel" [value]="positions.conveyor" ></ion-range>
                 <ion-button size="large">
-                  <ion-icon name="hand-left"></ion-icon>
+                  <ion-icon  slot="icon-only" name="hand-left"></ion-icon>
                 </ion-button>
-                <ion-button size="large">
-                  <ion-icon name="arrow-forward-circle"></ion-icon>
+                <ion-button size="large" (click)="goToPosition('conveyor', travels.conveyor)">
+                  <ion-icon slot="icon-only" name="arrow-forward-circle" ></ion-icon>
                 </ion-button>
               <!-- </div> -->
             </ion-item>
@@ -283,8 +283,7 @@
               <ion-input label="spostamento in mm" placeholder="inserisci uno spostamento" type="number" [(ngModel)]="travels.syringe"></ion-input>
             </ion-item>
             <ion-item class="iconContainer">
-              <!-- <div class="iconContainer"> -->
-                <ion-button size="large">
+                <ion-button size="large" (click)="goHome('syringe')">
                   <ion-icon slot="icon-only" name="home"></ion-icon>
                 </ion-button>
                 <ion-range disabled="true" [max]="settings.motors.syringe.maxTravel" [value]="positions.syringe" ></ion-range>

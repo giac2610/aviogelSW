@@ -66,7 +66,6 @@ export class SetupAPIService {
   // Ottieni le impostazioni macchina
   getSettings(): Observable<Settings>{
     const url = `${this.apiUrl}config/get/`
-    console.log("url: ", url)
     return this.http.get<Settings>(url);
     }
   
