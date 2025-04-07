@@ -108,7 +108,7 @@
                   <ion-icon slot="icon-only" name="home"></ion-icon>
                 </ion-button>
                 <ion-range disabled="true" [max]="settings.motors.extruder.maxTravel" [value]="positions.extruder" ></ion-range>
-                <ion-button size="large">
+                <ion-button size="large" (click)="stopMotors()">
                   <ion-icon  slot="icon-only" name="hand-left"></ion-icon>
                 </ion-button>
                 <ion-button size="large" (click)="goToPosition('extruder', travels.extruder)">
@@ -198,7 +198,7 @@
                   <ion-icon slot="icon-only" name="home"></ion-icon>
                 </ion-button>
                 <ion-range disabled="true" [max]="settings.motors.conveyor.maxTravel" [value]="positions.conveyor" ></ion-range>
-                <ion-button size="large">
+                <ion-button size="large" (click)="stopMotors()">
                   <ion-icon  slot="icon-only" name="hand-left"></ion-icon>
                 </ion-button>
                 <ion-button size="large" (click)="goToPosition('conveyor', travels.conveyor)">
@@ -287,7 +287,7 @@
                   <ion-icon slot="icon-only" name="home"></ion-icon>
                 </ion-button>
                 <ion-range disabled="true" [max]="settings.motors.syringe.maxTravel" [value]="positions.syringe" ></ion-range>
-                <ion-button size="large">
+                <ion-button size="large" (click)="stopMotors()">
                   <ion-icon  slot="icon-only" name="hand-left"></ion-icon>
                 </ion-button>
                 <ion-button size="large" (click)="goToPosition('syringe', travels.syringe)">
