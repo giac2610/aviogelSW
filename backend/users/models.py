@@ -4,7 +4,8 @@ from django.db import models
 class UserProfile(models.Model):
     GENDER_CHOICES = [
         ('male', 'Maschio'),
-        ('female', 'Femmina')
+        ('female', 'Femmina'),
+        ('other', 'altro')
     ]
 
     name = models.CharField(max_length=100)
@@ -16,7 +17,8 @@ class UserProfile(models.Model):
         if not self.avatar:
             default_avatars = {
                 'male': ['male_1.jpg'],
-                'female': ['female_1.jpg', 'female_2.jpg']
+                'female': ['female_1.jpg', 'female_2.jpg'],
+                'other': ['other_1.jpg']
             }
             self.avatar = random.choice(default_avatars.get(self.gender, ['male_1.jpg']))
         super().save(*args, **kwargs)
