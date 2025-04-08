@@ -27,6 +27,7 @@ travels: { [key in "syringe" | "extruder" | "conveyor"]: number } = {
   extruder: 0,
   conveyor: 0
 };
+  SetupAPIService: any;
 
   constructor(private configService: SetupAPIService, private toastController: ToastController, private motorsService: MotorsControlService) { }
 
@@ -98,6 +99,30 @@ travels: { [key in "syringe" | "extruder" | "conveyor"]: number } = {
       }
     })
   }
+
+  saveSettings() {
+    // console.log("Dati inviati al backend:", this.settings); // Log dei dati
+    this.configService.updateSettings(this.settings).subscribe({
+      next: (response) => {
+        // console.log('Impostazioni salvate:', response);
+        this.presentToast('Impostazioni salvate con successo', 'success');
+      },
+      error: (error) => {
+        // console.error('Errore durante il salvataggio delle impostazioni:', error);
+        this.presentToast('Errore durante il salvataggio delle impostazioni', 'danger');
+      }
+    });
+  }
+  async presentToast(message: string, color: string = 'success') {
+    const toast = await this.toastController.create({
+      message: message,
+      duration: 1400,
+      icon: 'checkmark-circle',
+      color: color
+    }); 
+    await toast.present();
+  }
+
 
   async presentPositionToast(message: string) {
     const toast = await this.toastController.create({

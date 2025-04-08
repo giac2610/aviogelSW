@@ -8,7 +8,7 @@
     <ion-buttons slot="primary">
       <ion-button fill="solid">
         Save
-        <ion-icon slot="end"  name="save"></ion-icon>
+        <ion-icon slot="end"  name="save" (click)="saveSettings()"></ion-icon>
       </ion-button>
     </ion-buttons>
   </ion-toolbar>
@@ -125,7 +125,7 @@
             <ion-button *ngIf="testMode" color="secondary" class="ion-margin-top" (click)="changeMode('edit')">Edit
               <ion-icon slot="end" name="create"></ion-icon>
             </ion-button>
-            <ion-button  color="secondary" class="ion-margin-top">Save
+            <ion-button  color="secondary" class="ion-margin-top" (click)="saveSettings()">Save
               <ion-icon slot="end" name="save"></ion-icon>
             </ion-button>
           </div>
@@ -215,7 +215,7 @@
             <ion-button *ngIf="testMode" color="secondary" class="ion-margin-top" (click)="changeMode('edit')">Edit
               <ion-icon slot="end" name="create"></ion-icon>
             </ion-button>
-            <ion-button  color="secondary" class="ion-margin-top">Save
+            <ion-button  color="secondary" class="ion-margin-top" (click)="saveSettings()">Save
               <ion-icon slot="end" name="save"></ion-icon>
             </ion-button>
           </div>
@@ -304,7 +304,7 @@
             <ion-button *ngIf="testMode" color="secondary" class="ion-margin-top" (click)="changeMode('edit')">Edit
               <ion-icon slot="end" name="create"></ion-icon>
             </ion-button>
-            <ion-button  color="secondary" class="ion-margin-top">Save
+            <ion-button  color="secondary" class="ion-margin-top" (click)="saveSettings()">Save
               <ion-icon slot="end" name="save"></ion-icon>
             </ion-button>
           </div>

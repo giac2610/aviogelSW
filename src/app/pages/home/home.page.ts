@@ -59,4 +59,10 @@ enterSetup(){
     this.numberOfTap = 0;
   }
 }
+showDeleteButton(user: User) {
+  // Mostra il pulsante di eliminazione per l'utente specificato
+  // user.showDeleteButton = true;
+  console.log("long press on: ", user)
+}
+
 }

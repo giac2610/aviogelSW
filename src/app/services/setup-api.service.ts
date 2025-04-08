@@ -69,8 +69,8 @@ export class SetupAPIService {
     return this.http.get<Settings>(url);
     }
   
-    // Aggiorna le impostazioni macchina
-    updateSettings(newSettings: any): Observable<Settings> {
-      return this.http.post<Settings>(`${this.apiUrl}update/`, newSettings);
+    updateSettings(newSettings: Settings): Observable<Settings> {
+      // console.log("Dati inviati al backend:", newSettings);
+      return this.http.post<Settings>(`${this.apiUrl}config/update/`, newSettings);
     }
 }
