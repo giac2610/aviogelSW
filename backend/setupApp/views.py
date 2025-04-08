@@ -33,10 +33,11 @@ def update_settings(request):
     """Aggiorna il file settings.json con nuovi dati"""
     settings_data = read_settings()
     serializer = SettingsSerializer(data=request.data, partial=True)
-
+    # print("Dati ricevuti dal frontend:", request.data)  # Log dei dati ricevuti
     if serializer.is_valid():
         settings_data.update(serializer.validated_data)  # Aggiorna solo i campi forniti
         write_settings(settings_data)
         return Response({"success": True, "settings": settings_data})
     
+    # print("Errori del serializer:", serializer.errors)  # Log degli errori
     return Response(serializer.errors, status=400)
