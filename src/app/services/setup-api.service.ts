@@ -46,7 +46,7 @@ export interface Settings {
     areaFilter: boolean,
     minArea: number,
     maxArea: number,
-    circularityFitler: boolean,
+    circularityFilter: boolean,
     minCircularity: number,
     maxCircularity: number,
     inertiaFilter: boolean,
