@@ -5,7 +5,7 @@
     </div>
     <div class="swiperWrapper">
       <!-- Card per ogni utente -->
-      <div class="swiperCard" *ngFor="let user of users" (onlongpress)="showDeleteButton(user)  ">
+      <div class="swiperCard" *ngFor="let user of users">
         <ion-card (click)="navigateNextPage(user)">
           <div class="card-background">
             <ion-avatar>
