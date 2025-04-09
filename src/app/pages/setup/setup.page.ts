@@ -45,8 +45,10 @@ travels: { [key in "syringe" | "extruder" | "conveyor"]: number } = {
   }
 
   goBack(){
-    this.router.navigate(['/home']);
-  }
+    this.router.navigate(['/home']).then(() => {
+      window.location.reload();
+    });
+  } 
 
   changeMode(mode: string){
     if(mode=="test"){;
