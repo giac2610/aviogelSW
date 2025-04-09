@@ -1,5 +1,6 @@
 import { MotorsControlService } from './../../services/motors-control.service';
 import { Component, OnInit } from '@angular/core';
+import { Router } from '@angular/router';
 import { ToastController } from '@ionic/angular';
 import { SetupAPIService, Settings } from 'src/app/services/setup-api.service';
 
@@ -29,7 +30,7 @@ travels: { [key in "syringe" | "extruder" | "conveyor"]: number } = {
 };
   SetupAPIService: any;
 
-  constructor(private configService: SetupAPIService, private toastController: ToastController, private motorsService: MotorsControlService) { }
+  constructor(private configService: SetupAPIService, private toastController: ToastController, private motorsService: MotorsControlService, private router: Router) { }
 
   ngOnInit() {
     this.isLoading = true;
@@ -41,6 +42,10 @@ travels: { [key in "syringe" | "extruder" | "conveyor"]: number } = {
       this.settings = data;
       this.isLoading = false;
     });
+  }
+
+  goBack(){
+    this.router
   }
 
   changeMode(mode: string){
