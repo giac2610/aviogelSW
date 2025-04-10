@@ -14,9 +14,13 @@ Avviare sempre il virtual Env per python
 
 #### macOs
 
+```shell
 source .venv/bin/activate  
+```
 
 #### raspberry
 
+```shell
 cd aviogelSW/backend
 source aviogelEnv/bin/activate
+```
