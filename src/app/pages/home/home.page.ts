@@ -27,14 +27,20 @@ export class HomePage {
   ngOnInit() {
     this.loadUsers();
   }
-
   loadUsers() {
-    this.usersService.getUsers().subscribe((data: User[]) => {
-      this.users = data;
-    });
-
-
-}
+    const interval = setInterval(() => {
+      this.usersService.getUsers().subscribe((data: User[]) => {
+        if (data.length > 0) {
+          this.users = data;
+          clearInterval(interval); // Ferma il controllo una volta che i dati sono disponibili
+        } else {
+          console.log("Nessun dato disponibile, riprovo tra 5 secondi...");
+        }
+      }, (error) => {
+        console.error("Errore durante il caricamento degli utenti:", error);
+      });
+    }, 5000); // Controlla ogni 5 secondi
+  }
 
 addUser(name: string, gender: string = 'male', expertUser: boolean = false) {
   let isExpertStr: string = expertUser ? "True" : "False";
