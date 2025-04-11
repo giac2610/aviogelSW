@@ -11,7 +11,7 @@ import { Keyboard } from '@capacitor/keyboard';
   standalone: false,
 })
 export class HomePage {
-
+  isLoading = true;
   users: User[] = [];
   isModalOpen = false;
   requiredTap: number = 5;
@@ -32,7 +32,8 @@ export class HomePage {
       this.usersService.getUsers().subscribe((data: User[]) => {
         if (data.length > 0) {
           this.users = data;
-          clearInterval(interval); // Ferma il controllo una volta che i dati sono disponibili
+          this.isLoading = false; // I dati sono stati caricati
+          clearInterval(interval); // Ferma il controllo
         } else {
           console.log("Nessun dato disponibile, riprovo tra 5 secondi...");
         }

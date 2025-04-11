@@ -4,7 +4,41 @@
       <h1 (click)="enterSetup()">Who are you?</h1>
     </div>
     <div class="swiperWrapper">
-      <!-- Card per ogni utente -->
+      <!-- Mostra le card di caricamento se isLoading è true -->
+      <div class="swiperCard" *ngIf="isLoading">
+        <ion-card>
+          <div class="card-background">
+            <ion-avatar>
+              <!-- Skeleton circolare per l'avatar -->
+              <ion-skeleton-text [animated]="true" class="skeleton-avatar"></ion-skeleton-text>
+            </ion-avatar>
+          </div>
+          <ion-card-header>
+            <div class="card-footer">
+              <!-- Skeleton per il nome -->
+              <ion-skeleton-text [animated]="true" class="skeleton-name"></ion-skeleton-text>
+            </div>
+          </ion-card-header>
+        </ion-card>
+      </div>
+      <div class="swiperCard" *ngIf="isLoading">
+        <ion-card>
+          <div class="card-background">
+            <ion-avatar>
+              <!-- Skeleton circolare per l'avatar -->
+              <ion-skeleton-text [animated]="true" class="skeleton-avatar"></ion-skeleton-text>
+            </ion-avatar>
+          </div>
+          <ion-card-header>
+            <div class="card-footer">
+              <!-- Skeleton per il nome -->
+              <ion-skeleton-text [animated]="true" class="skeleton-name"></ion-skeleton-text>
+            </div>
+          </ion-card-header>
+        </ion-card>
+      </div>
+
+      <!-- Mostra le card degli utenti quando i dati sono disponibili -->
       <div class="swiperCard" *ngFor="let user of users">
         <ion-card (click)="navigateNextPage(user)">
           <div class="card-background">
@@ -19,8 +53,10 @@
           </ion-card-header>
         </ion-card>
       </div>
+
+      <!-- Card per aggiungere un nuovo utente -->
       <div class="swiperCard">
-        <ion-card  id="open-modal">
+        <ion-card id="open-modal">
           <div class="card-background">
             <ion-icon name="add-circle-outline" slot="center" size="large"></ion-icon>
           </div>
@@ -30,31 +66,7 @@
             </div>
           </ion-card-header>
         </ion-card>
-        <ion-modal #modal trigger="open-modal">
-          <ng-template>
-            <ion-content>
-              <ion-toolbar>
-                <ion-title>Add user</ion-title>
-                <ion-buttons slot="end">
-                  <ion-button color="light" (click)="modal.dismiss()">Close</ion-button>
-                </ion-buttons>
-              </ion-toolbar>
-              <ion-list class="ion-padding">
-                  <ion-input placeholder="Nome" [(ngModel)]="newUserData.name"></ion-input>
-                  <ion-select label="Genere" label-placement="floating" [(ngModel)]="newUserData.gender">
-                    <ion-select-option value="male">Maschio</ion-select-option>
-                    <ion-select-option value="female">Femmina</ion-select-option>
-                    <ion-select-option value="other">other</ion-select-option>
-                  </ion-select>
-                  <ion-toggle [(ngModel)]="newUserData.isExpert">Expert User</ion-toggle>
-
-                  <ion-button expand="block" class="ion-padding-vertical" (click)="addUser(newUserData.name, newUserData.gender, newUserData.isExpert)"> Aggiungi </ion-button>
-              </ion-list>
-            </ion-content>
-          </ng-template>
-        </ion-modal>
       </div>
+    </div>
   </div>
-  </div>
- 
 </ion-content>
