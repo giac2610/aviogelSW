@@ -1,8 +1,11 @@
 import json
+import os
 import time
 import threading
 import sys
+from django.conf import settings
 from unittest.mock import MagicMock
+from .serializers import SettingsSerializer
 
 # SU MAC: Simula il modulo pigpio per evitare errori
 if sys.platform == "darwin":
@@ -11,6 +14,8 @@ import pigpio  # type: ignore
 
 from django.http import JsonResponse
 from rest_framework.decorators import api_view
+
+SETTINGS_FILE = os.path.join(settings.BASE_DIR, 'config', 'setup.json')
 
 # ------------------------------------------------------------------------------
 # Caricamento configurazione
@@ -26,9 +31,9 @@ motor_configs = config.get("motors", {})
 # Mappatura motori e inizializzazione pigpio
 # ------------------------------------------------------------------------------
 MOTORS = {
-    "extruder": {"STEP": 12, "DIR": 27},
-    "conveyor": {"STEP": 13, "DIR": 23},
-    "syringe": {"STEP": 18, "DIR": 24},
+    "extruder": {"STEP": 12, "DIR": 5},
+    "conveyor": {"STEP": 13, "DIR": 6},
+    "syringe": {"STEP": 18, "DIR": 27},
 }
 
 pi = pigpio.pi()
@@ -54,6 +59,10 @@ def compute_motor_params(motor_id):
     freq = maxSpeed * steps_per_mm
     return steps_per_mm, max(1, freq)
 
+def write_settings(data):
+    """Scrive i dati nel file settings.json"""
+    with open(SETTINGS_FILE, 'w') as file:
+        json.dump(data, file, indent=4)
 # ------------------------------------------------------------------------------
 # API: Aggiornamento configurazione
 # ------------------------------------------------------------------------------
@@ -133,3 +142,25 @@ def stop_motor(body):
     for motor in MOTORS.values():
         pi.hardware_PWM(motor["STEP"], 0, 0)
     return JsonResponse({"status": "Motori fermati"})
+
+@api_view(['POST'])
+def save_motor_config(request):
+    global config, motor_configs
+    try:
+        config = load_motor_config()
+        settings_data = config.get("motors", {})
+        # return JsonResponse({}, status=204)  # No Content
+    except Exception as e:
+        return JsonResponse({"error": "Errore caricamento config", "detail": str(e)}, status=500)
+    """Aggiorna il file settings.json con nuovi dati"""
+    # settings_data = read_settings()
+    serializer = SettingsSerializer(data=request.data, partial=True)
+    # print("Dati ricevuti dal frontend:", request.data)  # Log dei dati ricevuti
+    if serializer.is_valid():
+        settings_data.update(serializer.validated_data)  # Aggiorna solo i campi forniti
+        write_settings(settings_data)
+        compute_motor_params()
+        return JsonResponse({"success": True, "settings": settings_data})
+    
+    # print("Errori del serializer:", serializer.errors)  # Log degli errori
+    return JsonResponse(serializer.errors, status=400)
