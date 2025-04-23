@@ -37,7 +37,7 @@ travels: { [key in "syringe" | "extruder" | "conveyor"]: number } = {
     this.loadConfig();
 
     // this.presentToast('Caricamento in corso...', 'primary');
-    console.log('test');
+    // console.log('test');
   }
 
   loadConfig() {
