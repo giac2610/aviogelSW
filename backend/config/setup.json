@@ -15,7 +15,7 @@
             "homeDir": 1,
             "stepOneRev": 200.0,
             "microstep": 8,
-            "pitch": 5.0,
+            "pitch": 7.0,
             "maxSpeed": 250.0,
             "acceleration": 1000.0,
             "deceleration": 1000.0,

@@ -24,6 +24,12 @@ def load_motor_config():
     with open("config/setup.json", "r") as file:
         return json.load(file)
 
+def reload_motor_config():
+    global config, motor_configs
+    config = load_motor_config()
+    motor_configs = config.get("motors", {})
+
+
 config = load_motor_config()
 motor_configs = config.get("motors", {})
 
@@ -67,7 +73,7 @@ def write_settings(data):
 # API: Aggiornamento configurazione
 # ------------------------------------------------------------------------------
 @api_view(['POST'])
-def update_config(request):
+def update_config():
     global config, motor_configs
     try:
         config = load_motor_config()
@@ -147,20 +153,31 @@ def stop_motor(body):
 def save_motor_config(request):
     global config, motor_configs
     try:
+        # Carica la configurazione esistente
         config = load_motor_config()
-        settings_data = config.get("motors", {})
-        # return JsonResponse({}, status=204)  # No Content
+        settings_data = config.get("motors", {})  # Ottieni i dati dei motori esistenti
     except Exception as e:
         return JsonResponse({"error": "Errore caricamento config", "detail": str(e)}, status=500)
-    """Aggiorna il file settings.json con nuovi dati"""
-    # settings_data = read_settings()
+
+    # Serializza i dati ricevuti
     serializer = SettingsSerializer(data=request.data, partial=True)
-    # print("Dati ricevuti dal frontend:", request.data)  # Log dei dati ricevuti
     if serializer.is_valid():
-        settings_data.update(serializer.validated_data)  # Aggiorna solo i campi forniti
-        write_settings(settings_data)
-        compute_motor_params()
-        return JsonResponse({"success": True, "settings": settings_data})
+        # Aggiorna solo i campi forniti all'interno di "motors"
+        settings_data.update(serializer.validated_data)
+        config["motors"] = settings_data  # Aggiorna la chiave "motors" nel file di configurazione
+
+        # Rimuovi eventuali duplicazioni di "motors" all'interno di "motors"
+        if "motors" in config["motors"]:
+            del config["motors"]["motors"]
+            
+        if "camera" in config["motors"]:
+            del config["motors"]["camera"]
+
+        # Scrivi i dati aggiornati nel file di configurazione
+        write_settings(config)
+        reload_motor_config()
+        # Restituisci la configurazione aggiornata
+        return JsonResponse({"success": True, "settings": config})
     
-    # print("Errori del serializer:", serializer.errors)  # Log degli errori
+    # Restituisci errori di validazione
     return JsonResponse(serializer.errors, status=400)
