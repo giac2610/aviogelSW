@@ -113,10 +113,11 @@ travels: { [key in "syringe" | "extruder" | "conveyor"]: number } = {
 
   saveSettings() {
     // console.log("Dati inviati al backend:", this.settings); // Log dei dati
-    // this.motorsService.saveSettings(this.settings).subscribe({
-    this.configService.updateSettings(this.settings).subscribe({
+    console.log("Dati inviati al backend:", this.settings); // Log dei dati
+    this.motorsService.saveSettings(this.settings).subscribe({
+    // this.configService.updateSettings(this.settings).subscribe({
       next: (response) => {
-        // console.log('Impostazioni salvate:', response);
+        console.log('Impostazioni salvate:', response);
         this.presentToast('Impostazioni salvate con successo', 'success');
       },
       error: (error) => {
