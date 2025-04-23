@@ -35,6 +35,8 @@ travels: { [key in "syringe" | "extruder" | "conveyor"]: number } = {
   ngOnInit() {
     this.isLoading = true;
     this.loadConfig();
+
+    this.presentToast('Caricamento in corso...', 'primary');
   }
 
   loadConfig() {
@@ -76,16 +78,17 @@ travels: { [key in "syringe" | "extruder" | "conveyor"]: number } = {
       };
       this.motorsService.moveMotor(body).subscribe({
         next: (response) => {
-          // Mostra il messaggio dal backend
-          this.presentToast(`Successo: ${response.status}`, 'success');
+          // Mostra il messaggio JSON restituito dal backend
+          this.presentToast(`Successo: ${response.status} - Target: ${JSON.stringify(response.targets)}`, 'success');
         },
         error: (error) => {
-          // Mostra l'errore dal backend
-          this.presentToast(`Errore: ${error.error.detail || error.message}`, 'danger');
+          // Mostra l'errore JSON restituito dal backend
+          const errorMessage = error.error.detail || error.error.error || error.message;
+          this.presentToast(`Errore: ${errorMessage}`, 'danger');
         }
       });
     } else {
-      this.presentPositionToast(`Posizione non ammessa per il motore ${motor}`);
+      this.presentToast(`Posizione non ammessa per il motore ${motor}`, 'danger');
     }
   }
   
@@ -133,13 +136,13 @@ travels: { [key in "syringe" | "extruder" | "conveyor"]: number } = {
   }
 
 
-  async presentPositionToast(message: string) {
-    const toast = await this.toastController.create({
-      message: message,
-      duration: 1400,
-      icon: 'alert-circle',
-      color: 'danger'
-    });
-    await toast.present();
-  }
+  // async presentPositionToast(message: string) {
+  //   const toast = await this.toastController.create({
+  //     message: message,
+  //     duration: 1400,
+  //     icon: 'alert-circle',
+  //     color: 'danger'
+  //   });
+  //   await toast.present();
+  // }
 }
