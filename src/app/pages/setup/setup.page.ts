@@ -66,45 +66,41 @@ travels: { [key in "syringe" | "extruder" | "conveyor"]: number } = {
   // selezionando il motore e la distanza
   goToPosition(motor: "syringe" | "extruder" | "conveyor", distance: number) {
     const maxTravel = this.settings.motors[motor].maxTravel;
-
+  
     if (this.positions[motor] + distance <= maxTravel) {
       this.positions[motor] += distance; 
-      console.log(`Nuova posizione di ${motor}:`, this.positions[motor]);
       const body = {
         "targets": {
             [motor]: distance,
         }
-      }
-      console.log(body);
+      };
       this.motorsService.moveMotor(body).subscribe({
         next: (response) => {
-          console.log(`Risposta API per ${motor}:`, response);
+          this.presentToast(`Motore ${motor} spostato di ${distance} unità`, 'success');
         },
         error: (error) => {
-          console.error(`Errore API per ${motor}:`, error);
+          this.presentToast(`Errore nello spostamento del motore ${motor}`, 'danger');
         }
-      })
+      });
     } else {
-      // console.warn(`${motor} ha raggiunto il limite massimo.`);
-      this.presentPositionToast( `posizione non ammessa per: ${motor} motor`)
+      this.presentPositionToast(`Posizione non ammessa per il motore ${motor}`);
     }
   }
-
+  
   goHome(motor: "syringe" | "extruder" | "conveyor"){
     this.goToPosition(motor, -this.positions[motor]);
     this.positions[motor] = 0;
   }
 
-  stopMotors(){
-
+  stopMotors() {
     this.motorsService.stopMotor().subscribe({
       next: (response) => {
-        console.log("Risposta API: ", response);
+        this.presentToast("Motori fermati con successo", 'success');
       },
       error: (error) => {
-        console.error("Errore API: ", error);
+        this.presentToast("Errore durante l'arresto dei motori", 'danger');
       }
-    })
+    });
   }
 
   saveSettings() {
