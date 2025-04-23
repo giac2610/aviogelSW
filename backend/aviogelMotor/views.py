@@ -32,8 +32,8 @@ motor_configs = config.get("motors", {})
 # ------------------------------------------------------------------------------
 MOTORS = {
     "extruder": {"STEP": 13, "DIR": 6},
-    "conveyor": {"STEP": 12, "DIR": 5},
-    "syringe": {"STEP": 18, "DIR": 27},
+    "conveyor": {"STEP": 18, "DIR": 27},
+    "syringe": {"STEP": 12, "DIR": 5},
 }
 
 pi = pigpio.pi()
