@@ -24,6 +24,7 @@
           <ion-card-title *ngIf="testMode">Motor Testing</ion-card-title>
         </ion-card-header>
           <ion-icon *ngIf="selectedMotor != 'none'" slot="end" size="large" name="chevron-up-outline" (click)="closeMotors()"></ion-icon>
+          <ion-button (click)="presentToast('Test del ToastController', 'success')">Test Toast</ion-button>
       </div>
     
       <ion-card-content>
