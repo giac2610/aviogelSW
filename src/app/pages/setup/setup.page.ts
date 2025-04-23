@@ -76,10 +76,12 @@ travels: { [key in "syringe" | "extruder" | "conveyor"]: number } = {
       };
       this.motorsService.moveMotor(body).subscribe({
         next: (response) => {
-          this.presentToast(`Motore ${motor} spostato di ${distance} unità`, 'success');
+          // Mostra il messaggio dal backend
+          this.presentToast(`Successo: ${response.status}`, 'success');
         },
         error: (error) => {
-          this.presentToast(`Errore nello spostamento del motore ${motor}`, 'danger');
+          // Mostra l'errore dal backend
+          this.presentToast(`Errore: ${error.error.detail || error.message}`, 'danger');
         }
       });
     } else {
@@ -95,10 +97,12 @@ travels: { [key in "syringe" | "extruder" | "conveyor"]: number } = {
   stopMotors() {
     this.motorsService.stopMotor().subscribe({
       next: (response) => {
-        this.presentToast("Motori fermati con successo", 'success');
+        // Mostra il messaggio dal backend
+        this.presentToast(`Successo: ${response.status}`, 'success');
       },
       error: (error) => {
-        this.presentToast("Errore durante l'arresto dei motori", 'danger');
+        // Mostra l'errore dal backend
+        this.presentToast(`Errore: ${error.error.detail || error.message}`, 'danger');
       }
     });
   }
@@ -117,13 +121,14 @@ travels: { [key in "syringe" | "extruder" | "conveyor"]: number } = {
       }
     });
   }
+
   async presentToast(message: string, color: string = 'success') {
     const toast = await this.toastController.create({
       message: message,
       duration: 1400,
-      icon: 'checkmark-circle',
+      icon: color === 'success' ? 'checkmark-circle' : 'alert-circle',
       color: color
-    }); 
+    });
     await toast.present();
   }
 
