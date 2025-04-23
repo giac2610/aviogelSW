@@ -95,6 +95,7 @@ def move_motor(request):
     try:
         data = json.loads(request.body)
         targets = data.get("targets", {})  # Dizionario con i target per ogni motore
+        print("Targets:", targets)
     except Exception as e:
         return JsonResponse({"error": "Dati non validi", "detail": str(e)}, status=400)
 
