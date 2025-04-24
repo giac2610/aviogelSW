@@ -1,4 +1,3 @@
-
 <ion-header>
   <ion-toolbar>
   <ion-buttons slot="start" (click)="goBack()">
@@ -323,34 +322,66 @@
       <ion-list>
         <!-- Min Threshold -->
         <ion-item>
-          <ion-input label="Min Threshold" placeholder="Inserisci il valore di soglia minima" type="number" [(ngModel)]="settings.camera.minThreshold"></ion-input>
-          <ion-input label="Max Threshold" placeholder="Inserisci il valore di soglia massima" type="number" [(ngModel)]="settings.camera.maxThreshold"></ion-input>
+          <ion-toggle class="ion-padding-end" label="Threshold Filter" justify="space-between">
+            Threshold Filter
+          </ion-toggle>
+          <ion-icon name="contrast-outline" slot="start"></ion-icon>
+          <ion-input [step]="globalGranularity" label="Min Threshold" placeholder="Inserisci il valore di soglia minima" type="number" [(ngModel)]="settings.camera.minThreshold"></ion-input>
+          <ion-input [step]="globalGranularity" label="Max Threshold" placeholder="Inserisci il valore di soglia massima" type="number" [(ngModel)]="settings.camera.maxThreshold"></ion-input>
         </ion-item>
   
         <!-- Area Filter -->
         <ion-item>
-          <ion-toggle class="ion-padding-end" label="Area Filter" justify="space-between" [(ngModel)]="settings.camera.areaFilter">Area Filter</ion-toggle>
+          <ion-toggle class="ion-padding-end" label="Area Filter" justify="space-between" [(ngModel)]="settings.camera.areaFilter">
+            Area Filter
+          </ion-toggle>
+          <ion-icon name="resize-outline" slot="start"></ion-icon>
           <ion-input [disabled]="!settings.camera.areaFilter" label="Min Area" placeholder="Inserisci il valore di area minimo" type="number" [(ngModel)]="settings.camera.minArea"></ion-input>
           <ion-input [disabled]="!settings.camera.areaFilter" label="Max Area" placeholder="Inserisci il valore di area massimo" type="number" [(ngModel)]="settings.camera.maxArea"></ion-input>
         </ion-item>
   
         <!-- Circularity Filter -->
         <ion-item>
-          <ion-toggle class="ion-padding-end" label="Circularity Filter" justify="space-between" [(ngModel)]="settings.camera.circularityFilter">Circularity Filter</ion-toggle>
-          <ion-input [disabled]="!settings.camera.circularityFilter" label="Min Circularity" placeholder="Inserisci il valore minimo di circolarità" type="number" [(ngModel)]="settings.camera.minCircularity"></ion-input>
-          <ion-input [disabled]="!settings.camera.circularityFilter" label="Max Circularity" placeholder="Inserisci il valore massimo di circolarità" type="number" [(ngModel)]="settings.camera.maxCircularity"></ion-input>
+          <ion-toggle class="ion-padding-end" label="Circularity Filter" justify="space-between" [(ngModel)]="settings.camera.circularityFilter">
+            Circularity Filter
+          </ion-toggle>
+          <ion-icon name="ellipse-outline" slot="start"></ion-icon>
+          <ion-input [step]="globalGranularity" [disabled]="!settings.camera.circularityFilter" label="Min Circularity" placeholder="Inserisci il valore minimo di circolarità" type="number" [(ngModel)]="settings.camera.minCircularity"></ion-input>
+          <ion-input [step]="globalGranularity" [disabled]="!settings.camera.circularityFilter" label="Max Circularity" placeholder="Inserisci il valore massimo di circolarità" type="number" [(ngModel)]="settings.camera.maxCircularity"></ion-input>
         </ion-item>
   
         <!-- Inertia Filter -->
         <ion-item>
-          <ion-toggle class="ion-padding-end" label="Inertia Filter" justify="space-between" [(ngModel)]="settings.camera.inertiaFilter">Inertia Filter</ion-toggle>
-          <ion-input [disabled]="!settings.camera.inertiaFilter" label="Min Inertia" placeholder="Inserisci il valore minimo di inerzia" type="number" [(ngModel)]="settings.camera.minInertia"></ion-input>
-          <ion-input [disabled]="!settings.camera.inertiaFilter" label="Max Inertia" placeholder="Inserisci il valore massimo di inerzia" type="number" [(ngModel)]="settings.camera.maxInertia"></ion-input>
+          <ion-toggle class="ion-padding-end" label="Inertia Filter" justify="space-between" [(ngModel)]="settings.camera.inertiaFilter">
+            Inertia Filter
+          </ion-toggle>
+          <ion-icon name="speedometer-outline" slot="start"></ion-icon>
+          <ion-input [step]="globalGranularity" [disabled]="!settings.camera.inertiaFilter" label="Min Inertia" placeholder="Inserisci il valore minimo di inerzia" type="number" [(ngModel)]="settings.camera.minInertia"></ion-input>
+          <ion-input [step]="globalGranularity" [disabled]="!settings.camera.inertiaFilter" label="Max Inertia" placeholder="Inserisci il valore massimo di inerzia" type="number" [(ngModel)]="settings.camera.maxInertia"></ion-input>
+        </ion-item>
+
+        <!-- Granularity -->
+        <ion-item>
+          <ion-label>Granularità</ion-label>
+          <ion-segment [(ngModel)]="globalGranularity">
+            <ion-segment-button value="10">
+              <ion-label>10</ion-label>
+            </ion-segment-button>
+            <ion-segment-button value="1">
+              <ion-label>1</ion-label>
+            </ion-segment-button>
+            <ion-segment-button value="0.1">
+              <ion-label>0.1</ion-label>
+            </ion-segment-button>
+          </ion-segment>
         </ion-item>
       </ion-list>
       <ion-button color="secondary" class="ion-margin-top" (click)="updateCameraSettings()">Aggiorna</ion-button>
+      <ion-toggle class="ion-margin-start" label="Switch View" [(ngModel)]="isGreyscale" (ionChange)="toggleGreyscaleView()">
+        Switch View
+      </ion-toggle>
       <h1>Streaming della Telecamera</h1>
-      <img src="http://localhost:8000/camera/stream/" alt="Camera Feed" />
+      <img [src]="isGreyscale ? 'http://localhost:8000/camera/stream/greyscale/' : 'http://localhost:8000/camera/stream/'" alt="Camera Feed" />
     </ion-card-content>
   </ion-card>
 </ion-content>

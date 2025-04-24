@@ -15,6 +15,8 @@ export class SetupPage implements OnInit {
   settings!: Settings;
   testMode: boolean = false;
   isLoading = true; 
+  globalGranularity: number = 1; // Variabile globale per la granularità degli input numerici
+  isGreyscale: boolean = false; // Variabile per gestire la visualizzazione in greyscale
 
  // Oggetto che contiene le posizioni dei motori
 positions: { [key in "syringe" | "extruder" | "conveyor"]: number } = {
@@ -143,6 +145,10 @@ travels: { [key in "syringe" | "extruder" | "conveyor"]: number } = {
         this.presentToast('Errore durante l\'aggiornamento delle impostazioni', 'danger');
       }
     });
+  }
+
+  toggleGreyscaleView() {
+    console.log('Greyscale view:', this.isGreyscale ? 'Enabled' : 'Disabled');
   }
 
   async presentToast(message: string, color: string = 'success') {
