@@ -23,5 +23,6 @@ urlpatterns = [
     path('admin/', admin.site.urls),
     path('users/', include('users.urls')),
     path('config/', include('setupApp.urls')),
-    path('motors/', include('aviogelMotor.urls'))
+    path('motors/', include('aviogelMotor.urls')),
+    path('camera/', include('picamera.urls')),
 ]

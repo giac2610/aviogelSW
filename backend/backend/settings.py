@@ -44,6 +44,8 @@ INSTALLED_APPS = [
     'users',
     'setupApp',
     'corsheaders',
+    # 'picamera',
+    # 'aviogelMotor',
 ]
 
 MIDDLEWARE = [
