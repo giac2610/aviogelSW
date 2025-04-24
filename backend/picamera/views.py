@@ -3,17 +3,44 @@ from unittest.mock import MagicMock
 
 # Switch automatico per macOS
 if sys.platform == "darwin":
-    sys.modules["picamera2"] = MagicMock()
+    import cv2
     from django.http import JsonResponse
+
+    # Inizializza la webcam del Mac
+    mac_camera = cv2.VideoCapture(0)  # 0 indica la webcam predefinita
+
     def gen_frames():
         while True:
+            ret, frame = mac_camera.read()
+            if not ret:
+                print("Errore durante la lettura del frame dalla webcam")
+                break
+            
+            # Converti in JPEG
+            _, buffer = cv2.imencode('.jpg', frame)
+            frame = buffer.tobytes()
             yield (b'--frame\r\n'
-                   b'Content-Type: image/jpeg\r\n\r\n' + b'\x00' * 100 + b'\r\n')
+                   b'Content-Type: image/jpeg\r\n\r\n' + frame + b'\r\n')
 
     def gen_frames_greyscale():
         while True:
-            yield (b'--frame\r\n'
-                   b'Content-Type: image/jpeg\r\n\r\n' + b'\x00' * 100 + b'\r\n')
+            ret, frame = mac_camera.read()
+            if not ret:
+                print("Errore durante la lettura del frame dalla webcam")
+                continue  # Prova a leggere il prossimo frame
+            
+            try:
+                # Converti in scala di grigi
+                gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+                
+                # Codifica il frame in JPEG
+                _, buffer = cv2.imencode('.jpg', gray)
+                frame = buffer.tobytes()
+                yield (b'--frame\r\n'
+                       b'Content-Type: image/jpeg\r\n\r\n' + frame + b'\r\n')
+            except Exception as e:
+                print(f"Errore durante la conversione o codifica del frame in scala di grigi: {e}")
+                continue
 else:
     from picamera2 import Picamera2  # type: ignore
     import cv2
