@@ -1,11 +1,18 @@
 from django.http import StreamingHttpResponse
-from picamera2 import Picamera2
+import sys
+from unittest.mock import MagicMock
+if sys.platform == "darwin":
+    sys.modules["picamera2"] = MagicMock()
+from picamera2 import Picamera2 # type: ignore
 import cv2
 
 def gen_frames():
     # Inizializza Picamera2
     picam2 = Picamera2()
     picam2.configure(picam2.create_video_configuration(main={"size": (640, 480)}))
+    
+    # Abilita l'autofocus
+    picam2.set_controls({"AfMode": 2})  # 2 = Continuous autofocus
     picam2.start()
 
     try:
