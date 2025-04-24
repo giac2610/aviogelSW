@@ -24,6 +24,9 @@ else:
     picam2.configure(picam2.create_video_configuration(main={"size": (640, 480)}))
     picam2.start()
 
+    # Configura la fotocamera per abilitare l'autofocus (se supportato)
+    picam2.set_controls({"AfMode": 1})  # 1 abilita l'autofocus, 0 lo disabilita
+
     # Parametri configurabili
     camera_settings = {
         "minThreshold": 160,
@@ -80,17 +83,46 @@ else:
 
     def gen_frames_greyscale():
         while True:
-            # Cattura un frame dalla telecamera
-            frame = picam2.capture_array()
-            
-            # Converti i colori da RGB a scala di grigi
-            gray = cv2.cvtColor(frame, cv2.COLOR_RGB2GRAY)
-            
-            # Codifica il frame in JPEG
-            _, buffer = cv2.imencode('.jpg', gray)
-            frame = buffer.tobytes()
-            yield (b'--frame\r\n'
-                   b'Content-Type: image/jpeg\r\n\r\n' + frame + b'\r\n')
+            try:
+                # Cattura un frame dalla telecamera
+                frame = picam2.capture_array()
+                
+                # Converti i colori da RGB a BGR
+                frame_bgr = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
+                
+                # Converti in scala di grigi
+                gray = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2GRAY)
+                
+                # Applica la soglia
+                _, thresh = cv2.threshold(gray, camera_settings["minThreshold"], camera_settings["maxThreshold"], cv2.THRESH_BINARY)
+                
+                # Configura il rilevatore di blob
+                params = cv2.SimpleBlobDetector_Params()
+                params.filterByArea = camera_settings["filterByArea"]
+                params.minArea = camera_settings["minArea"]
+                params.maxArea = camera_settings["maxArea"]
+                params.filterByCircularity = camera_settings["filterByCircularity"]
+                params.minCircularity = camera_settings["minCircularity"]
+                params.filterByConvexity = camera_settings["filterByConvexity"]
+                params.minConvexity = camera_settings["minConvexity"]
+                params.filterByInertia = camera_settings["filterByInertia"]
+                params.minInertiaRatio = camera_settings["minInertiaRatio"]
+                
+                # Rileva i blob
+                detector = cv2.SimpleBlobDetector_create(params)
+                keypoints = detector.detect(thresh)
+                
+                # Disegna i blob rilevati sul frame in scala di grigi
+                frame_with_keypoints = cv2.drawKeypoints(gray, keypoints, np.array([]), (255, 255, 255), cv2.DRAW_MATCHES_FLAGS_DRAW_RICH_KEYPOINTS)
+                
+                # Codifica il frame in JPEG
+                _, buffer = cv2.imencode('.jpg', frame_with_keypoints)
+                frame = buffer.tobytes()
+                yield (b'--frame\r\n'
+                       b'Content-Type: image/jpeg\r\n\r\n' + frame + b'\r\n')
+            except Exception as e:
+                print(f"Errore durante la generazione del frame in scala di grigi: {e}")
+                break
 
 from django.http import StreamingHttpResponse, JsonResponse
 from django.views.decorators.csrf import csrf_exempt
