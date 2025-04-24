@@ -37,9 +37,9 @@ motor_configs = config.get("motors", {})
 # Mappatura motori e inizializzazione pigpio
 # ------------------------------------------------------------------------------
 MOTORS = {
-    "extruder": {"STEP": 13, "DIR": 6},
+    "extruder": {"STEP": 12, "DIR": 5},
     "conveyor": {"STEP": 18, "DIR": 27},
-    "syringe": {"STEP": 12, "DIR": 5},
+    "syringe": {"STEP": 13, "DIR": 6},
 }
 
 pi = pigpio.pi()
