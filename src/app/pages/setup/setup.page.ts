@@ -77,7 +77,7 @@ travels: { [key in "syringe" | "extruder" | "conveyor"]: number } = {
             [motor]: distance,
         }
       };
-      console.log(body);
+      console.log("request: ",body);
       this.motorsService.moveMotor(body).subscribe({
         next: (response) => {
           // Mostra il messaggio JSON restituito dal backend
