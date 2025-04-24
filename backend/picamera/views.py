@@ -9,6 +9,11 @@ if sys.platform == "darwin":
         while True:
             yield (b'--frame\r\n'
                    b'Content-Type: image/jpeg\r\n\r\n' + b'\x00' * 100 + b'\r\n')
+
+    def gen_frames_greyscale():
+        while True:
+            yield (b'--frame\r\n'
+                   b'Content-Type: image/jpeg\r\n\r\n' + b'\x00' * 100 + b'\r\n')
 else:
     from picamera2 import Picamera2  # type: ignore
     import cv2
