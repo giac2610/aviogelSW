@@ -324,7 +324,6 @@
         <!-- Min Threshold -->
         <ion-item>
           <ion-input label="Min Threshold" placeholder="Inserisci il valore di soglia minima" type="number" [(ngModel)]="settings.camera.minThreshold"></ion-input>
-
           <ion-input label="Max Threshold" placeholder="Inserisci il valore di soglia massima" type="number" [(ngModel)]="settings.camera.maxThreshold"></ion-input>
         </ion-item>
   
@@ -349,9 +348,9 @@
           <ion-input [disabled]="!settings.camera.inertiaFilter" label="Max Inertia" placeholder="Inserisci il valore massimo di inerzia" type="number" [(ngModel)]="settings.camera.maxInertia"></ion-input>
         </ion-item>
       </ion-list>
+      <ion-button color="secondary" class="ion-margin-top" (click)="updateCameraSettings()">Aggiorna</ion-button>
       <h1>Streaming della Telecamera</h1>
       <img src="http://localhost:8000/camera/stream/" alt="Camera Feed" />
-
     </ion-card-content>
   </ion-card>
 </ion-content>

@@ -128,6 +128,23 @@ travels: { [key in "syringe" | "extruder" | "conveyor"]: number } = {
     });
   }
 
+  updateCameraSettings() {
+    const updatedSettings: Settings = {
+      ...this.settings,
+      camera: this.settings.camera
+    };
+    this.configService.updateSettings(updatedSettings).subscribe({
+      next: (response) => {
+        console.log('Impostazioni aggiornate:', response);
+        this.presentToast('Impostazioni aggiornate con successo', 'success');
+      },
+      error: (error) => {
+        console.error('Errore durante l\'aggiornamento delle impostazioni:', error);
+        this.presentToast('Errore durante l\'aggiornamento delle impostazioni', 'danger');
+      }
+    });
+  }
+
   async presentToast(message: string, color: string = 'success') {
     const toast = await this.toastController.create({
       message: message,
