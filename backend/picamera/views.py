@@ -19,6 +19,10 @@ def gen_frames():
         while True:
             # Cattura un frame dalla telecamera
             frame = picam2.capture_array()
+            
+            # Converti i colori da RGB a BGR
+            frame = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
+            
             # Codifica il frame in JPEG
             _, buffer = cv2.imencode('.jpg', frame)
             frame = buffer.tobytes()
