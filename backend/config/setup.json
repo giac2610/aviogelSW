@@ -35,8 +35,8 @@
         }
     },
     "camera": {
-        "minThreshold": 224,
-        "maxThreshold": 255,
+        "minThreshold": 88,
+        "maxThreshold": 200,
         "areaFilter": true,
         "minArea": 10.0,
         "maxArea": 1000.0,

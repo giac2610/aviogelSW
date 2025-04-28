@@ -1,5 +1,11 @@
 import sys
+import json
 from unittest.mock import MagicMock
+
+# Carica i parametri iniziali da setup.json
+with open('/Users/ale2610/Documents/Startup/Aviogel/aviogelSW/backend/config/setup.json', 'r') as f:
+    config = json.load(f)
+camera_settings = config["camera"]
 
 # Switch automatico per macOS
 if sys.platform == "darwin":
@@ -7,27 +13,17 @@ if sys.platform == "darwin":
     from django.http import JsonResponse
     import numpy as np
 
-    # Parametri configurabili
-    camera_settings = {
-        "minThreshold": 160,
-        "maxThreshold": 210,
-        "filterByArea": True,
-        "minArea": 2000,
-        "maxArea": 11000,
-        "filterByCircularity": True,
-        "minCircularity": 0.001,
-        "filterByConvexity": True,
-        "minConvexity": 0.001,
-        "filterByInertia": False,
-        "minInertiaRatio": 0.01
-    }
-
     # Inizializza la webcam del Mac
     mac_camera = cv2.VideoCapture(0)  # 0 indica la webcam predefinita
 
     def gen_frames():
         while True:
             try:
+                # Ricarica i valori aggiornati di camera_settings
+                with open('/Users/ale2610/Documents/Startup/Aviogel/aviogelSW/backend/config/setup.json', 'r') as f:
+                    config = json.load(f)
+                    camera_settings = config["camera"]
+
                 # Cattura un frame dalla telecamera
                 frame = mac_camera.read()[1]
                 
@@ -36,6 +32,10 @@ if sys.platform == "darwin":
                 
                 # Applica la soglia inversa
                 _, thresh = cv2.threshold(gray, camera_settings["minThreshold"], camera_settings["maxThreshold"], cv2.THRESH_BINARY_INV)
+                
+                # Aggiungi overlay di debug
+                cv2.putText(frame, f"MinThreshold: {camera_settings['minThreshold']}", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 0), 2)
+                cv2.putText(frame, f"MaxThreshold: {camera_settings['maxThreshold']}", (10, 60), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
                 
                 # Configura il rilevatore di blob
                 params = cv2.SimpleBlobDetector_Params()
@@ -65,9 +65,13 @@ if sys.platform == "darwin":
                 break
 
     def gen_frames_greyscale(show_threshold=False):
-        global camera_settings  # Assicura l'accesso alla variabile globale
         while True:
             try:
+                # Ricarica i valori aggiornati di camera_settings
+                with open('/Users/ale2610/Documents/Startup/Aviogel/aviogelSW/backend/config/setup.json', 'r') as f:
+                    config = json.load(f)
+                    camera_settings = config["camera"]
+
                 # Cattura un frame dalla telecamera
                 frame = mac_camera.read()[1]
                 
@@ -79,6 +83,10 @@ if sys.platform == "darwin":
                 
                 # Se show_threshold è True, mostra il frame binarizzato
                 frame_to_show = thresh if show_threshold else gray
+                
+                # Aggiungi overlay di debug
+                cv2.putText(frame_to_show, f"MinThreshold: {camera_settings['minThreshold']}", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
+                cv2.putText(frame_to_show, f"MaxThreshold: {camera_settings['maxThreshold']}", (10, 60), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
                 
                 # Codifica il frame in JPEG
                 _, buffer = cv2.imencode('.jpg', frame_to_show)
@@ -100,29 +108,22 @@ else:
     # Configura la fotocamera per abilitare l'autofocus (se supportato)
     picam2.set_controls({"AfMode": 1})  # 1 abilita l'autofocus, 0 lo disabilita
 
-    # Parametri configurabili
-    camera_settings = {
-        "minThreshold": 160,
-        "maxThreshold": 210,
-        "filterByArea": True,
-        "minArea": 2000,
-        "maxArea": 11000,
-        "filterByCircularity": True,
-        "minCircularity": 0.001,
-        "filterByConvexity": True,
-        "minConvexity": 0.001,
-        "filterByInertia": False,
-        "minInertiaRatio": 0.01
-    }
-
     def gen_frames():
         while True:
             try:
+                # Ricarica i valori aggiornati di camera_settings
+                with open('/Users/ale2610/Documents/Startup/Aviogel/aviogelSW/backend/config/setup.json', 'r') as f:
+                    config = json.load(f)
+                    camera_settings = config["camera"]
+
                 # Cattura un frame dalla telecamera
-                frame = picam2.capture_array()
+                frame = picam2.capture_array() if sys.platform != "darwin" else mac_camera.read()[1]
                 
-                # Converti i colori da RGB a BGR
-                frame_bgr = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
+                # Converti i colori da RGB a BGR (solo per Raspberry Pi)
+                if sys.platform != "darwin":
+                    frame_bgr = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
+                else:
+                    frame_bgr = frame
                 
                 # Converti in scala di grigi
                 gray = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2GRAY)
@@ -130,17 +131,21 @@ else:
                 # Applica la soglia inversa
                 _, thresh = cv2.threshold(gray, camera_settings["minThreshold"], camera_settings["maxThreshold"], cv2.THRESH_BINARY_INV)
                 
+                # Aggiungi overlay di debug
+                cv2.putText(frame_bgr, f"MinThreshold: {camera_settings['minThreshold']}", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
+                cv2.putText(frame_bgr, f"MaxThreshold: {camera_settings['maxThreshold']}", (10, 60), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
+                
                 # Configura il rilevatore di blob
                 params = cv2.SimpleBlobDetector_Params()
-                params.filterByArea = camera_settings["filterByArea"]
+                params.filterByArea = camera_settings["areaFilter"]
                 params.minArea = camera_settings["minArea"]
                 params.maxArea = camera_settings["maxArea"]
-                params.filterByCircularity = camera_settings["filterByCircularity"]
+                params.filterByCircularity = camera_settings["circularityFilter"]
                 params.minCircularity = camera_settings["minCircularity"]
                 params.filterByConvexity = camera_settings["filterByConvexity"]
                 params.minConvexity = camera_settings["minConvexity"]
-                params.filterByInertia = camera_settings["filterByInertia"]
-                params.minInertiaRatio = camera_settings["minInertiaRatio"]
+                params.filterByInertia = camera_settings["inertiaFilter"]
+                params.minInertiaRatio = camera_settings["minInertia"]
                 
                 # Rileva i blob
                 detector = cv2.SimpleBlobDetector_create(params)
@@ -159,14 +164,21 @@ else:
                 break
 
     def gen_frames_greyscale(show_threshold=False):
-        global camera_settings  # Assicura l'accesso alla variabile globale
         while True:
             try:
+                # Ricarica i valori aggiornati di camera_settings
+                with open('/Users/ale2610/Documents/Startup/Aviogel/aviogelSW/backend/config/setup.json', 'r') as f:
+                    config = json.load(f)
+                    camera_settings = config["camera"]
+
                 # Cattura un frame dalla telecamera
-                frame = picam2.capture_array()
+                frame = picam2.capture_array() if sys.platform != "darwin" else mac_camera.read()[1]
                 
-                # Converti i colori da RGB a BGR
-                frame_bgr = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
+                # Converti i colori da RGB a BGR (solo per Raspberry Pi)
+                if sys.platform != "darwin":
+                    frame_bgr = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
+                else:
+                    frame_bgr = frame
                 
                 # Converti in scala di grigi
                 gray = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2GRAY)
@@ -176,6 +188,10 @@ else:
                 
                 # Se show_threshold è True, mostra il frame binarizzato
                 frame_to_show = thresh if show_threshold else gray
+                
+                # Aggiungi overlay di debug
+                cv2.putText(frame_to_show, f"MinThreshold: {camera_settings['minThreshold']}", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
+                cv2.putText(frame_to_show, f"MaxThreshold: {camera_settings['maxThreshold']}", (10, 60), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
                 
                 # Codifica il frame in JPEG
                 _, buffer = cv2.imencode('.jpg', frame_to_show)
@@ -197,10 +213,15 @@ def update_camera_settings(request):
             data = json.loads(request.body)
             global camera_settings
             camera_settings.update(data)  # Aggiorna i parametri globali
+            config["camera"] = camera_settings  # Aggiorna il file di configurazione
+            with open('/Users/ale2610/Documents/Startup/Aviogel/aviogelSW/backend/config/setup.json', 'w') as f:
+                json.dump(config, f, indent=4)
             print(f"Impostazioni aggiornate: {camera_settings}")  # Log per debug
             return JsonResponse({"status": "success", "updated_settings": camera_settings})
         except Exception as e:
             return JsonResponse({"status": "error", "message": str(e)}, status=400)
+    elif request.method == "GET":
+        return JsonResponse({"status": "success", "camera_settings": camera_settings})
     return JsonResponse({"status": "error", "message": "Invalid request method"}, status=405)
 
 def camera_feed(request):
