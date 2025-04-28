@@ -19,6 +19,8 @@ if sys.platform == "darwin":
 
     # Inizializza la webcam del Mac
     mac_camera = cv2.VideoCapture(0)  # 0 indica la webcam predefinita
+    if not mac_camera.isOpened():
+        raise RuntimeError("La webcam non è disponibile o è in uso da un altro processo.")
 
     def process_blob_detection():
         """Process the camera feed to detect blobs on the binary (threshold) image."""
@@ -42,13 +44,20 @@ else:
     import cv2
     import numpy as np
 
-    # Inizializza Picamera2
-    picam2 = Picamera2()
-    picam2.configure(picam2.create_video_configuration(main={"size": (640, 480)}))
-    picam2.start()
+    try:
+        # Inizializza Picamera2
+        picam2 = Picamera2()
+        picam2.configure(picam2.create_video_configuration(main={"size": (640, 480)}))
+        picam2.start()
+    except RuntimeError as e:
+        print(f"Errore durante l'inizializzazione della videocamera: {e}")
+        picam2 = None  # Imposta a None se la videocamera non è disponibile
 
     def process_blob_detection():
         """Process the camera feed to detect blobs on the binary (threshold) image."""
+        if picam2 is None:
+            print("La videocamera non è disponibile. Interrompo il processamento.")
+            return
         while True:
             try:
                 with open(SETUP_JSON_PATH, 'r') as f:
