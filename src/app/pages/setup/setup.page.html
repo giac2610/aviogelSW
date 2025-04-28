@@ -333,8 +333,8 @@
             Area Filter
           </ion-toggle>
           <ion-icon name="resize-outline" slot="start"></ion-icon>
-          <ion-input [disabled]="!settings.camera.areaFilter" label="Min Area" placeholder="Inserisci il valore di area minimo" type="number" [(ngModel)]="settings.camera.minArea" (ionChange)="onCameraSettingChange()"></ion-input>
-          <ion-input [disabled]="!settings.camera.areaFilter" label="Max Area" placeholder="Inserisci il valore di area massimo" type="number" [(ngModel)]="settings.camera.maxArea" (ionChange)="onCameraSettingChange()"></ion-input>
+          <ion-input [step]="globalGranularity"  [disabled]="!settings.camera.areaFilter" label="Min Area" placeholder="Inserisci il valore di area minimo" type="number" [(ngModel)]="settings.camera.minArea" (ionChange)="onCameraSettingChange()"></ion-input>
+          <ion-input [step]="globalGranularity"  [disabled]="!settings.camera.areaFilter" label="Max Area" placeholder="Inserisci il valore di area massimo" type="number" [(ngModel)]="settings.camera.maxArea" (ionChange)="onCameraSettingChange()"></ion-input>
         </ion-item>
   
         <!-- Circularity Filter -->
