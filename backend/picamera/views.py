@@ -32,7 +32,7 @@ if sys.platform == "darwin":
 
                 frame = mac_camera.read()[1]
                 gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-                _, thresh = cv2.threshold(gray, camera_settings["minThreshold"], camera_settings["maxThreshold"], cv2.THRESH_BINARY_INV)
+                _, thresh = cv2.threshold(gray, camera_settings["minThreshold"], camera_settings["maxThreshold"], cv2.THRESH_BINARY)
                 keypoints = detect_blobs(thresh)
                 yield frame, thresh, keypoints
             except Exception as e:
@@ -67,7 +67,7 @@ else:
                 frame = picam2.capture_array()
                 frame_bgr = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
                 gray = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2GRAY)
-                _, thresh = cv2.threshold(gray, camera_settings["minThreshold"], camera_settings["maxThreshold"], cv2.THRESH_BINARY_INV)
+                _, thresh = cv2.threshold(gray, camera_settings["minThreshold"], camera_settings["maxThreshold"], cv2.THRESH_BINARY)
                 keypoints = detect_blobs(thresh)
                 yield frame_bgr, thresh, keypoints
             except Exception as e:
