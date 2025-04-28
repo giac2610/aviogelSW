@@ -17,6 +17,10 @@ export class SetupPage implements OnInit {
   isLoading = true; 
   globalGranularity: number = 1; // Variabile globale per la granularità degli input numerici
   isGreyscale: boolean = false; // Variabile per gestire la visualizzazione in greyscale
+  isThreshold: boolean = false; // Variabile per gestire la visualizzazione threshold
+  thresholdStreamUrl: string = this.configService.getThresholdStreamUrl();
+  greyscaleStreamUrl: string = this.configService.getGreyscaleStreamUrl();
+  normalStreamUrl: string = 'http://localhost:8000/camera/stream/';
 
  // Oggetto che contiene le posizioni dei motori
 positions: { [key in "syringe" | "extruder" | "conveyor"]: number } = {
@@ -149,6 +153,10 @@ travels: { [key in "syringe" | "extruder" | "conveyor"]: number } = {
 
   toggleGreyscaleView() {
     console.log('Greyscale view:', this.isGreyscale ? 'Enabled' : 'Disabled');
+  }
+
+  toggleThresholdView() {
+    console.log('Threshold view:', this.isThreshold ? 'Enabled' : 'Disabled');
   }
 
   async presentToast(message: string, color: string = 'success') {
