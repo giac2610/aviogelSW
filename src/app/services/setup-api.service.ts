@@ -74,12 +74,8 @@ export class SetupAPIService {
       return this.http.post<Settings>(`${this.apiUrl}config/update/`, newSettings);
     }
 
-    getGreyscaleStreamUrl(): string {
-      return `http://${window.location.hostname}:8000/camera/stream/greyscale/`;
-    }
-
     getThresholdStreamUrl(): string {
-      return `http://${window.location.hostname}:8000/camera/stream/threshold/`;
+      return `http://${window.location.hostname}:8000/camera/stream/?mode=threshold&keyframe=true`; // Modalità threshold con keyframe
     }
 
     updateCameraSettings(cameraSettings: Settings['camera']): Observable<any> {

@@ -380,16 +380,13 @@
           <ion-segment-button value="normal">
             <ion-label>Normale</ion-label>
           </ion-segment-button>
-          <ion-segment-button value="greyscale">
-            <ion-label>Greyscale</ion-label>
-          </ion-segment-button>
           <ion-segment-button value="threshold">
             <ion-label>Threshold</ion-label>
           </ion-segment-button>
         </ion-segment>
       </ion-item>
       <h1>Streaming della Telecamera</h1>
-      <img [src]="currentStreamUrl" alt="Camera Feed" />
+      <img [src]="currentStreamUrl" alt="Camera Feed" (error)="onImageError()" />
     </ion-card-content>
   </ion-card>
 </ion-content>

@@ -17,10 +17,8 @@ export class SetupPage implements OnInit {
   testMode: boolean = false;
   isLoading = true; 
   globalGranularity: number = 1; // Variabile globale per la granularità degli input numerici
-  isGreyscale: boolean = false; // Variabile per gestire la visualizzazione in greyscale
   isThreshold: boolean = false; // Variabile per gestire la visualizzazione threshold
   thresholdStreamUrl: string = this.configService.getThresholdStreamUrl();
-  greyscaleStreamUrl: string = this.configService.getGreyscaleStreamUrl();
   normalStreamUrl: string = 'http://localhost:8000/camera/stream/';
   selectedStream: string = 'normal'; // Default stream type
   currentStreamUrl: string = this.normalStreamUrl; // Default stream URL
@@ -174,16 +172,19 @@ travels: { [key in "syringe" | "extruder" | "conveyor"]: number } = {
 
   updateStreamUrl() {
     switch (this.selectedStream) {
-      case 'greyscale':
-        this.currentStreamUrl = `${this.normalStreamUrl}?isGreyscale=true`;
-        break;
       case 'threshold':
-        this.currentStreamUrl = `${this.normalStreamUrl}?isThreshold=true`;
+        this.currentStreamUrl = `${this.normalStreamUrl}?mode=threshold&keyframe=true`; // Modalità threshold con keyframe
         break;
+      case 'normal':
       default:
-        this.currentStreamUrl = this.normalStreamUrl; // Reset to normal stream
+        this.currentStreamUrl = `${this.normalStreamUrl}?mode=normal&keyframe=true`; // Modalità normale con keyframe
         break;
     }
-    console.log(`Stream URL updated to: ${this.currentStreamUrl}`); // Debug log
+    console.log(`Stream URL aggiornato a: ${this.currentStreamUrl}`); // Debug log
+  }
+
+  onImageError() {
+    console.error("Errore durante il caricamento dello streaming."); // Log per debug
+    this.presentToast("Errore durante il caricamento dello streaming.", "danger");
   }
 }
