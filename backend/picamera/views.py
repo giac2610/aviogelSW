@@ -106,7 +106,7 @@ def gen_frames_visualization(mode="normal"):
                 raise ValueError("Invalid visualization mode")
 
             # Aggiungi keyframe
-            cv2.putText(frame_with_keypoints, "Keyframe", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
+            # cv2.putText(frame_with_keypoints, "Keyframe", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
 
             # Codifica l'immagine come JPEG
             _, buffer = cv2.imencode('.jpg', frame_with_keypoints)
