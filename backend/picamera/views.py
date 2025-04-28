@@ -20,85 +20,46 @@ if sys.platform == "darwin":
     # Inizializza la webcam del Mac
     mac_camera = cv2.VideoCapture(0)  # 0 indica la webcam predefinita
 
-    def gen_frames():
+    def gen_frames_normal():
         while True:
             try:
-                # Ricarica i valori aggiornati di camera_settings
-                with open(SETUP_JSON_PATH, 'r') as f:
-                    config = json.load(f)
-                    camera_settings = config["camera"]
-
-                # Cattura un frame dalla telecamera
                 frame = mac_camera.read()[1]
-                
-                # Converti in scala di grigi
-                gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-                
-                # Applica la soglia inversa
-                _, thresh = cv2.threshold(gray, camera_settings["minThreshold"], camera_settings["maxThreshold"], cv2.THRESH_BINARY_INV)
-                
-                # Aggiungi overlay di debug
-                cv2.putText(frame, f"MinThreshold: {camera_settings['minThreshold']}", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 0), 2)
-                cv2.putText(frame, f"MaxThreshold: {camera_settings['maxThreshold']}", (10, 60), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
-                
-                # Configura il rilevatore di blob
-                params = cv2.SimpleBlobDetector_Params()
-                params.filterByArea = camera_settings["filterByArea"]
-                params.minArea = camera_settings["minArea"]
-                params.maxArea = camera_settings["maxArea"]
-                params.filterByCircularity = camera_settings["filterByCircularity"]
-                params.minCircularity = camera_settings["minCircularity"]
-                params.filterByConvexity = camera_settings["filterByConvexity"]
-                params.minConvexity = camera_settings["minConvexity"]
-                params.filterByInertia = camera_settings["filterByInertia"]
-                params.minInertiaRatio = camera_settings["minInertiaRatio"]
-                
-                # Rileva i blob
-                detector = cv2.SimpleBlobDetector_create(params)
-                keypoints = detector.detect(thresh)
-                
-                # Disegna i blob rilevati
-                frame_with_keypoints = cv2.drawKeypoints(frame, keypoints, np.array([]), (0, 0, 255), cv2.DRAW_MATCHES_FLAGS_DRAW_RICH_KEYPOINTS)
-                
-                # Codifica il frame in JPEG
-                _, buffer = cv2.imencode('.jpg', frame_with_keypoints)
+                _, buffer = cv2.imencode('.jpg', frame)
                 frame = buffer.tobytes()
                 yield (b'--frame\r\n'b'Content-Type: image/jpeg\r\n\r\n' + frame + b'\r\n')
             except Exception as e:
-                print(f"Errore durante la generazione del frame: {e}")
+                print(f"Errore durante la generazione del frame normale: {e}")
                 break
 
-    def gen_frames_greyscale(show_threshold=False):
+    def gen_frames_greyscale():
         while True:
             try:
-                # Ricarica i valori aggiornati di camera_settings
-                with open(SETUP_JSON_PATH, 'r') as f:
-                    config = json.load(f)
-                    camera_settings = config["camera"]
-
-                # Cattura un frame dalla telecamera
                 frame = mac_camera.read()[1]
-                
-                # Converti in scala di grigi
                 gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-                
-                # Applica la soglia inversa
-                _, thresh = cv2.threshold(gray, camera_settings["minThreshold"], camera_settings["maxThreshold"], cv2.THRESH_BINARY_INV)
-                
-                # Se show_threshold è True, mostra il frame binarizzato
-                frame_to_show = thresh if show_threshold else gray
-                
-                # Aggiungi overlay di debug
-                cv2.putText(frame_to_show, f"MinThreshold: {camera_settings['minThreshold']}", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
-                cv2.putText(frame_to_show, f"MaxThreshold: {camera_settings['maxThreshold']}", (10, 60), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
-                
-                # Codifica il frame in JPEG
-                _, buffer = cv2.imencode('.jpg', frame_to_show)
+                _, buffer = cv2.imencode('.jpg', gray)
                 frame = buffer.tobytes()
                 yield (b'--frame\r\n'b'Content-Type: image/jpeg\r\n\r\n' + frame + b'\r\n')
             except Exception as e:
                 print(f"Errore durante la generazione del frame in scala di grigi: {e}")
                 break
+
+    def gen_frames_threshold():
+        while True:
+            try:
+                with open(SETUP_JSON_PATH, 'r') as f:
+                    config = json.load(f)
+                    camera_settings = config["camera"]
+
+                frame = mac_camera.read()[1]
+                gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+                _, thresh = cv2.threshold(gray, camera_settings["minThreshold"], camera_settings["maxThreshold"], cv2.THRESH_BINARY_INV)
+                _, buffer = cv2.imencode('.jpg', thresh)
+                frame = buffer.tobytes()
+                yield (b'--frame\r\n'b'Content-Type: image/jpeg\r\n\r\n' + frame + b'\r\n')
+            except Exception as e:
+                print(f"Errore durante la generazione del frame threshold: {e}")
+                break
+
 else:
     from picamera2 import Picamera2  # type: ignore
     import cv2
@@ -109,101 +70,47 @@ else:
     picam2.configure(picam2.create_video_configuration(main={"size": (640, 480)}))
     picam2.start()
 
-    # Configura la fotocamera per abilitare l'autofocus (se supportato)
-    picam2.set_controls({"AfMode": 1})  # 1 abilita l'autofocus, 0 lo disabilita
-
-    def gen_frames():
+    def gen_frames_normal():
         while True:
             try:
-                # Ricarica i valori aggiornati di camera_settings
-                with open(SETUP_JSON_PATH, 'r') as f:
-                    config = json.load(f)
-                    camera_settings = config["camera"]
-
-                # Cattura un frame dalla telecamera
-                frame = picam2.capture_array() if sys.platform != "darwin" else mac_camera.read()[1]
-                
-                # Converti i colori da RGB a BGR (solo per Raspberry Pi)
-                if sys.platform != "darwin":
-                    frame_bgr = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
-                else:
-                    frame_bgr = frame
-                
-                # Converti in scala di grigi
-                gray = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2GRAY)
-                
-                # Applica la soglia inversa
-                _, thresh = cv2.threshold(gray, camera_settings["minThreshold"], camera_settings["maxThreshold"], cv2.THRESH_BINARY_INV)
-                
-                # Aggiungi overlay di debug
-                cv2.putText(frame_bgr, f"MinThreshold: {camera_settings['minThreshold']}", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
-                cv2.putText(frame_bgr, f"MaxThreshold: {camera_settings['maxThreshold']}", (10, 60), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
-                
-                # Configura il rilevatore di blob
-                params = cv2.SimpleBlobDetector_Params()
-                params.filterByArea = camera_settings["areaFilter"]
-                params.minArea = camera_settings["minArea"]
-                params.maxArea = camera_settings["maxArea"]
-                params.filterByCircularity = camera_settings["circularityFilter"]
-                params.minCircularity = camera_settings["minCircularity"]
-                params.filterByConvexity = camera_settings["filterByConvexity"]
-                params.minConvexity = camera_settings["minConvexity"]
-                params.filterByInertia = camera_settings["inertiaFilter"]
-                params.minInertiaRatio = camera_settings["minInertia"]
-                
-                # Rileva i blob
-                detector = cv2.SimpleBlobDetector_create(params)
-                keypoints = detector.detect(thresh)
-                
-                # Disegna i blob rilevati
-                frame_with_keypoints = cv2.drawKeypoints(frame_bgr, keypoints, np.array([]), (0, 0, 255), cv2.DRAW_MATCHES_FLAGS_DRAW_RICH_KEYPOINTS)
-                
-                # Codifica il frame in JPEG
-                _, buffer = cv2.imencode('.jpg', frame_with_keypoints)
+                frame = picam2.capture_array()
+                frame_bgr = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
+                _, buffer = cv2.imencode('.jpg', frame_bgr)
                 frame = buffer.tobytes()
-                yield (b'--frame\r\n'
-                       b'Content-Type: image/jpeg\r\n\r\n' + frame + b'\r\n')
+                yield (b'--frame\r\n'b'Content-Type: image/jpeg\r\n\r\n' + frame + b'\r\n')
             except Exception as e:
-                print(f"Errore durante la generazione del frame: {e}")
+                print(f"Errore durante la generazione del frame normale: {e}")
                 break
 
-    def gen_frames_greyscale(show_threshold=False):
+    def gen_frames_greyscale():
         while True:
             try:
-                # Ricarica i valori aggiornati di camera_settings
+                frame = picam2.capture_array()
+                frame_bgr = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
+                gray = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2GRAY)
+                _, buffer = cv2.imencode('.jpg', gray)
+                frame = buffer.tobytes()
+                yield (b'--frame\r\n'b'Content-Type: image/jpeg\r\n\r\n' + frame + b'\r\n')
+            except Exception as e:
+                print(f"Errore durante la generazione del frame in scala di grigi: {e}")
+                break
+
+    def gen_frames_threshold():
+        while True:
+            try:
                 with open(SETUP_JSON_PATH, 'r') as f:
                     config = json.load(f)
                     camera_settings = config["camera"]
 
-                # Cattura un frame dalla telecamera
-                frame = picam2.capture_array() if sys.platform != "darwin" else mac_camera.read()[1]
-                
-                # Converti i colori da RGB a BGR (solo per Raspberry Pi)
-                if sys.platform != "darwin":
-                    frame_bgr = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
-                else:
-                    frame_bgr = frame
-                
-                # Converti in scala di grigi
+                frame = picam2.capture_array()
+                frame_bgr = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
                 gray = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2GRAY)
-                
-                # Applica la soglia inversa
                 _, thresh = cv2.threshold(gray, camera_settings["minThreshold"], camera_settings["maxThreshold"], cv2.THRESH_BINARY_INV)
-                
-                # Se show_threshold è True, mostra il frame binarizzato
-                frame_to_show = thresh if show_threshold else gray
-                
-                # Aggiungi overlay di debug
-                cv2.putText(frame_to_show, f"MinThreshold: {camera_settings['minThreshold']}", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
-                cv2.putText(frame_to_show, f"MaxThreshold: {camera_settings['maxThreshold']}", (10, 60), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
-                
-                # Codifica il frame in JPEG
-                _, buffer = cv2.imencode('.jpg', frame_to_show)
+                _, buffer = cv2.imencode('.jpg', thresh)
                 frame = buffer.tobytes()
-                yield (b'--frame\r\n'
-                       b'Content-Type: image/jpeg\r\n\r\n' + frame + b'\r\n')
+                yield (b'--frame\r\n'b'Content-Type: image/jpeg\r\n\r\n' + frame + b'\r\n')
             except Exception as e:
-                print(f"Errore durante la generazione del frame in scala di grigi: {e}")
+                print(f"Errore durante la generazione del frame threshold: {e}")
                 break
 
 from django.http import StreamingHttpResponse, JsonResponse
@@ -229,7 +136,16 @@ def update_camera_settings(request):
     return JsonResponse({"status": "error", "message": "Invalid request method"}, status=405)
 
 def camera_feed(request):
-    return StreamingHttpResponse(gen_frames(), content_type='multipart/x-mixed-replace; boundary=frame')
+    # Controlla i parametri della richiesta per determinare il tipo di stream
+    is_greyscale = request.GET.get('isGreyscale', 'false').lower() == 'true'
+    is_threshold = request.GET.get('isThreshold', 'false').lower() == 'true'
+
+    if is_threshold:
+        return StreamingHttpResponse(gen_frames_threshold(), content_type='multipart/x-mixed-replace; boundary=frame')
+    elif is_greyscale:
+        return StreamingHttpResponse(gen_frames_greyscale(), content_type='multipart/x-mixed-replace; boundary=frame')
+    else:
+        return StreamingHttpResponse(gen_frames_normal(), content_type='multipart/x-mixed-replace; boundary=frame')
 
 def camera_feed_greyscale(request):
     # Controlla se il parametro 'show_threshold' è presente nella richiesta
