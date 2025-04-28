@@ -22,6 +22,8 @@ export class SetupPage implements OnInit {
   thresholdStreamUrl: string = this.configService.getThresholdStreamUrl();
   greyscaleStreamUrl: string = this.configService.getGreyscaleStreamUrl();
   normalStreamUrl: string = 'http://localhost:8000/camera/stream/';
+  selectedStream: string = 'normal'; // Default stream type
+  currentStreamUrl: string = this.normalStreamUrl; // Default stream URL
 
  // Oggetto che contiene le posizioni dei motori
 positions: { [key in "syringe" | "extruder" | "conveyor"]: number } = {
@@ -47,7 +49,7 @@ travels: { [key in "syringe" | "extruder" | "conveyor"]: number } = {
 
     // Ascolta i cambiamenti nei settaggi della camera e invia al backend
     this.cameraSettingsSubject.pipe(debounceTime(300)).subscribe((cameraSettings) => {
-      this.configService.updateSettings({ ...this.settings, camera: cameraSettings }).subscribe({
+      this.configService.updateCameraSettings(cameraSettings).subscribe({
         next: (response) => {
           console.log('Impostazioni aggiornate in live:', response);
         },
@@ -93,13 +95,9 @@ travels: { [key in "syringe" | "extruder" | "conveyor"]: number } = {
   
     if (this.positions[motor] + distance <= maxTravel) {
       this.positions[motor] += distance; 
-      const body = {
-        "targets": {
-            [motor]: distance,
-        }
-      };
-      console.log("request: ",body);
-      this.motorsService.moveMotor(body).subscribe({
+      const targets = { [motor]: distance }; // Correctly structure the targets object
+      console.log("request: ", targets);
+      this.configService.moveMotor(targets).subscribe({
         next: (response) => {
           // Mostra il messaggio JSON restituito dal backend
           this.presentToast(`Successo: ${response.status} - Target: ${JSON.stringify(response.targets)}`, 'success');
@@ -121,7 +119,7 @@ travels: { [key in "syringe" | "extruder" | "conveyor"]: number } = {
   }
 
   stopMotors() {
-    this.motorsService.stopMotor().subscribe({
+    this.configService.stopMotors().subscribe({
       next: (response) => {
         // Mostra il messaggio dal backend
         this.presentToast(`Successo: ${response.status}`, 'success');
@@ -147,13 +145,12 @@ travels: { [key in "syringe" | "extruder" | "conveyor"]: number } = {
   }
 
   onCameraSettingChange() {
-    console.log('Aggiornamento camera settings:', this.settings.camera); // Log per debug
     this.cameraSettingsSubject.next(this.settings.camera);
   }
 
   updateCameraSettings() {
     // Metodo manuale per aggiornare i settaggi (opzionale)
-    this.configService.updateSettings(this.settings).subscribe({
+    this.configService.updateCameraSettings(this.settings.camera).subscribe({
       next: (response) => {
         console.log('Impostazioni aggiornate:', response);
         this.presentToast('Impostazioni aggiornate con successo', 'success');
@@ -163,14 +160,6 @@ travels: { [key in "syringe" | "extruder" | "conveyor"]: number } = {
         this.presentToast('Errore durante l\'aggiornamento delle impostazioni', 'danger');
       }
     });
-  }
-
-  toggleGreyscaleView() {
-    console.log('Greyscale view:', this.isGreyscale ? 'Enabled' : 'Disabled');
-  }
-
-  toggleThresholdView() {
-    console.log('Threshold view:', this.isThreshold ? 'Enabled' : 'Disabled');
   }
 
   async presentToast(message: string, color: string = 'success') {
@@ -183,14 +172,18 @@ travels: { [key in "syringe" | "extruder" | "conveyor"]: number } = {
     await toast.present();
   }
 
-
-  // async presentPositionToast(message: string) {
-  //   const toast = await this.toastController.create({
-  //     message: message,
-  //     duration: 1400,
-  //     icon: 'alert-circle',
-  //     color: 'danger'
-  //   });
-  //   await toast.present();
-  // }
+  updateStreamUrl() {
+    switch (this.selectedStream) {
+      case 'greyscale':
+        this.currentStreamUrl = `${this.normalStreamUrl}?isGreyscale=true`;
+        break;
+      case 'threshold':
+        this.currentStreamUrl = `${this.normalStreamUrl}?isThreshold=true`;
+        break;
+      default:
+        this.currentStreamUrl = this.normalStreamUrl; // Reset to normal stream
+        break;
+    }
+    console.log(`Stream URL updated to: ${this.currentStreamUrl}`); // Debug log
+  }
 }

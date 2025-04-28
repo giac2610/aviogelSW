@@ -81,4 +81,19 @@ export class SetupAPIService {
     getThresholdStreamUrl(): string {
       return `http://${window.location.hostname}:8000/camera/stream/threshold/`;
     }
+
+    updateCameraSettings(cameraSettings: Settings['camera']): Observable<any> {
+      const url = `${this.apiUrl}config/update/`;
+      return this.http.post(url, { camera: cameraSettings });
+    }
+
+    stopMotors(): Observable<any> {
+      const url = `${this.apiUrl}motors/stop/`;
+      return this.http.post(url, {});
+    }
+
+    moveMotor(targets: { [key: string]: number }): Observable<any> {
+      const url = `${this.apiUrl}motors/move/`;
+      return this.http.post(url, { targets: { ...targets } }); // Ensure targets are properly spread into the body
+    }
 }

@@ -374,14 +374,22 @@
         </ion-item>
       </ion-list>
       <ion-button color="secondary" class="ion-margin-top" (click)="updateCameraSettings()">Aggiorna</ion-button>
-      <ion-toggle class="ion-margin-start" label="Switch View" [(ngModel)]="isGreyscale" (ionChange)="toggleGreyscaleView()">
-        Switch View
-      </ion-toggle>
-      <ion-toggle class="ion-margin-start" label="Threshold View" [(ngModel)]="isThreshold" (ionChange)="toggleThresholdView()">
-        Threshold View
-      </ion-toggle>
+      <ion-item>
+        <ion-label>Stream:</ion-label>
+        <ion-segment [(ngModel)]="selectedStream" (ionChange)="updateStreamUrl()">
+          <ion-segment-button value="normal">
+            <ion-label>Normale</ion-label>
+          </ion-segment-button>
+          <ion-segment-button value="greyscale">
+            <ion-label>Greyscale</ion-label>
+          </ion-segment-button>
+          <ion-segment-button value="threshold">
+            <ion-label>Threshold</ion-label>
+          </ion-segment-button>
+        </ion-segment>
+      </ion-item>
       <h1>Streaming della Telecamera</h1>
-      <img [src]="isThreshold ? thresholdStreamUrl : (isGreyscale ? greyscaleStreamUrl : normalStreamUrl)" alt="Camera Feed" />
+      <img [src]="currentStreamUrl" alt="Camera Feed" />
     </ion-card-content>
   </ion-card>
 </ion-content>
