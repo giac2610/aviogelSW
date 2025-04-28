@@ -6,6 +6,21 @@ if sys.platform == "darwin":
     import cv2
     from django.http import JsonResponse
 
+    # Parametri configurabili
+    camera_settings = {
+        "minThreshold": 160,
+        "maxThreshold": 210,
+        "filterByArea": True,
+        "minArea": 2000,
+        "maxArea": 11000,
+        "filterByCircularity": True,
+        "minCircularity": 0.001,
+        "filterByConvexity": True,
+        "minConvexity": 0.001,
+        "filterByInertia": False,
+        "minInertiaRatio": 0.01
+    }
+
     # Inizializza la webcam del Mac
     mac_camera = cv2.VideoCapture(0)  # 0 indica la webcam predefinita
 
@@ -22,7 +37,8 @@ if sys.platform == "darwin":
             yield (b'--frame\r\n'
                    b'Content-Type: image/jpeg\r\n\r\n' + frame + b'\r\n')
 
-    def gen_frames_greyscale():
+    def gen_frames_greyscale(show_threshold=False):
+        global camera_settings  # Assicura l'accesso alla variabile globale
         while True:
             ret, frame = mac_camera.read()
             if not ret:
@@ -33,13 +49,20 @@ if sys.platform == "darwin":
                 # Converti in scala di grigi
                 gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
                 
+                if show_threshold:
+                    # Applica la soglia se richiesto
+                    _, frame_to_show = cv2.threshold(gray, camera_settings["minThreshold"], camera_settings["maxThreshold"], cv2.THRESH_BINARY)
+                else:
+                    # Altrimenti mostra il frame in scala di grigi
+                    frame_to_show = gray
+                
                 # Codifica il frame in JPEG
-                _, buffer = cv2.imencode('.jpg', gray)
+                _, buffer = cv2.imencode('.jpg', frame_to_show)
                 frame = buffer.tobytes()
                 yield (b'--frame\r\n'
                        b'Content-Type: image/jpeg\r\n\r\n' + frame + b'\r\n')
             except Exception as e:
-                print(f"Errore durante la conversione o codifica del frame in scala di grigi: {e}")
+                print(f"Errore durante la conversione o codifica del frame: {e}")
                 continue
 else:
     from picamera2 import Picamera2  # type: ignore
@@ -108,7 +131,8 @@ else:
             yield (b'--frame\r\n'
                    b'Content-Type: image/jpeg\r\n\r\n' + frame + b'\r\n')
 
-    def gen_frames_greyscale():
+    def gen_frames_greyscale(show_threshold=False):
+        global camera_settings  # Assicura l'accesso alla variabile globale
         while True:
             try:
                 # Cattura un frame dalla telecamera
@@ -123,27 +147,11 @@ else:
                 # Applica la soglia
                 _, thresh = cv2.threshold(gray, camera_settings["minThreshold"], camera_settings["maxThreshold"], cv2.THRESH_BINARY)
                 
-                # Configura il rilevatore di blob
-                params = cv2.SimpleBlobDetector_Params()
-                params.filterByArea = camera_settings["filterByArea"]
-                params.minArea = camera_settings["minArea"]
-                params.maxArea = camera_settings["maxArea"]
-                params.filterByCircularity = camera_settings["filterByCircularity"]
-                params.minCircularity = camera_settings["minCircularity"]
-                params.filterByConvexity = camera_settings["filterByConvexity"]
-                params.minConvexity = camera_settings["minConvexity"]
-                params.filterByInertia = camera_settings["filterByInertia"]
-                params.minInertiaRatio = camera_settings["minInertiaRatio"]
-                
-                # Rileva i blob
-                detector = cv2.SimpleBlobDetector_create(params)
-                keypoints = detector.detect(thresh)
-                
-                # Disegna i blob rilevati sul frame in scala di grigi
-                frame_with_keypoints = cv2.drawKeypoints(gray, keypoints, np.array([]), (255, 255, 255), cv2.DRAW_MATCHES_FLAGS_DRAW_RICH_KEYPOINTS)
+                # Se show_threshold è True, mostra il frame binarizzato
+                frame_to_show = thresh if show_threshold else gray
                 
                 # Codifica il frame in JPEG
-                _, buffer = cv2.imencode('.jpg', frame_with_keypoints)
+                _, buffer = cv2.imencode('.jpg', frame_to_show)
                 frame = buffer.tobytes()
                 yield (b'--frame\r\n'
                        b'Content-Type: image/jpeg\r\n\r\n' + frame + b'\r\n')
@@ -171,4 +179,9 @@ def camera_feed(request):
     return StreamingHttpResponse(gen_frames(), content_type='multipart/x-mixed-replace; boundary=frame')
 
 def camera_feed_greyscale(request):
-    return StreamingHttpResponse(gen_frames_greyscale(), content_type='multipart/x-mixed-replace; boundary=frame')
+    # Controlla se il parametro 'show_threshold' è presente nella richiesta
+    show_threshold = request.GET.get('show_threshold', 'false').lower() == 'true'
+    return StreamingHttpResponse(gen_frames_greyscale(show_threshold=show_threshold), content_type='multipart/x-mixed-replace; boundary=frame')
+
+def camera_feed_threshold(request):
+    return StreamingHttpResponse(gen_frames_greyscale(show_threshold=True), content_type='multipart/x-mixed-replace; boundary=frame')

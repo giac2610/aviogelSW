@@ -46,8 +46,8 @@ imGrayScale = cv2.imread('test1.jpg', cv2.IMREAD_GRAYSCALE)
 params = cv2.SimpleBlobDetector_Params()
  
 # Change thresholds
-params.minThreshold = 0;
-params.maxThreshold = 280;
+params.minThreshold = 0
+params.maxThreshold = 280
  
 # Filter by Area.
 params.filterByArea = True
