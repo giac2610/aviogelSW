@@ -3,6 +3,7 @@ import { Component, OnInit } from '@angular/core';
 import { Router } from '@angular/router';
 import { ToastController } from '@ionic/angular';
 import { SetupAPIService, Settings } from 'src/app/services/setup-api.service';
+import { debounceTime, Subject } from 'rxjs';
 
 @Component({
   selector: 'app-setup',
@@ -36,11 +37,25 @@ travels: { [key in "syringe" | "extruder" | "conveyor"]: number } = {
 };
   SetupAPIService: any;
 
+  private cameraSettingsSubject = new Subject<Settings['camera']>();
+
   constructor(private configService: SetupAPIService, private toastController: ToastController, private motorsService: MotorsControlService, private router: Router) { }
 
   ngOnInit() {
     this.isLoading = true;
     this.loadConfig();
+
+    // Ascolta i cambiamenti nei settaggi della camera e invia al backend
+    this.cameraSettingsSubject.pipe(debounceTime(300)).subscribe((cameraSettings) => {
+      this.configService.updateSettings({ ...this.settings, camera: cameraSettings }).subscribe({
+        next: (response) => {
+          console.log('Impostazioni aggiornate in live:', response);
+        },
+        error: (error) => {
+          console.error('Errore durante l\'aggiornamento delle impostazioni in live:', error);
+        }
+      });
+    });
 
     // this.presentToast('Caricamento in corso...', 'primary');
     // console.log('test');
@@ -134,12 +149,13 @@ travels: { [key in "syringe" | "extruder" | "conveyor"]: number } = {
     });
   }
 
+  onCameraSettingChange() {
+    this.cameraSettingsSubject.next(this.settings.camera);
+  }
+
   updateCameraSettings() {
-    const updatedSettings: Settings = {
-      ...this.settings,
-      camera: this.settings.camera
-    };
-    this.configService.updateSettings(updatedSettings).subscribe({
+    // Metodo manuale per aggiornare i settaggi (opzionale)
+    this.configService.updateSettings(this.settings).subscribe({
       next: (response) => {
         console.log('Impostazioni aggiornate:', response);
         this.presentToast('Impostazioni aggiornate con successo', 'success');
