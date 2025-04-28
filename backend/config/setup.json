@@ -38,7 +38,7 @@
         "minThreshold": 44,
         "maxThreshold": 251,
         "areaFilter": true,
-        "minArea": 30.0,
+        "minArea": 70.0,
         "maxArea": 1000.0,
         "circularityFilter": true,
         "minCircularity": 0.5,
