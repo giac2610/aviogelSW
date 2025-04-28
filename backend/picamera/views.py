@@ -1,9 +1,13 @@
 import sys
 import json
+import os
 from unittest.mock import MagicMock
 
+# Percorso relativo al file setup.json
+SETUP_JSON_PATH = os.path.join(os.path.dirname(__file__), '../config/setup.json')
+
 # Carica i parametri iniziali da setup.json
-with open('/Users/ale2610/Documents/Startup/Aviogel/aviogelSW/backend/config/setup.json', 'r') as f:
+with open(SETUP_JSON_PATH, 'r') as f:
     config = json.load(f)
 camera_settings = config["camera"]
 
@@ -20,7 +24,7 @@ if sys.platform == "darwin":
         while True:
             try:
                 # Ricarica i valori aggiornati di camera_settings
-                with open('/Users/ale2610/Documents/Startup/Aviogel/aviogelSW/backend/config/setup.json', 'r') as f:
+                with open(SETUP_JSON_PATH, 'r') as f:
                     config = json.load(f)
                     camera_settings = config["camera"]
 
@@ -68,7 +72,7 @@ if sys.platform == "darwin":
         while True:
             try:
                 # Ricarica i valori aggiornati di camera_settings
-                with open('/Users/ale2610/Documents/Startup/Aviogel/aviogelSW/backend/config/setup.json', 'r') as f:
+                with open(SETUP_JSON_PATH, 'r') as f:
                     config = json.load(f)
                     camera_settings = config["camera"]
 
@@ -112,7 +116,7 @@ else:
         while True:
             try:
                 # Ricarica i valori aggiornati di camera_settings
-                with open('/Users/ale2610/Documents/Startup/Aviogel/aviogelSW/backend/config/setup.json', 'r') as f:
+                with open(SETUP_JSON_PATH, 'r') as f:
                     config = json.load(f)
                     camera_settings = config["camera"]
 
@@ -167,7 +171,7 @@ else:
         while True:
             try:
                 # Ricarica i valori aggiornati di camera_settings
-                with open('/Users/ale2610/Documents/Startup/Aviogel/aviogelSW/backend/config/setup.json', 'r') as f:
+                with open(SETUP_JSON_PATH, 'r') as f:
                     config = json.load(f)
                     camera_settings = config["camera"]
 
@@ -214,7 +218,7 @@ def update_camera_settings(request):
             global camera_settings
             camera_settings.update(data)  # Aggiorna i parametri globali
             config["camera"] = camera_settings  # Aggiorna il file di configurazione
-            with open('/Users/ale2610/Documents/Startup/Aviogel/aviogelSW/backend/config/setup.json', 'w') as f:
+            with open(SETUP_JSON_PATH, 'w') as f:
                 json.dump(config, f, indent=4)
             print(f"Impostazioni aggiornate: {camera_settings}")  # Log per debug
             return JsonResponse({"status": "success", "updated_settings": camera_settings})
