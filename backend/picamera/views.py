@@ -5,6 +5,7 @@ from unittest.mock import MagicMock
 if sys.platform == "darwin":
     import cv2
     from django.http import JsonResponse
+    import numpy as np
 
     # Parametri configurabili
     camera_settings = {
@@ -26,44 +27,66 @@ if sys.platform == "darwin":
 
     def gen_frames():
         while True:
-            ret, frame = mac_camera.read()
-            if not ret:
-                print("Errore durante la lettura del frame dalla webcam")
+            try:
+                # Cattura un frame dalla telecamera
+                frame = mac_camera.read()[1]
+                
+                # Converti in scala di grigi
+                gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+                
+                # Applica la soglia inversa
+                _, thresh = cv2.threshold(gray, camera_settings["minThreshold"], camera_settings["maxThreshold"], cv2.THRESH_BINARY_INV)
+                
+                # Configura il rilevatore di blob
+                params = cv2.SimpleBlobDetector_Params()
+                params.filterByArea = camera_settings["filterByArea"]
+                params.minArea = camera_settings["minArea"]
+                params.maxArea = camera_settings["maxArea"]
+                params.filterByCircularity = camera_settings["filterByCircularity"]
+                params.minCircularity = camera_settings["minCircularity"]
+                params.filterByConvexity = camera_settings["filterByConvexity"]
+                params.minConvexity = camera_settings["minConvexity"]
+                params.filterByInertia = camera_settings["filterByInertia"]
+                params.minInertiaRatio = camera_settings["minInertiaRatio"]
+                
+                # Rileva i blob
+                detector = cv2.SimpleBlobDetector_create(params)
+                keypoints = detector.detect(thresh)
+                
+                # Disegna i blob rilevati
+                frame_with_keypoints = cv2.drawKeypoints(frame, keypoints, np.array([]), (0, 0, 255), cv2.DRAW_MATCHES_FLAGS_DRAW_RICH_KEYPOINTS)
+                
+                # Codifica il frame in JPEG
+                _, buffer = cv2.imencode('.jpg', frame_with_keypoints)
+                frame = buffer.tobytes()
+                yield (b'--frame\r\n'b'Content-Type: image/jpeg\r\n\r\n' + frame + b'\r\n')
+            except Exception as e:
+                print(f"Errore durante la generazione del frame: {e}")
                 break
-            
-            # Converti in JPEG
-            _, buffer = cv2.imencode('.jpg', frame)
-            frame = buffer.tobytes()
-            yield (b'--frame\r\n'
-                   b'Content-Type: image/jpeg\r\n\r\n' + frame + b'\r\n')
 
     def gen_frames_greyscale(show_threshold=False):
         global camera_settings  # Assicura l'accesso alla variabile globale
         while True:
-            ret, frame = mac_camera.read()
-            if not ret:
-                print("Errore durante la lettura del frame dalla webcam")
-                continue  # Prova a leggere il prossimo frame
-            
             try:
+                # Cattura un frame dalla telecamera
+                frame = mac_camera.read()[1]
+                
                 # Converti in scala di grigi
                 gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
                 
-                if show_threshold:
-                    # Applica la soglia se richiesto
-                    _, frame_to_show = cv2.threshold(gray, camera_settings["minThreshold"], camera_settings["maxThreshold"], cv2.THRESH_BINARY)
-                else:
-                    # Altrimenti mostra il frame in scala di grigi
-                    frame_to_show = gray
+                # Applica la soglia inversa
+                _, thresh = cv2.threshold(gray, camera_settings["minThreshold"], camera_settings["maxThreshold"], cv2.THRESH_BINARY_INV)
+                
+                # Se show_threshold è True, mostra il frame binarizzato
+                frame_to_show = thresh if show_threshold else gray
                 
                 # Codifica il frame in JPEG
                 _, buffer = cv2.imencode('.jpg', frame_to_show)
                 frame = buffer.tobytes()
-                yield (b'--frame\r\n'
-                       b'Content-Type: image/jpeg\r\n\r\n' + frame + b'\r\n')
+                yield (b'--frame\r\n'b'Content-Type: image/jpeg\r\n\r\n' + frame + b'\r\n')
             except Exception as e:
-                print(f"Errore durante la conversione o codifica del frame: {e}")
-                continue
+                print(f"Errore durante la generazione del frame in scala di grigi: {e}")
+                break
 else:
     from picamera2 import Picamera2  # type: ignore
     import cv2
@@ -94,42 +117,46 @@ else:
 
     def gen_frames():
         while True:
-            # Cattura un frame dalla telecamera
-            frame = picam2.capture_array()
-            
-            # Converti i colori da RGB a BGR
-            frame_bgr = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
-            
-            # Converti in scala di grigi
-            gray = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2GRAY)
-            
-            # Applica la soglia
-            _, thresh = cv2.threshold(gray, camera_settings["minThreshold"], camera_settings["maxThreshold"], cv2.THRESH_BINARY)
-            
-            # Configura il rilevatore di blob
-            params = cv2.SimpleBlobDetector_Params()
-            params.filterByArea = camera_settings["filterByArea"]
-            params.minArea = camera_settings["minArea"]
-            params.maxArea = camera_settings["maxArea"]
-            params.filterByCircularity = camera_settings["filterByCircularity"]
-            params.minCircularity = camera_settings["minCircularity"]
-            params.filterByConvexity = camera_settings["filterByConvexity"]
-            params.minConvexity = camera_settings["minConvexity"]
-            params.filterByInertia = camera_settings["filterByInertia"]
-            params.minInertiaRatio = camera_settings["minInertiaRatio"]
-            
-            # Rileva i blob
-            detector = cv2.SimpleBlobDetector_create(params)
-            keypoints = detector.detect(thresh)
-            
-            # Disegna i blob rilevati
-            frame_with_keypoints = cv2.drawKeypoints(frame_bgr, keypoints, np.array([]), (0, 0, 255), cv2.DRAW_MATCHES_FLAGS_DRAW_RICH_KEYPOINTS)
-            
-            # Codifica il frame in JPEG
-            _, buffer = cv2.imencode('.jpg', frame_with_keypoints)
-            frame = buffer.tobytes()
-            yield (b'--frame\r\n'
-                   b'Content-Type: image/jpeg\r\n\r\n' + frame + b'\r\n')
+            try:
+                # Cattura un frame dalla telecamera
+                frame = picam2.capture_array()
+                
+                # Converti i colori da RGB a BGR
+                frame_bgr = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
+                
+                # Converti in scala di grigi
+                gray = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2GRAY)
+                
+                # Applica la soglia inversa
+                _, thresh = cv2.threshold(gray, camera_settings["minThreshold"], camera_settings["maxThreshold"], cv2.THRESH_BINARY_INV)
+                
+                # Configura il rilevatore di blob
+                params = cv2.SimpleBlobDetector_Params()
+                params.filterByArea = camera_settings["filterByArea"]
+                params.minArea = camera_settings["minArea"]
+                params.maxArea = camera_settings["maxArea"]
+                params.filterByCircularity = camera_settings["filterByCircularity"]
+                params.minCircularity = camera_settings["minCircularity"]
+                params.filterByConvexity = camera_settings["filterByConvexity"]
+                params.minConvexity = camera_settings["minConvexity"]
+                params.filterByInertia = camera_settings["filterByInertia"]
+                params.minInertiaRatio = camera_settings["minInertiaRatio"]
+                
+                # Rileva i blob
+                detector = cv2.SimpleBlobDetector_create(params)
+                keypoints = detector.detect(thresh)
+                
+                # Disegna i blob rilevati
+                frame_with_keypoints = cv2.drawKeypoints(frame_bgr, keypoints, np.array([]), (0, 0, 255), cv2.DRAW_MATCHES_FLAGS_DRAW_RICH_KEYPOINTS)
+                
+                # Codifica il frame in JPEG
+                _, buffer = cv2.imencode('.jpg', frame_with_keypoints)
+                frame = buffer.tobytes()
+                yield (b'--frame\r\n'
+                       b'Content-Type: image/jpeg\r\n\r\n' + frame + b'\r\n')
+            except Exception as e:
+                print(f"Errore durante la generazione del frame: {e}")
+                break
 
     def gen_frames_greyscale(show_threshold=False):
         global camera_settings  # Assicura l'accesso alla variabile globale
@@ -144,8 +171,8 @@ else:
                 # Converti in scala di grigi
                 gray = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2GRAY)
                 
-                # Applica la soglia
-                _, thresh = cv2.threshold(gray, camera_settings["minThreshold"], camera_settings["maxThreshold"], cv2.THRESH_BINARY)
+                # Applica la soglia inversa
+                _, thresh = cv2.threshold(gray, camera_settings["minThreshold"], camera_settings["maxThreshold"], cv2.THRESH_BINARY_INV)
                 
                 # Se show_threshold è True, mostra il frame binarizzato
                 frame_to_show = thresh if show_threshold else gray
