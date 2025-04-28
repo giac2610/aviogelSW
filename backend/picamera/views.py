@@ -169,7 +169,8 @@ def update_camera_settings(request):
         try:
             data = json.loads(request.body)
             global camera_settings
-            camera_settings.update(data)
+            camera_settings.update(data)  # Aggiorna i parametri globali
+            print(f"Impostazioni aggiornate: {camera_settings}")  # Log per debug
             return JsonResponse({"status": "success", "updated_settings": camera_settings})
         except Exception as e:
             return JsonResponse({"status": "error", "message": str(e)}, status=400)
