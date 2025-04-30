@@ -22,17 +22,18 @@ ORDER = neopixel.GRB  # Ordine dei colori
 strip = neopixel.NeoPixel(LED_PIN, LED_COUNT, brightness=LED_BRIGHTNESS, auto_write=False, pixel_order=ORDER)
 
 def wave_effect(strip):
-    while True:  # Loop infinito
-        for i in range(LED_COUNT):
-            strip[i] = (0, 0, 255)  # Blu
-            strip.show()
-            time.sleep(0.02)
-            strip[i] = (0, 0, 0)  # Spegni il LED
-        for i in reversed(range(LED_COUNT)):
-            strip[i] = (0, 0, 255)  # Blu
-            strip.show()
-            time.sleep(0.02)
-            strip[i] = (0, 0, 0)  # Spegni il LED
+     print("Wave effect thread started") 
+     while True:  # Loop infinito
+          for i in range(LED_COUNT):
+               strip[i] = (0, 0, 255)  # Blu
+               strip.show()
+               time.sleep(0.02)
+               strip[i] = (0, 0, 0)  # Spegni il LED
+          for i in reversed(range(LED_COUNT)):
+               strip[i] = (0, 0, 255)  # Blu
+               strip.show()
+               time.sleep(0.02)
+               strip[i] = (0, 0, 0)  # Spegni il LED
 
 def green_loading(strip):
     for i in range(LED_COUNT):
@@ -68,8 +69,9 @@ def control_leds(request):
             effect = body.get('effect', '')
 
             if effect == 'wave':
-                threading.Thread(target=wave_effect, args=(strip,), daemon=True).start()
-                return JsonResponse({'status': 'success', 'message': 'Wave effect started in loop'})
+               #  threading.Thread(target=wave_effect, args=(strip,), daemon=True).start()
+               wave_effect(strip)
+               return JsonResponse({'status': 'success', 'message': 'Wave effect started in loop'})
             elif effect == 'green_loading':
                 green_loading(strip)
                 return JsonResponse({'status': 'success', 'message': 'Green loading started'})
