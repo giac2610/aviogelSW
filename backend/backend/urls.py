@@ -25,4 +25,5 @@ urlpatterns = [
     path('config/', include('setupApp.urls')),
     path('motors/', include('aviogelMotor.urls')),
     path('camera/', include('picamera.urls')),
+    path('led/', include('piLed.urls')),
 ]
