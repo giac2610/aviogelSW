@@ -1,3 +1,8 @@
 backend/aviogelMotor/__pycache__
+backend/piLed/__pycache__
+backend/piCamera/__pycache__
 backend/requirments.txt
 backend/config/setup.json
+
+*.pyc
+__pycache__/
