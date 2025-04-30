@@ -69,9 +69,9 @@ def control_leds(request):
             effect = body.get('effect', '')
 
             if effect == 'wave':
-               #  threading.Thread(target=wave_effect, args=(strip,), daemon=True).start()
-               wave_effect(strip)
-               return JsonResponse({'status': 'success', 'message': 'Wave effect started in loop'})
+                # Avvia wave_effect in un thread separato
+                threading.Thread(target=wave_effect, args=(strip,), daemon=True).start()
+                return JsonResponse({'status': 'success', 'message': 'Wave effect started in loop'})
             elif effect == 'green_loading':
                 green_loading(strip)
                 return JsonResponse({'status': 'success', 'message': 'Green loading started'})
