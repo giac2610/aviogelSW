@@ -32,7 +32,7 @@ export class HomePage {
   
   ngOnInit() {
     this.ledService.startWaveEffect().subscribe({
-      next: () => console.log('Wave effect started'),
+      next: (response) => console.log('Wave effect response:', response), // Stampa la risposta JSON
       error: (err) => console.error('Error starting wave effect:', err)
     });
     this.loadUsers();
