@@ -3,6 +3,7 @@ import { AlertController, ModalController, RefresherCustomEvent } from '@ionic/a
 import { Router} from '@angular/router';
 import { RestAPIfromDjangoService, User } from '../../services/rest-apifrom-django.service';
 import { Keyboard } from '@capacitor/keyboard';
+import { LedService } from '../../services/led.service';
 
 @Component({
   selector: 'app-home',
@@ -22,9 +23,18 @@ export class HomePage {
     isExpert:  false
   };
 
-  constructor(private usersService: RestAPIfromDjangoService,  private modalCtrl: ModalController, private router: Router) {}
+  constructor(
+    private usersService: RestAPIfromDjangoService,  
+    private modalCtrl: ModalController, 
+    private router: Router,
+    private ledService: LedService // Aggiunto LedService
+  ) {}
   
   ngOnInit() {
+    this.ledService.startWaveEffect().subscribe({
+      next: () => console.log('Wave effect started'),
+      error: (err) => console.error('Error starting wave effect:', err)
+    });
     this.loadUsers();
   }
   loadUsers() {
