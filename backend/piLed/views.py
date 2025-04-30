@@ -1,6 +1,8 @@
 from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 import json
+import time
+import threading
 
 try:
     import board  # type: ignore
@@ -18,6 +20,45 @@ LED_BRIGHTNESS = 0.5  # Luminosità (da 0.0 a 1.0)
 # Inizializza la strip LED
 strip = neopixel.NeoPixel(LED_PIN, LED_COUNT, brightness=LED_BRIGHTNESS, auto_write=False)
 
+def wave_effect(strip):
+    while True:  # Loop infinito
+        for i in range(LED_COUNT):
+            strip[i] = (0, 0, 255)  # Blu
+            strip.show()
+            time.sleep(0.02)
+            strip[i] = (0, 0, 0)  # Spegni il LED
+        for i in reversed(range(LED_COUNT)):
+            strip[i] = (0, 0, 255)  # Blu
+            strip.show()
+            time.sleep(0.02)
+            strip[i] = (0, 0, 0)  # Spegni il LED
+
+def green_loading(strip):
+    for i in range(LED_COUNT):
+        strip[i] = (0, 255, 0)  # Verde
+        strip.show()
+        time.sleep(0.02)
+    for i in range(LED_COUNT):
+        strip[i] = (0, 0, 0)  # Spegni il LED
+        strip.show()
+        time.sleep(0.02)
+
+def yellow_blink(strip):
+    for _ in range(5):  # Lampeggia 5 volte
+        for i in range(LED_COUNT):
+            strip[i] = (255, 255, 0)  # Giallo
+        strip.show()
+        time.sleep(0.5)
+        for i in range(LED_COUNT):
+            strip[i] = (0, 0, 0)  # Spegni il LED
+        strip.show()
+        time.sleep(0.5)
+
+def red_static(strip):
+    for i in range(LED_COUNT):
+        strip[i] = (255, 0, 0)  # Rosso
+    strip.show()
+
 @csrf_exempt
 def control_leds(request):
     if request.method == 'POST':
@@ -26,16 +67,16 @@ def control_leds(request):
             effect = body.get('effect', '')
 
             if effect == 'wave':
-                # Logica per l'effetto ondeggiamento
-                return JsonResponse({'status': 'success', 'message': 'Wave effect started'})
+                threading.Thread(target=wave_effect, args=(strip,), daemon=True).start()
+                return JsonResponse({'status': 'success', 'message': 'Wave effect started in loop'})
             elif effect == 'green_loading':
-                # Logica per il caricamento verde
+                green_loading(strip)
                 return JsonResponse({'status': 'success', 'message': 'Green loading started'})
             elif effect == 'yellow_blink':
-                # Logica per lampeggiare giallo
+                yellow_blink(strip)
                 return JsonResponse({'status': 'success', 'message': 'Yellow blinking started'})
             elif effect == 'red_static':
-                # Logica per accendere rosso fisso
+                red_static(strip)
                 return JsonResponse({'status': 'success', 'message': 'Red static started'})
             else:
                 return JsonResponse({'status': 'error', 'message': 'Invalid effect'}, status=400)
