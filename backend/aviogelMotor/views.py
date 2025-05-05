@@ -42,6 +42,11 @@ MOTORS = {
     "extruder": {"STEP": 13, "DIR": 6, "EN": 1},
 }
 
+SERVOS = {
+    "extruder": {"signal":9},
+    "syringe": {"signal":11},
+}    
+
 pi = pigpio.pi()
 if not pi.connected:
     raise Exception("Non connesso a pigpio")
