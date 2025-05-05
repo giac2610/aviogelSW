@@ -67,22 +67,74 @@ def control_leds(request):
         try:
             body = json.loads(request.body)
             effect = body.get('effect', '')
+            debug_logs = []  # Lista per accumulare i messaggi di debug
 
             if effect == 'wave':
-                # Avvia wave_effect in un thread separato
-                threading.Thread(target=wave_effect, args=(strip,), daemon=True).start()
-                return JsonResponse({'status': 'success', 'message': 'Wave effect started in loop'})
+                debug_logs.append("Starting wave effect...")
+                threading.Thread(target=wave_effect_with_logs, args=(strip, debug_logs), daemon=True).start()
+                return JsonResponse({'status': 'success', 'message': 'Wave effect started in loop', 'logs': debug_logs})
             elif effect == 'green_loading':
-                green_loading(strip)
-                return JsonResponse({'status': 'success', 'message': 'Green loading started'})
+                debug_logs.append("Starting green loading effect...")
+                green_loading_with_logs(strip, debug_logs)
+                return JsonResponse({'status': 'success', 'message': 'Green loading started', 'logs': debug_logs})
             elif effect == 'yellow_blink':
-                yellow_blink(strip)
-                return JsonResponse({'status': 'success', 'message': 'Yellow blinking started'})
+                debug_logs.append("Starting yellow blink effect...")
+                yellow_blink_with_logs(strip, debug_logs)
+                return JsonResponse({'status': 'success', 'message': 'Yellow blinking started', 'logs': debug_logs})
             elif effect == 'red_static':
-                red_static(strip)
-                return JsonResponse({'status': 'success', 'message': 'Red static started'})
+                debug_logs.append("Starting red static effect...")
+                red_static_with_logs(strip, debug_logs)
+                return JsonResponse({'status': 'success', 'message': 'Red static started', 'logs': debug_logs})
             else:
                 return JsonResponse({'status': 'error', 'message': 'Invalid effect'}, status=400)
         except json.JSONDecodeError:
             return JsonResponse({'status': 'error', 'message': 'Invalid JSON'}, status=400)
     return JsonResponse({'status': 'error', 'message': 'Invalid request method'}, status=400)
+
+# Funzioni con logging
+def wave_effect_with_logs(strip, debug_logs):
+    debug_logs.append("Wave effect thread started")
+    while True:  # Loop infinito
+        debug_logs.append("Wave effect running...")
+        for i in range(LED_COUNT):
+            strip[i] = (0, 0, 255)  # Blu
+            strip.show()
+            time.sleep(0.02)
+            strip[i] = (0, 0, 0)  # Spegni il LED
+        for i in reversed(range(LED_COUNT)):
+            strip[i] = (0, 0, 255)  # Blu
+            strip.show()
+            time.sleep(0.02)
+            strip[i] = (0, 0, 0)  # Spegni il LED
+
+def green_loading_with_logs(strip, debug_logs):
+    debug_logs.append("Green loading effect started")
+    for i in range(LED_COUNT):
+        strip[i] = (0, 255, 0)  # Verde
+        strip.show()
+        time.sleep(0.02)
+    for i in range(LED_COUNT):
+        strip[i] = (0, 0, 0)  # Spegni il LED
+        strip.show()
+        time.sleep(0.02)
+    debug_logs.append("Green loading effect completed")
+
+def yellow_blink_with_logs(strip, debug_logs):
+    debug_logs.append("Yellow blink effect started")
+    for _ in range(5):  # Lampeggia 5 volte
+        for i in range(LED_COUNT):
+            strip[i] = (255, 255, 0)  # Giallo
+        strip.show()
+        time.sleep(0.5)
+        for i in range(LED_COUNT):
+            strip[i] = (0, 0, 0)  # Spegni il LED
+        strip.show()
+        time.sleep(0.5)
+    debug_logs.append("Yellow blink effect completed")
+
+def red_static_with_logs(strip, debug_logs):
+    debug_logs.append("Red static effect started")
+    for i in range(LED_COUNT):
+        strip[i] = (255, 0, 0)  # Rosso
+    strip.show()
+    debug_logs.append("Red static effect completed")
