@@ -37,9 +37,9 @@ motor_configs = config.get("motors", {})
 # Mappatura motori e inizializzazione pigpio
 # ------------------------------------------------------------------------------
 MOTORS = {
-    "extruder": {"STEP": 12, "DIR": 5},
-    "conveyor": {"STEP": 18, "DIR": 27},
-    "syringe": {"STEP": 13, "DIR": 6},
+    "syringe": {"STEP": 12, "DIR": 5, "EN": 7},
+    "conveyor": {"STEP": 18, "DIR": 27, "EN": 8},
+    "extruder": {"STEP": 13, "DIR": 6, "EN": 1},
 }
 
 pi = pigpio.pi()
@@ -100,6 +100,28 @@ def move_motor(request):
         return JsonResponse({"error": "Dati non validi", "detail": str(e)}, status=400)
 
     threads = []
+
+    # Gestione dell'EN per syringe e altri motori
+    if "syringe" in targets:
+        # Disabilita conveyor ed extruder se syringe è nei target
+        for motor_id in ["conveyor", "extruder"]:
+            motor = MOTORS.get(motor_id)
+            if motor:
+                pi.write(motor["EN"], 1)  # Disabilita conveyor ed extruder
+        # Abilita syringe
+        syringe_motor = MOTORS.get("syringe")
+        if syringe_motor:
+            pi.write(syringe_motor["EN"], 0)  # Abilita syringe
+    elif any(motor_id in targets for motor_id in ["conveyor", "extruder"]):
+        # Disabilita syringe se conveyor o extruder sono nei target
+        syringe_motor = MOTORS.get("syringe")
+        if syringe_motor:
+            pi.write(syringe_motor["EN"], 1)  # Disabilita syringe
+        # Abilita conveyor ed extruder
+        for motor_id in ["conveyor", "extruder"]:
+            motor = MOTORS.get(motor_id)
+            if motor:
+                pi.write(motor["EN"], 0)  # Abilita conveyor ed extruder
 
     for motor_id, target in targets.items():
         if motor_id not in MOTORS:
