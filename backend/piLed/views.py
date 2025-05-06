@@ -21,46 +21,6 @@ ORDER = neopixel.GRB  # Ordine dei colori
 # Inizializza la strip LED
 strip = neopixel.NeoPixel(LED_PIN, LED_COUNT, brightness=LED_BRIGHTNESS, auto_write=False, pixel_order=ORDER)
 
-def wave_effect(strip):
-     print("Wave effect thread started") 
-     while True:  # Loop infinito
-          for i in range(LED_COUNT):
-               strip[i] = (0, 0, 255)  # Blu
-               strip.show()
-               time.sleep(0.02)
-               strip[i] = (0, 0, 0)  # Spegni il LED
-          for i in reversed(range(LED_COUNT)):
-               strip[i] = (0, 0, 255)  # Blu
-               strip.show()
-               time.sleep(0.02)
-               strip[i] = (0, 0, 0)  # Spegni il LED
-
-def green_loading(strip):
-    for i in range(LED_COUNT):
-        strip[i] = (0, 255, 0)  # Verde
-        strip.show()
-        time.sleep(0.02)
-    for i in range(LED_COUNT):
-        strip[i] = (0, 0, 0)  # Spegni il LED
-        strip.show()
-        time.sleep(0.02)
-
-def yellow_blink(strip):
-    for _ in range(5):  # Lampeggia 5 volte
-        for i in range(LED_COUNT):
-            strip[i] = (255, 255, 0)  # Giallo
-        strip.show()
-        time.sleep(0.5)
-        for i in range(LED_COUNT):
-            strip[i] = (0, 0, 0)  # Spegni il LED
-        strip.show()
-        time.sleep(0.5)
-
-def red_static(strip):
-    for i in range(LED_COUNT):
-        strip[i] = (255, 0, 0)  # Rosso
-    strip.show()
-
 @csrf_exempt
 def control_leds(request):
     if request.method == 'POST':
@@ -68,6 +28,11 @@ def control_leds(request):
             body = json.loads(request.body)
             effect = body.get('effect', '')
             debug_logs = []  # Lista per accumulare i messaggi di debug
+
+            # Ferma eventuali effetti in esecuzione
+            stop_event.set()  # Imposta il flag per fermare i thread
+            time.sleep(0.1)  # Attendi un breve intervallo per assicurarti che i thread si fermino
+            stop_event.clear()  # Resetta il flag per consentire nuovi effetti
 
             if effect == 'wave':
                 debug_logs.append("Starting wave effect...")
@@ -85,6 +50,10 @@ def control_leds(request):
                 debug_logs.append("Starting red static effect...")
                 threading.Thread(target=red_static_with_logs, args=(strip, debug_logs), daemon=True).start()
                 return JsonResponse({'status': 'success', 'message': 'Red static started', 'logs': debug_logs})
+            elif effect == 'stop':
+                # Ferma gli effetti LED
+                stop_event.set()
+                return JsonResponse({'status': 'success', 'message': 'LED effects stopped'})
             else:
                 return JsonResponse({'status': 'error', 'message': 'Invalid effect'}, status=400)
         except json.JSONDecodeError:
