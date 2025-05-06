@@ -75,15 +75,15 @@ def control_leds(request):
                 return JsonResponse({'status': 'success', 'message': 'Wave effect started in loop', 'logs': debug_logs})
             elif effect == 'green_loading':
                 debug_logs.append("Starting green loading effect...")
-                green_loading_with_logs(strip, debug_logs)
+                threading.Thread(target=green_loading_with_logs, args=(strip, debug_logs), daemon=True).start()
                 return JsonResponse({'status': 'success', 'message': 'Green loading started', 'logs': debug_logs})
             elif effect == 'yellow_blink':
                 debug_logs.append("Starting yellow blink effect...")
-                yellow_blink_with_logs(strip, debug_logs)
+                threading.Thread(target=yellow_blink_with_logs, args=(strip, debug_logs), daemon=True).start()
                 return JsonResponse({'status': 'success', 'message': 'Yellow blinking started', 'logs': debug_logs})
             elif effect == 'red_static':
                 debug_logs.append("Starting red static effect...")
-                red_static_with_logs(strip, debug_logs)
+                threading.Thread(target=red_static_with_logs, args=(strip, debug_logs), daemon=True).start()
                 return JsonResponse({'status': 'success', 'message': 'Red static started', 'logs': debug_logs})
             else:
                 return JsonResponse({'status': 'error', 'message': 'Invalid effect'}, status=400)
@@ -91,10 +91,11 @@ def control_leds(request):
             return JsonResponse({'status': 'error', 'message': 'Invalid JSON'}, status=400)
     return JsonResponse({'status': 'error', 'message': 'Invalid request method'}, status=400)
 
-# Funzioni con logging
+stop_event = threading.Event()
+
 def wave_effect_with_logs(strip, debug_logs):
     debug_logs.append("Wave effect thread started")
-    while True:  # Loop infinito
+    while not stop_event.is_set():  # Controlla il flag per fermare il thread
         debug_logs.append("Wave effect running...")
         for i in range(LED_COUNT):
             strip[i] = (0, 0, 255)  # Blu
@@ -106,6 +107,13 @@ def wave_effect_with_logs(strip, debug_logs):
             strip.show()
             time.sleep(0.02)
             strip[i] = (0, 0, 0)  # Spegni il LED
+
+@csrf_exempt
+def stop_led_effect(request):
+    if request.method == 'POST':
+        stop_event.set()  # Imposta il flag per fermare i thread
+        return JsonResponse({'status': 'success', 'message': 'LED effect stopped'})
+    return JsonResponse({'status': 'error', 'message': 'Invalid request method'}, status=400)
 
 def green_loading_with_logs(strip, debug_logs):
     debug_logs.append("Green loading effect started")
