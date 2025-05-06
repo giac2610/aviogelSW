@@ -114,24 +114,24 @@ def move_motor(request):
             motor = MOTORS.get(motor_id)
             if motor:
                 pi.write(motor["EN"], 1)  # Disabilita conveyor ed extruder
-                print(f"Disabilitato {motor_id}")
+                # print(f"Disabilitato {motor_id}")
         # Abilita syringe
         syringe_motor = MOTORS.get("syringe")
         if syringe_motor:
             pi.write(syringe_motor["EN"], 0)  # Abilita syringe
-            print(f"Disabilitato {motor_id}")
+            # print(f"Disabilitato {motor_id}")
     elif any(motor_id in targets for motor_id in ["conveyor", "extruder"]):
         # Disabilita syringe se conveyor o extruder sono nei target
         syringe_motor = MOTORS.get("syringe")
         if syringe_motor:
             pi.write(syringe_motor["EN"], 1)  # Disabilita syringe
-            print(f"Disabilitato {motor_id}")
+            # print(f"Disabilitato {motor_id}")
         # Abilita conveyor ed extruder
         for motor_id in ["conveyor", "extruder"]:
             motor = MOTORS.get(motor_id)
             if motor:
                 pi.write(motor["EN"], 0)  # Abilita conveyor ed extruder
-                print(f"Disabilitato {motor_id}")
+                # print(f"Disabilitato {motor_id}")
 
     for motor_id, target in targets.items():
         if motor_id not in MOTORS:
