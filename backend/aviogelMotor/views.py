@@ -39,7 +39,7 @@ motor_configs = config.get("motors", {})
 MOTORS = {
     "syringe": {"STEP": 12, "DIR": 5, "EN": 7},
     "conveyor": {"STEP": 18, "DIR": 27, "EN": 8},
-    "extruder": {"STEP": 13, "DIR": 6, "EN": 1},
+    "extruder": {"STEP": 13, "DIR": 6, "EN": 3},
 }
 
 SERVOS = {
