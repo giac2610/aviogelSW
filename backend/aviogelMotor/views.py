@@ -39,17 +39,13 @@ motor_configs = config.get("motors", {})
 MOTORS = {
     "syringe": {"STEP": 12, "DIR": 5, "EN": 7},
     "conveyor": {"STEP": 18, "DIR": 27, "EN": 8},
-    "extruder": {"STEP": 13, "DIR": 6, "EN": 1},
+    # "extruder": {"STEP": 13, "DIR": 6, "EN": 1},
 }
 
 SERVOS = {
     "extruder": {"signal":9},
     "syringe": {"signal":11},
 }    
-
-# Check for pigpio permissions
-if os.geteuid() != 0:
-    raise Exception("Il programma deve essere eseguito con privilegi di root (es. usando 'sudo').")
 
 pi = pigpio.pi()
 if not pi.connected:
@@ -58,7 +54,6 @@ if not pi.connected:
 for motor in MOTORS.values():
     pi.set_mode(motor["STEP"], pigpio.OUTPUT)
     pi.set_mode(motor["DIR"], pigpio.OUTPUT)
-    pi.set_mode(motor["EN"], pigpio.OUTPUT)
 
 running_flags = {"extruder": False, "conveyor": False, "syringe": False}
 
@@ -117,21 +112,25 @@ def move_motor(request):
         for motor_id in ["conveyor", "extruder"]:
             motor = MOTORS.get(motor_id)
             if motor:
-                pi.write(motor["EN"], 1)  # Disabilita conveyor ed extruder
+                # pi.write(motor["EN"], 1)  # Disabilita conveyor ed extruder
+                print(f"Disabilitato {motor_id}")
         # Abilita syringe
         syringe_motor = MOTORS.get("syringe")
         if syringe_motor:
-            pi.write(syringe_motor["EN"], 0)  # Abilita syringe
+            # pi.write(syringe_motor["EN"], 0)  # Abilita syringe
+            print(f"Disabilitato {motor_id}")
     elif any(motor_id in targets for motor_id in ["conveyor", "extruder"]):
         # Disabilita syringe se conveyor o extruder sono nei target
         syringe_motor = MOTORS.get("syringe")
         if syringe_motor:
-            pi.write(syringe_motor["EN"], 1)  # Disabilita syringe
+            # pi.write(syringe_motor["EN"], 1)  # Disabilita syringe
+            print(f"Disabilitato {motor_id}")
         # Abilita conveyor ed extruder
         for motor_id in ["conveyor", "extruder"]:
             motor = MOTORS.get(motor_id)
             if motor:
-                pi.write(motor["EN"], 0)  # Abilita conveyor ed extruder
+                # pi.write(motor["EN"], 0)  # Abilita conveyor ed extruder
+                print(f"Disabilitato {motor_id}")
 
     for motor_id, target in targets.items():
         if motor_id not in MOTORS:
