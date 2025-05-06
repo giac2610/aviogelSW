@@ -47,6 +47,10 @@ SERVOS = {
     "syringe": {"signal":11},
 }    
 
+# Check for pigpio permissions
+if os.geteuid() != 0:
+    raise Exception("Il programma deve essere eseguito con privilegi di root (es. usando 'sudo').")
+
 pi = pigpio.pi()
 if not pi.connected:
     raise Exception("Non connesso a pigpio")
