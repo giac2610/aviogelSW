@@ -389,6 +389,33 @@
       <img [src]="currentStreamUrl" alt="Camera Feed" (error)="onImageError()" />
     </ion-card-content>
   </ion-card>
+
+  <ion-card>
+    <ion-card-header>
+      <ion-card-title>LED Control</ion-card-title>
+    </ion-card-header>
+  
+    <ion-card-content>
+      <ion-grid>
+        <ion-row>
+          <ion-col size="6">
+            <ion-button expand="block" color="primary" (click)="startWaveEffect()">Wave Effect</ion-button>
+          </ion-col>
+          <ion-col size="6">
+            <ion-button expand="block" color="success" (click)="startGreenLoading()">Green Loading</ion-button>
+          </ion-col>
+        </ion-row>
+        <ion-row>
+          <ion-col size="6">
+            <ion-button expand="block" color="warning" (click)="startYellowBlink()">Yellow Blink</ion-button>
+          </ion-col>
+          <ion-col size="6">
+            <ion-button expand="block" color="danger" (click)="startRedStatic()">Red Static</ion-button>
+          </ion-col>
+        </ion-row>
+      </ion-grid>
+    </ion-card-content>
+  </ion-card>
 </ion-content>
 
 <!-- WHILE LOADING -->

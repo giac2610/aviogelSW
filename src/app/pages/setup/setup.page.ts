@@ -4,7 +4,7 @@ import { Router } from '@angular/router';
 import { ToastController } from '@ionic/angular';
 import { SetupAPIService, Settings } from 'src/app/services/setup-api.service';
 import { debounceTime, Subject } from 'rxjs';
-
+import { LedService } from 'src/app/services/led.service';
 @Component({
   selector: 'app-setup',
   templateUrl: './setup.page.html',
@@ -39,7 +39,7 @@ travels: { [key in "syringe" | "extruder" | "conveyor"]: number } = {
 
   private cameraSettingsSubject = new Subject<Settings['camera']>();
 
-  constructor(private configService: SetupAPIService, private toastController: ToastController, private motorsService: MotorsControlService, private router: Router) { }
+  constructor(private configService: SetupAPIService, private toastController: ToastController, private motorsService: MotorsControlService, private router: Router, private ledService: LedService) { }
 
   ngOnInit() {
     this.isLoading = true;
@@ -186,5 +186,33 @@ travels: { [key in "syringe" | "extruder" | "conveyor"]: number } = {
   onImageError() {
     console.error("Errore durante il caricamento dello streaming."); // Log per debug
     this.presentToast("Errore durante il caricamento dello streaming.", "danger");
+  }
+
+  startWaveEffect() {
+    this.ledService.startWaveEffect().subscribe({
+      next: () => this.presentToast('Wave effect avviato', 'success'),
+      error: () => this.presentToast('Errore nell\'avviare il wave effect', 'danger')
+    });
+  }
+  
+  startGreenLoading() {
+    this.ledService.startGreenLoading().subscribe({
+      next: () => this.presentToast('Green loading avviato', 'success'),
+      error: () => this.presentToast('Errore nell\'avviare il green loading', 'danger')
+    });
+  }
+  
+  startYellowBlink() {
+    this.ledService.startYellowBlink().subscribe({
+      next: () => this.presentToast('Yellow blink avviato', 'success'),
+      error: () => this.presentToast('Errore nell\'avviare il yellow blink', 'danger')
+    });
+  }
+  
+  startRedStatic() {
+    this.ledService.startRedStatic().subscribe({
+      next: () => this.presentToast('Red static avviato', 'success'),
+      error: () => this.presentToast('Errore nell\'avviare il red static', 'danger')
+    });
   }
 }
