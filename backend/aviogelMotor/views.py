@@ -37,9 +37,9 @@ motor_configs = config.get("motors", {})
 # Mappatura motori e inizializzazione pigpio
 # ------------------------------------------------------------------------------
 MOTORS = {
-    "syringe": {"STEP": 12, "DIR": 5, "EN": 7},
-    "conveyor": {"STEP": 18, "DIR": 27, "EN": 8},
-    "extruder": {"STEP": 13, "DIR": 6, "EN": 3},
+    "extruder": {"STEP": 13, "DIR": 6, "EN": 3}, # X
+    "syringe": {"STEP": 18, "DIR": 27, "EN": 8}, # Z
+    "conveyor": {"STEP": 12, "DIR": 5, "EN": 7}, # Y
 }
 
 SERVOS = {
