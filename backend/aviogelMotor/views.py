@@ -53,7 +53,8 @@ if not pi.connected:
 
 for motor in MOTORS.values():
     pi.set_mode(motor["STEP"], pigpio.OUTPUT)
-    pi.set_mode(motor["DIR"], pigpio.OUTPUT)
+    pi.set_mode(motor["DIR"], pigpio.OUTPUT)    
+    pi.set_mode(motor["EN"], pigpio.OUTPUT)    
 
 running_flags = {"extruder": False, "conveyor": False, "syringe": False}
 
