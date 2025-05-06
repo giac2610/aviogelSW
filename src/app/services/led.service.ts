@@ -24,4 +24,8 @@ export class LedService {
   startRedStatic() {
     return this.http.post(this.baseUrl, { effect: 'red_static' });
   }
+
+  stopEffect() {
+    return this.http.post(this.baseUrl, { effect: 'stop' });
+  }
 }

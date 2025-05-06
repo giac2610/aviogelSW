@@ -215,4 +215,11 @@ travels: { [key in "syringe" | "extruder" | "conveyor"]: number } = {
       error: () => this.presentToast('Errore nell\'avviare il red static', 'danger')
     });
   }
+
+  stopEffect() {
+    this.ledService.stopEffect().subscribe({
+      next: () => this.presentToast('Effetto fermato', 'success'),
+      error: () => this.presentToast('Errore nel fermare l\'effetto', 'danger')
+    });
+  }
 }
