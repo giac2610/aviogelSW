@@ -16,7 +16,7 @@ except ImportError:
 LED_COUNT = 100  # Numero di LED
 # LED_PIN = board.D19  # GPIO dei dati
 LED_PIN = board.D21  # GPIO dei dati
-LED_BRIGHTNESS = 0.1  # Luminosità (da 0.0 a 1.0)
+LED_BRIGHTNESS = 0.8  # Luminosità (da 0.0 a 1.0)
 ORDER = neopixel.GRB  # Ordine dei colori
 
 # Inizializza la strip LED
