@@ -16,7 +16,7 @@ except ImportError:
 LED_COUNT = 100  # Numero di LED
 # LED_PIN = board.D19  # GPIO dei dati
 LED_PIN = board.D21  # GPIO dei dati
-LED_BRIGHTNESS = 0.5  # Luminosità (da 0.0 a 1.0)
+LED_BRIGHTNESS = 0.3  # Luminosità (da 0.0 a 1.0)
 ORDER = neopixel.GRB  # Ordine dei colori
 
 # Inizializza la strip LED
@@ -66,31 +66,43 @@ def control_leds(request):
 
 def wave_effect_with_logs(strip, debug_logs):
     debug_logs.append("Wave effect thread started")
+    group_size = 5  # Numero di LED da accendere contemporaneamente
     while not stop_event.is_set():  # Controlla il flag per fermare il thread
         debug_logs.append("Wave effect running...")
         for i in range(LED_COUNT):
             if stop_event.is_set():  # Controlla il flag durante il ciclo
                 debug_logs.append("Wave effect stopped")
                 return
-            strip[i] = (0, 0, 255)  # Blu
+            # Accendi un gruppo di LED
+            for j in range(group_size):
+                if i + j < LED_COUNT:
+                    strip[i + j] = (0, 0, 255)  # Blu
             try:
                 strip.show()
             except Exception as e:
                 debug_logs.append(f"Error showing LED: {e}")
-            time.sleep(0.02)
-            strip[i] = (0, 0, 0)  # Spegni il LED
+            time.sleep(0.05)  # Regola la velocità dell'effetto
+            # Spegni il gruppo di LED
+            for j in range(group_size):
+                if i + j < LED_COUNT:
+                    strip[i + j] = (0, 0, 0)  # Spegni il LED
         for i in reversed(range(LED_COUNT)):
             if stop_event.is_set():  # Controlla il flag durante il ciclo
                 debug_logs.append("Wave effect stopped")
                 return
-            strip[i] = (0, 0, 255)  # Blu
+            # Accendi un gruppo di LED
+            for j in range(group_size):
+                if i - j >= 0:
+                    strip[i - j] = (0, 0, 255)  # Blu
             try:
                 strip.show()
             except Exception as e:
                 debug_logs.append(f"Error showing LED: {e}")
-            time.sleep(0.02)
-            strip[i] = (0, 0, 0)  # Spegni il LED
-
+            time.sleep(0.05)  # Regola la velocità dell'effetto
+            # Spegni il gruppo di LED
+            for j in range(group_size):
+                if i - j >= 0:
+                    strip[i - j] = (0, 0, 0)  # Spegni il LED
 @csrf_exempt
 def stop_led_effect(request):
     if request.method == 'POST':
