@@ -25,6 +25,13 @@ strip = neopixel.NeoPixel(LED_PIN, LED_COUNT, brightness=LED_BRIGHTNESS, auto_wr
 # Definizione di stop_event prima del suo utilizzo
 stop_event = threading.Event()
 
+def send_dummy_to_first_led(strip):
+    """
+    Invia un segnale "dummy" al primo LED per sincronizzare i dati.
+    """
+    strip[0] = (0, 0, 0)  # Imposta il primo LED a nero (spento)
+    strip.show()  # Mostra il segnale "dummy"
+
 @csrf_exempt
 def control_leds(request):
     if request.method == 'POST':
@@ -37,6 +44,9 @@ def control_leds(request):
             stop_event.set()  # Imposta il flag per fermare i thread
             time.sleep(0.1)  # Attendi un breve intervallo per assicurarti che i thread si fermino
             stop_event.clear()  # Resetta il flag per consentire nuovi effetti
+
+            # Invia un segnale "dummy" al primo LED
+            send_dummy_to_first_led(strip)
 
             if effect == 'wave':
                 debug_logs.append("Starting wave effect...")
