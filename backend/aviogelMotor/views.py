@@ -99,6 +99,9 @@ def move_motor(request):
     """
     global running_flags
     try:
+        # Ricarica le configurazioni aggiornate
+        reload_motor_config()
+
         data = json.loads(request.body)
         targets = data.get("targets", {})  # Dizionario con i target per ogni motore
         print("Targets:", targets)
