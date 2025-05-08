@@ -17,7 +17,7 @@ LED_COUNT = 100  # Numero di LED
 # LED_PIN = board.D19  # GPIO dei dati
 LED_PIN = board.D21  # GPIO dei dati
 LED_BRIGHTNESS = 0.3  # Luminosità (da 0.0 a 1.0)
-ORDER = neopixel.RGB  # Ordine dei colori
+ORDER = neopixel.GRB  # Ordine dei colori
 
 # Inizializza la strip LED
 strip = neopixel.NeoPixel(LED_PIN, LED_COUNT, brightness=LED_BRIGHTNESS, auto_write=False, pixel_order=ORDER)
