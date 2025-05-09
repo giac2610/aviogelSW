@@ -163,41 +163,44 @@ def move_motor(request):
 
         steps_per_mm, freq = compute_motor_params(motor_id)
         steps = abs(distance) * steps_per_mm
-        total_time = steps / freq
+        total_steps = int(steps)
+        step_time = 1 / freq  # Tempo minimo tra due passi
 
         running_flags[motor_id] = True
 
-        def motor_thread(motor_id, motor, steps, steps_per_mm, max_freq, acceleration, deceleration):
+        def motor_thread(motor_id, motor, total_steps, step_time, steps_per_mm, max_freq, acceleration, deceleration):
             try:
-                current_freq = 0
-                step_time = 1 / max_freq  # Tempo minimo tra due passi
-                total_steps = int(steps)
-                accel_steps = int((max_freq ** 2) / (2 * acceleration * steps_per_mm))  # Passi per accelerazione
-                decel_steps = int((max_freq ** 2) / (2 * deceleration * steps_per_mm))  # Passi per decelerazione
-                accel_steps = min(accel_steps, total_steps // 2)  # Limita l'accelerazione a metà dei passi totali
-                decel_steps = min(decel_steps, total_steps // 2)  # Limita la decelerazione a metà dei passi totali
+                accel_steps = min(int((max_freq ** 2) / (2 * acceleration * steps_per_mm)), total_steps // 2)
+                decel_steps = min(int((max_freq ** 2) / (2 * deceleration * steps_per_mm)), total_steps // 2)
+                constant_steps = total_steps - accel_steps - decel_steps
+
+                # Precalcolo dei tempi per accelerazione e decelerazione
+                accel_step_times = [
+                    1 / min(max_freq, acceleration * step / steps_per_mm)
+                    for step in range(1, accel_steps + 1)
+                ]
+                decel_step_times = [
+                    1 / max(1, max_freq - deceleration * step / steps_per_mm)
+                    for step in range(1, decel_steps + 1)
+                ]
 
                 # Accelerazione
-                for step in range(accel_steps):
+                for step_time in accel_step_times:
                     if not running_flags[motor_id]:
                         break
-                    current_freq = min(max_freq, acceleration * step / steps_per_mm)
-                    pi.hardware_PWM(motor["STEP"], int(current_freq), 500000)
+                    pi.hardware_PWM(motor["STEP"], int(1 / step_time), 500000)
                     time.sleep(step_time)
 
                 # Velocità costante
-                for step in range(total_steps - accel_steps - decel_steps):
-                    if not running_flags[motor_id]:
-                        break
+                if running_flags[motor_id]:
                     pi.hardware_PWM(motor["STEP"], int(max_freq), 500000)
-                    time.sleep(step_time)
+                    time.sleep(step_time * constant_steps)
 
                 # Decelerazione
-                for step in range(decel_steps):
+                for step_time in decel_step_times:
                     if not running_flags[motor_id]:
                         break
-                    current_freq = max(0, max_freq - deceleration * step / steps_per_mm)
-                    pi.hardware_PWM(motor["STEP"], int(current_freq), 500000)
+                    pi.hardware_PWM(motor["STEP"], int(1 / step_time), 500000)
                     time.sleep(step_time)
             finally:
                 pi.hardware_PWM(motor["STEP"], 0, 0)
@@ -206,7 +209,7 @@ def move_motor(request):
         thread = threading.Thread(
             target=motor_thread,
             args=(
-                motor_id, motor, steps, steps_per_mm, freq,
+                motor_id, motor, total_steps, step_time, steps_per_mm, freq,
                 motor_configs[motor_id].get("acceleration", 800.0),
                 motor_configs[motor_id].get("deceleration", 1200.0)
             ),
