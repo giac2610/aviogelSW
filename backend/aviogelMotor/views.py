@@ -78,14 +78,30 @@ current_speeds = {"extruder": 0, "conveyor": 0, "syringe": 0}
 # Funzione di conversione passi e frequenza
 # ------------------------------------------------------------------------------
 def compute_motor_params(motor_id):
+    """
+    Calcola i parametri del motore una sola volta per ridurre i calcoli ripetuti.
+    """
     motor_conf = motor_configs.get(motor_id, {})
     stepOneRev = motor_conf.get("stepOneRev", 200.0)
     microstep = motor_conf.get("microstep", 8)
     pitch = motor_conf.get("pitch", 5)
     maxSpeed = motor_conf.get("maxSpeed", 250.0)
+    acceleration = motor_conf.get("acceleration", 800.0)
+    deceleration = motor_conf.get("deceleration", 1200.0)
+
     steps_per_mm = (stepOneRev * microstep) / pitch
-    freq = maxSpeed * steps_per_mm
-    return steps_per_mm, max(1, freq)
+    max_freq = maxSpeed * steps_per_mm
+    accel_steps = int((max_freq ** 2) / (2 * acceleration * steps_per_mm))
+    decel_steps = int((max_freq ** 2) / (2 * deceleration * steps_per_mm))
+
+    return {
+        "steps_per_mm": steps_per_mm,
+        "max_freq": max(1, max_freq),
+        "accel_steps": accel_steps,
+        "decel_steps": decel_steps,
+        "acceleration": acceleration,
+        "deceleration": deceleration,
+    }
 
 def write_settings(data):
     """Scrive i dati nel file settings.json"""
@@ -165,63 +181,15 @@ def move_motor(request):
         direction = 1 if distance >= 0 else 0
         pi.write(motor["DIR"], direction)
 
-        steps_per_mm, freq = compute_motor_params(motor_id)
-        steps = abs(distance) * steps_per_mm
+        params = compute_motor_params(motor_id)
+        steps = abs(distance) * params["steps_per_mm"]
         total_steps = int(steps)
-        step_time = 1 / freq  # Tempo minimo tra due passi
 
         running_flags[motor_id] = True
 
-        def motor_thread(motor_id, motor, total_steps, steps_per_mm, max_freq, acceleration, deceleration):
-            global current_speeds
-            try:
-                accel_steps = min(int((max_freq ** 2) / (2 * acceleration * steps_per_mm)), total_steps // 2)
-                decel_steps = min(int((max_freq ** 2) / (2 * deceleration * steps_per_mm)), total_steps // 2)
-                constant_steps = total_steps - accel_steps - decel_steps
-
-                def calculate_step_time(freq):
-                    return 1 / max(1, freq)
-
-                # Accelerazione
-                for step in range(accel_steps):
-                    if not running_flags[motor_id]:
-                        break
-                    current_freq = min(max_freq, acceleration * step / steps_per_mm)
-                    current_speeds[motor_id] = current_freq / steps_per_mm  # Converti in mm/s
-                    pi.write(motor["STEP"], 1)
-                    time.sleep(calculate_step_time(current_freq))
-                    pi.write(motor["STEP"], 0)
-
-                # Velocità costante
-                for step in range(constant_steps):
-                    if not running_flags[motor_id]:
-                        break
-                    current_speeds[motor_id] = max_freq / steps_per_mm  # Converti in mm/s
-                    pi.write(motor["STEP"], 1)
-                    time.sleep(calculate_step_time(max_freq))
-                    pi.write(motor["STEP"], 0)
-
-                # Decelerazione
-                for step in range(decel_steps):
-                    if not running_flags[motor_id]:
-                        break
-                    current_freq = max(0, max_freq - deceleration * step / steps_per_mm)
-                    current_speeds[motor_id] = current_freq / steps_per_mm  # Converti in mm/s
-                    pi.write(motor["STEP"], 1)
-                    time.sleep(calculate_step_time(current_freq))
-                    pi.write(motor["STEP"], 0)
-            finally:
-                current_speeds[motor_id] = 0  # Imposta la velocità a 0 quando il motore si ferma
-                pi.write(motor["STEP"], 0)
-                running_flags[motor_id] = False
-
         thread = threading.Thread(
             target=motor_thread,
-            args=(
-                motor_id, motor, total_steps, steps_per_mm, freq,
-                motor_configs[motor_id].get("acceleration", 800.0),
-                motor_configs[motor_id].get("deceleration", 1200.0)
-            ),
+            args=(motor_id, motor, total_steps, params),
             daemon=True
         )
         threads.append(thread)
@@ -231,6 +199,57 @@ def move_motor(request):
         thread.join()
 
     return JsonResponse({"status": "Movimento avviato", "targets": targets})
+
+def motor_thread(motor_id, motor, total_steps, params):
+    """
+    Thread per il movimento trapezoidale del motore.
+    """
+    global current_speeds
+    steps_per_mm = params["steps_per_mm"]
+    max_freq = params["max_freq"]
+    acceleration = params["acceleration"]  # Ora preso dai parametri
+    deceleration = params["deceleration"]  # Ora preso dai parametri
+    accel_steps = min(params["accel_steps"], total_steps // 2)
+    decel_steps = min(params["decel_steps"], total_steps // 2)
+    constant_steps = total_steps - accel_steps - decel_steps
+
+    def calculate_step_time(freq):
+        return 1 / max(1, freq)
+
+    try:
+        # Accelerazione
+        for step in range(accel_steps):
+            if not running_flags[motor_id]:
+                break
+            current_freq = acceleration * step / steps_per_mm
+            current_speeds[motor_id] = current_freq / steps_per_mm
+            pi.write(motor["STEP"], 1)
+            time.sleep(calculate_step_time(current_freq))
+            pi.write(motor["STEP"], 0)
+
+        # Velocità costante
+        for step in range(constant_steps):
+            if not running_flags[motor_id]:
+                break
+            current_speeds[motor_id] = max_freq / steps_per_mm
+            pi.write(motor["STEP"], 1)
+            time.sleep(calculate_step_time(max_freq))
+            pi.write(motor["STEP"], 0)
+
+        # Decelerazione
+        for step in range(decel_steps):
+            if not running_flags[motor_id]:
+                break
+            current_freq = max_freq - deceleration * step / steps_per_mm
+            current_speeds[motor_id] = current_freq / steps_per_mm
+            pi.write(motor["STEP"], 1)
+            time.sleep(calculate_step_time(current_freq))
+            pi.write(motor["STEP"], 0)
+    finally:
+        current_speeds[motor_id] = 0
+        pi.write(motor["STEP"], 0)
+        running_flags[motor_id] = False
+
 # ------------------------------------------------------------------------------
 # API: Stop motori
 # ------------------------------------------------------------------------------
