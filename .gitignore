@@ -7,3 +7,4 @@ backend/config/setup.json
 
 *.pyc
 __pycache__/
+backend/config/setup.json
