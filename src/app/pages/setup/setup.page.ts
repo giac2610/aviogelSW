@@ -90,24 +90,24 @@ travels: { [key in "syringe" | "extruder" | "conveyor"]: number } = {
   // selezionando il motore e la distanza
   goToPosition(motor: "syringe" | "extruder" | "conveyor", distance: number) {
     const maxTravel = this.settings.motors[motor].maxTravel;
-  
-    if (this.positions[motor] + distance <= maxTravel) {
-      this.positions[motor] += distance; 
-      const targets = { [motor]: distance }; // Correctly structure the targets object
-      console.log("request: ", targets);
-      this.configService.moveMotor(targets).subscribe({
-        next: (response) => {
-          // Mostra il messaggio JSON restituito dal backend
-          this.presentToast(`Successo: ${response.status} - Target: ${JSON.stringify(response.targets)}`, 'success');
-        },
-        error: (error) => {
-          // Mostra l'errore JSON restituito dal backend
-          const errorMessage = error.error.detail || error.error.error || error.message;
-          this.presentToast(`Errore: ${errorMessage}`, 'danger');
-        }
-      });
+
+    if (maxTravel < 0 || this.positions[motor] + distance <= maxTravel) {
+        this.positions[motor] += distance; 
+        const targets = { [motor]: distance }; // Correctly structure the targets object
+        console.log("request: ", targets);
+        this.configService.moveMotor(targets).subscribe({
+            next: (response) => {
+                // Mostra il messaggio JSON restituito dal backend
+                this.presentToast(`Successo: ${response.status} - Target: ${JSON.stringify(response.targets)}`, 'success');
+            },
+            error: (error) => {
+                // Mostra l'errore JSON restituito dal backend
+                const errorMessage = error.error.detail || error.error.error || error.message;
+                this.presentToast(`Errore: ${errorMessage}`, 'danger');
+            }
+        });
     } else {
-      this.presentToast(`Posizione non ammessa per il motore ${motor}`, 'danger');
+        this.presentToast(`Posizione non ammessa per il motore ${motor}`, 'danger');
     }
   }
   
@@ -129,7 +129,17 @@ travels: { [key in "syringe" | "extruder" | "conveyor"]: number } = {
     });
   }
 
+  updateMotorHertz(motor: "syringe" | "extruder" | "conveyor") {
+    const motorSettings = this.settings.motors[motor];
+    motorSettings.hertz = (motorSettings.maxSpeed * motorSettings.stepOneRev * motorSettings.microstep) / motorSettings.pitch;
+  }
+
   saveSettings() {
+    // Aggiorna gli hertz per tutti i motori prima di salvare
+    this.updateMotorHertz("syringe");
+    this.updateMotorHertz("extruder");
+    this.updateMotorHertz("conveyor");
+
     console.log("Dati inviati al backend:", this.settings); // Log dei dati
     this.configService.updateSettings(this.settings).subscribe({
       next: (response) => {
