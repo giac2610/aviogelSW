@@ -6,4 +6,4 @@ backend/requirments.txt
 
 *.pyc
 __pycache__/
-# backend/config/setup.json
+backend/config/setup.json
