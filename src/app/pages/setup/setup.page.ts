@@ -1,17 +1,18 @@
 import { MotorsControlService } from './../../services/motors-control.service';
-import { Component, OnInit } from '@angular/core';
+import { Component, OnInit, OnDestroy } from '@angular/core';
 import { Router } from '@angular/router';
 import { ToastController } from '@ionic/angular';
 import { SetupAPIService, Settings } from 'src/app/services/setup-api.service';
-import { debounceTime, Subject } from 'rxjs';
+import { debounceTime, Subject, interval, Subscription } from 'rxjs';
 import { LedService } from 'src/app/services/led.service';
+
 @Component({
   selector: 'app-setup',
   templateUrl: './setup.page.html',
   styleUrls: ['./setup.page.scss'],
   standalone: false,
 })
-export class SetupPage implements OnInit {
+export class SetupPage implements OnInit, OnDestroy {
   selectedMotor: string = 'none';
   settings!: Settings;
   testMode: boolean = false;
@@ -35,6 +36,15 @@ travels: { [key in "syringe" | "extruder" | "conveyor"]: number } = {
   extruder: 0,
   conveyor: 0
 };
+
+currentSpeeds: { syringe: number; extruder: number; conveyor: number } = {
+  syringe: 0,
+  extruder: 0,
+  conveyor: 0
+};
+
+speedPollingSubscription!: Subscription;
+
   SetupAPIService: any;
 
   private cameraSettingsSubject = new Subject<Settings['camera']>();
@@ -44,6 +54,9 @@ travels: { [key in "syringe" | "extruder" | "conveyor"]: number } = {
   ngOnInit() {
     this.isLoading = true;
     this.loadConfig();
+
+    // Avvia il polling della velocità in modalità test
+    this.startSpeedPolling();
 
     // Ascolta i cambiamenti nei settaggi della camera e invia al backend
     this.cameraSettingsSubject.pipe(debounceTime(300)).subscribe((cameraSettings) => {
@@ -59,6 +72,29 @@ travels: { [key in "syringe" | "extruder" | "conveyor"]: number } = {
 
     // this.presentToast('Caricamento in corso...', 'primary');
     // console.log('test');
+  }
+
+  startSpeedPolling() {
+    this.speedPollingSubscription = interval(500).subscribe(() => {
+      this.configService.getCurrentSpeeds().subscribe({
+        next: (speeds) => {
+          this.currentSpeeds = speeds; // Rimosso il cast esplicito
+        },
+        error: (error) => {
+          console.error('Errore durante il polling della velocità:', error);
+        }
+      });
+    });
+  }
+
+  stopSpeedPolling() {
+    if (this.speedPollingSubscription) {
+      this.speedPollingSubscription.unsubscribe();
+    }
+  }
+
+  ngOnDestroy() {
+    this.stopSpeedPolling();
   }
 
   loadConfig() {

@@ -92,4 +92,9 @@ export class SetupAPIService {
       const url = `${this.apiUrl}motors/move/`;
       return this.http.post(url, { targets: { ...targets } }); // Ensure targets are properly spread into the body
     }
+
+    getCurrentSpeeds(): Observable<{ syringe: number; extruder: number; conveyor: number }> {
+      const url = `${this.apiUrl}motors/speeds/`;
+      return this.http.get<{ syringe: number; extruder: number; conveyor: number }>(url);
+    }
 }

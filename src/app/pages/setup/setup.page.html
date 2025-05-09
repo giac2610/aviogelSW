@@ -101,6 +101,10 @@
             <ion-item>
               <ion-input label="spostamento in mm" placeholder="inserisci uno spostamento" type="number" [(ngModel)]="travels.extruder"></ion-input>
             </ion-item>
+            <ion-item>
+              <ion-label>Velocità Corrente:</ion-label>
+              <ion-badge color="primary">{{ currentSpeeds.extruder }} mm/s</ion-badge>
+            </ion-item>
             <ion-item class="iconContainer">
               <!-- <div class="iconContainer"> -->
                 <ion-button size="large" (click)="goHome('extruder')">
@@ -191,6 +195,10 @@
             <ion-item>
               <ion-input label="spostamento in mm" placeholder="inserisci uno spostamento" type="number" [(ngModel)]="travels.conveyor"></ion-input>
             </ion-item>
+            <ion-item>
+              <ion-label>Velocità Corrente:</ion-label>
+              <ion-badge color="primary">{{ currentSpeeds.conveyor }} mm/s</ion-badge>
+            </ion-item>
             <ion-item class="iconContainer">
               <!-- <div class="iconContainer"> -->
                 <ion-button size="large"(click)="goHome('conveyor')">
@@ -280,6 +288,10 @@
           <div *ngIf="testMode">
             <ion-item>
               <ion-input label="spostamento in mm" placeholder="inserisci uno spostamento" type="number" [(ngModel)]="travels.syringe"></ion-input>
+            </ion-item>
+            <ion-item>
+              <ion-label>Velocità Corrente:</ion-label>
+              <ion-badge color="primary">{{ currentSpeeds.syringe }} mm/s</ion-badge>
             </ion-item>
             <ion-item class="iconContainer">
                 <ion-button size="large" (click)="goHome('syringe')">
