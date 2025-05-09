@@ -136,33 +136,29 @@ def move_motor(request):
 
         data = json.loads(request.body)
         targets = data.get("targets", {})  # Dizionario con i target per ogni motore
-        print("Targets ricevuti:", targets)
     except Exception as e:
         return JsonResponse({"error": "Dati non validi", "detail": str(e)}, status=400)
 
     threads = []
+    movement_data = {}
 
     # Gestione dell'EN per syringe e altri motori
     if "syringe" in targets:
-        # Disabilita conveyor ed extruder se syringe è nei target
         for motor_id in ["conveyor", "extruder"]:
             motor = MOTORS.get(motor_id)
             if motor:
-                pi.write(motor["EN"], 1)  # Disabilita conveyor ed extruder
-        # Abilita syringe
+                pi.write(motor["EN"], 1)
         syringe_motor = MOTORS.get("syringe")
         if syringe_motor:
-            pi.write(syringe_motor["EN"], 0)  # Abilita syringe
+            pi.write(syringe_motor["EN"], 0)
     elif any(motor_id in targets for motor_id in ["conveyor", "extruder"]):
-        # Disabilita syringe se conveyor o extruder sono nei target
         syringe_motor = MOTORS.get("syringe")
         if syringe_motor:
-            pi.write(syringe_motor["EN"], 1)  # Disabilita syringe
-        # Abilita conveyor ed extruder
+            pi.write(syringe_motor["EN"], 1)
         for motor_id in ["conveyor", "extruder"]:
             motor = MOTORS.get(motor_id)
             if motor:
-                pi.write(motor["EN"], 0)  # Abilita conveyor ed extruder
+                pi.write(motor["EN"], 0)
 
     for motor_id, target in targets.items():
         if motor_id not in MOTORS:
@@ -181,18 +177,19 @@ def move_motor(request):
         steps = abs(distance) * params["steps_per_mm"]
         total_steps = int(steps)
 
-        # Stampa i dati utilizzati per il movimento
-        print(f"Motore: {motor_id}")
-        print(f"Target distanza: {distance} mm")
-        print(f"Direzione: {'Avanti' if direction == 1 else 'Indietro'}")
-        print(f"Passi totali: {total_steps}")
-        print(f"Parametri calcolati: {params}")
+        # Aggiungi i dati del movimento alla risposta
+        movement_data[motor_id] = {
+            "target_distance": distance,
+            "direction": "Avanti" if direction == 1 else "Indietro",
+            "total_steps": total_steps,
+            "params": params,
+        }
 
         running_flags[motor_id] = True
 
         thread = threading.Thread(
             target=motor_thread,
-            args=(motor_id, total_steps, params),  # Passa solo i parametri necessari
+            args=(motor_id, total_steps, params),
             daemon=True
         )
         threads.append(thread)
@@ -201,7 +198,7 @@ def move_motor(request):
     for thread in threads:
         thread.join()
 
-    return JsonResponse({"status": "Movimento avviato", "targets": targets})
+    return JsonResponse({"status": "Movimento avviato", "movement_data": movement_data})
 
 def motor_thread(motor_id, total_steps, params):
     """
