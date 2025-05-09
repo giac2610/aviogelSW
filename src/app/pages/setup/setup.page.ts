@@ -135,6 +135,7 @@ speedPollingSubscription!: Subscription;
             next: (response) => {
                 // Mostra il messaggio JSON restituito dal backend
                 this.presentToast(`Successo: ${response.status} - Target: ${JSON.stringify(response.targets)}`, 'success');
+                console.log('Risposta dal backend:', response);
             },
             error: (error) => {
                 // Mostra l'errore JSON restituito dal backend
