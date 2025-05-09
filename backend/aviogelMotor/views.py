@@ -136,7 +136,7 @@ def move_motor(request):
 
         data = json.loads(request.body)
         targets = data.get("targets", {})  # Dizionario con i target per ogni motore
-        print("Targets:", targets)
+        print("Targets ricevuti:", targets)
     except Exception as e:
         return JsonResponse({"error": "Dati non validi", "detail": str(e)}, status=400)
 
@@ -149,24 +149,20 @@ def move_motor(request):
             motor = MOTORS.get(motor_id)
             if motor:
                 pi.write(motor["EN"], 1)  # Disabilita conveyor ed extruder
-                # print(f"Disabilitato {motor_id}")
         # Abilita syringe
         syringe_motor = MOTORS.get("syringe")
         if syringe_motor:
             pi.write(syringe_motor["EN"], 0)  # Abilita syringe
-            # print(f"Disabilitato {motor_id}")
     elif any(motor_id in targets for motor_id in ["conveyor", "extruder"]):
         # Disabilita syringe se conveyor o extruder sono nei target
         syringe_motor = MOTORS.get("syringe")
         if syringe_motor:
             pi.write(syringe_motor["EN"], 1)  # Disabilita syringe
-            # print(f"Disabilitato {motor_id}")
         # Abilita conveyor ed extruder
         for motor_id in ["conveyor", "extruder"]:
             motor = MOTORS.get(motor_id)
             if motor:
                 pi.write(motor["EN"], 0)  # Abilita conveyor ed extruder
-                # print(f"Disabilitato {motor_id}")
 
     for motor_id, target in targets.items():
         if motor_id not in MOTORS:
@@ -184,6 +180,13 @@ def move_motor(request):
         params = compute_motor_params(motor_id)
         steps = abs(distance) * params["steps_per_mm"]
         total_steps = int(steps)
+
+        # Stampa i dati utilizzati per il movimento
+        print(f"Motore: {motor_id}")
+        print(f"Target distanza: {distance} mm")
+        print(f"Direzione: {'Avanti' if direction == 1 else 'Indietro'}")
+        print(f"Passi totali: {total_steps}")
+        print(f"Parametri calcolati: {params}")
 
         running_flags[motor_id] = True
 
