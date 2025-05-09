@@ -75,16 +75,16 @@ speedPollingSubscription!: Subscription;
   }
 
   startSpeedPolling() {
-    this.speedPollingSubscription = interval(10).subscribe(() => {
-      this.configService.getCurrentSpeeds().subscribe({
-        next: (speeds) => {
-          this.currentSpeeds = speeds; // Rimosso il cast esplicito
-        },
-        error: (error) => {
-          console.error('Errore durante il polling della velocità:', error);
-        }
-      });
-    });
+    // this.speedPollingSubscription = interval(10).subscribe(() => {
+    //   this.configService.getCurrentSpeeds().subscribe({
+    //     next: (speeds) => {
+    //       this.currentSpeeds = speeds; // Rimosso il cast esplicito
+    //     },
+    //     error: (error) => {
+    //       console.error('Errore durante il polling della velocità:', error);
+    //     }
+    //   });
+    // });
   }
 
   stopSpeedPolling() {
