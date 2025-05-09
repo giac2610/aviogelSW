@@ -189,7 +189,7 @@ def move_motor(request):
 
         thread = threading.Thread(
             target=motor_thread,
-            args=(motor_id, motor, total_steps, params),
+            args=(motor_id, total_steps, params),  # Passa solo i parametri necessari
             daemon=True
         )
         threads.append(thread)
@@ -200,49 +200,50 @@ def move_motor(request):
 
     return JsonResponse({"status": "Movimento avviato", "targets": targets})
 
-def motor_thread(motor_id, motor, total_steps, params):
+def motor_thread(motor_id, total_steps, params):
     """
-    Thread per il movimento trapezoidale del motore.
+    Controlla il movimento del motore utilizzando hardware_PWM con una forma trapezoidale.
+    Ogni ciclo corrisponde a uno step del motore.
     """
-    global current_speeds
+    global running_flags
+
     steps_per_mm = params["steps_per_mm"]
     max_freq = params["max_freq"]
-    acceleration = params["acceleration"]
-    deceleration = params["deceleration"]
-    accel_steps = min(params["accel_steps"], total_steps // 2)
-    decel_steps = min(params["decel_steps"], total_steps // 2)
-    constant_steps = total_steps - accel_steps - decel_steps
+    accel_steps = params["accel_steps"]
+    decel_steps = params["decel_steps"]
 
-    try:
-        # Accelerazione
-        for step in range(accel_steps):
-            if not running_flags[motor_id]:
-                break
-            current_freq = acceleration * step / steps_per_mm
-            current_speeds[motor_id] = current_freq / steps_per_mm
-            pi.hardware_PWM(motor["STEP"], int(current_freq), 500000)  # Usa hardware_PWM
-            time.sleep(1 / current_freq)
+    motor = MOTORS[motor_id]
+    step_pin = motor["STEP"]
 
-        # Velocità costante
-        pi.hardware_PWM(motor["STEP"], int(max_freq), 500000)  # Usa hardware_PWM
-        for step in range(constant_steps):
-            if not running_flags[motor_id]:
-                break
-            current_speeds[motor_id] = max_freq / steps_per_mm
-            time.sleep(1 / max_freq)
+    current_step = 0
+    duty_cycle = 500000  # 50% duty cycle (range 0-1000000)
+    
+    while current_step < total_steps and running_flags[motor_id]:
+        if current_step < accel_steps:
+            # Accelerazione
+            freq = (current_step / accel_steps) * max_freq
+        elif current_step > total_steps - decel_steps:
+            # Decelerazione
+            remaining_steps = total_steps - current_step
+            freq = (remaining_steps / decel_steps) * max_freq
+        else:
+            # Velocità costante
+            freq = max_freq
 
-        # Decelerazione
-        for step in range(decel_steps):
-            if not running_flags[motor_id]:
-                break
-            current_freq = max_freq - deceleration * step / steps_per_mm
-            current_speeds[motor_id] = current_freq / steps_per_mm
-            pi.hardware_PWM(motor["STEP"], int(current_freq), 500000)  # Usa hardware_PWM
-            time.sleep(1 / current_freq)
-    finally:
-        current_speeds[motor_id] = 0
-        pi.hardware_PWM(motor["STEP"], 0, 0)  # Ferma il PWM
-        running_flags[motor_id] = False
+        freq = min(freq, max_freq)  # Limita la frequenza al massimo definito
+
+        # Imposta il segnale PWM
+        pi.hardware_PWM(step_pin, int(freq), duty_cycle)
+
+        # Calcola la durata del ciclo in base alla frequenza
+        step_duration = 1 / freq if freq > 0 else 0
+        time.sleep(step_duration)  # Pausa per sincronizzare con lo step
+
+        current_step += 1
+
+    # Ferma il motore al termine
+    pi.hardware_PWM(step_pin, 0, 0)
+    running_flags[motor_id] = False
 
 # ------------------------------------------------------------------------------
 # API: Stop motori
