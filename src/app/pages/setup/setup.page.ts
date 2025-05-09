@@ -75,7 +75,7 @@ speedPollingSubscription!: Subscription;
   }
 
   startSpeedPolling() {
-    this.speedPollingSubscription = interval(500).subscribe(() => {
+    this.speedPollingSubscription = interval(10).subscribe(() => {
       this.configService.getCurrentSpeeds().subscribe({
         next: (speeds) => {
           this.currentSpeeds = speeds; // Rimosso il cast esplicito
