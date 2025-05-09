@@ -3,14 +3,23 @@ import json
 import os
 from unittest.mock import MagicMock
 
-# Percorso relativo al file setup.json
-SETUP_JSON_PATH = os.path.join(os.path.dirname(__file__), '../config/setup.json')
+# Percorsi dei file di configurazione
+CONFIG_DIR = os.path.join(os.path.dirname(__file__), '../config')
+SETUP_JSON_PATH = os.path.join(CONFIG_DIR, 'setup.json')
+EXAMPLE_JSON_PATH = os.path.join(CONFIG_DIR, 'setup.example.json')
 
-# Carica i parametri iniziali da setup.json
+# Verifica ed eventualmente rigenera setup.json
+if not os.path.exists(SETUP_JSON_PATH):
+    if not os.path.exists(EXAMPLE_JSON_PATH):
+        raise FileNotFoundError(f"File di esempio mancante: {EXAMPLE_JSON_PATH}")
+    from shutil import copyfile
+    copyfile(EXAMPLE_JSON_PATH, SETUP_JSON_PATH)
+    print(f"[INFO] File di configurazione creato da setup.example.json")
+
+# Caricamento configurazione
 with open(SETUP_JSON_PATH, 'r') as f:
     config = json.load(f)
-camera_settings = config["camera"]
-
+camera_settings = config.get("camera", {})
 # Switch automatico per macOS
 if sys.platform == "darwin":
     import cv2

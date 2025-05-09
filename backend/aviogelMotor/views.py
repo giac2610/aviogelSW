@@ -17,11 +17,23 @@ from rest_framework.decorators import api_view
 
 SETTINGS_FILE = os.path.join(settings.BASE_DIR, 'config', 'setup.json')
 
+# Percorsi dei file di configurazione
+CONFIG_DIR = os.path.join(os.path.dirname(__file__), '../config')
+SETTINGS_FILE = os.path.join(CONFIG_DIR, 'setup.json')
+EXAMPLE_JSON_PATH = os.path.join(SETTINGS_FILE, 'setup.example.json')
+
+# Verifica ed eventualmente rigenera setup.json
+if not os.path.exists(SETTINGS_FILE):
+    if not os.path.exists(EXAMPLE_JSON_PATH):
+        raise FileNotFoundError(f"File di esempio mancante: {EXAMPLE_JSON_PATH}")
+    from shutil import copyfile
+    copyfile(EXAMPLE_JSON_PATH, SETTINGS_FILE)
+    print(f"[INFO] File di configurazione creato da setup.example.json")
 # ------------------------------------------------------------------------------
 # Caricamento configurazione
 # ------------------------------------------------------------------------------
 def load_motor_config():
-    with open("config/setup.json", "r") as file:
+    with open(SETTINGS_FILE, "r") as file:
         return json.load(file)
 
 def reload_motor_config():
