@@ -207,14 +207,11 @@ def motor_thread(motor_id, motor, total_steps, params):
     global current_speeds
     steps_per_mm = params["steps_per_mm"]
     max_freq = params["max_freq"]
-    acceleration = params["acceleration"]  # Ora preso dai parametri
-    deceleration = params["deceleration"]  # Ora preso dai parametri
+    acceleration = params["acceleration"]
+    deceleration = params["deceleration"]
     accel_steps = min(params["accel_steps"], total_steps // 2)
     decel_steps = min(params["decel_steps"], total_steps // 2)
     constant_steps = total_steps - accel_steps - decel_steps
-
-    def calculate_step_time(freq):
-        return 1 / max(1, freq)
 
     try:
         # Accelerazione
@@ -223,18 +220,16 @@ def motor_thread(motor_id, motor, total_steps, params):
                 break
             current_freq = acceleration * step / steps_per_mm
             current_speeds[motor_id] = current_freq / steps_per_mm
-            pi.write(motor["STEP"], 1)
-            time.sleep(calculate_step_time(current_freq))
-            pi.write(motor["STEP"], 0)
+            pi.hardware_PWM(motor["STEP"], int(current_freq), 500000)  # Usa hardware_PWM
+            time.sleep(1 / current_freq)
 
         # Velocità costante
+        pi.hardware_PWM(motor["STEP"], int(max_freq), 500000)  # Usa hardware_PWM
         for step in range(constant_steps):
             if not running_flags[motor_id]:
                 break
             current_speeds[motor_id] = max_freq / steps_per_mm
-            pi.write(motor["STEP"], 1)
-            time.sleep(calculate_step_time(max_freq))
-            pi.write(motor["STEP"], 0)
+            time.sleep(1 / max_freq)
 
         # Decelerazione
         for step in range(decel_steps):
@@ -242,12 +237,11 @@ def motor_thread(motor_id, motor, total_steps, params):
                 break
             current_freq = max_freq - deceleration * step / steps_per_mm
             current_speeds[motor_id] = current_freq / steps_per_mm
-            pi.write(motor["STEP"], 1)
-            time.sleep(calculate_step_time(current_freq))
-            pi.write(motor["STEP"], 0)
+            pi.hardware_PWM(motor["STEP"], int(current_freq), 500000)  # Usa hardware_PWM
+            time.sleep(1 / current_freq)
     finally:
         current_speeds[motor_id] = 0
-        pi.write(motor["STEP"], 0)
+        pi.hardware_PWM(motor["STEP"], 0, 0)  # Ferma il PWM
         running_flags[motor_id] = False
 
 # ------------------------------------------------------------------------------
