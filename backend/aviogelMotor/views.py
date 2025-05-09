@@ -209,8 +209,8 @@ def motor_thread(motor_id, total_steps, params):
 
     steps_per_mm = params["steps_per_mm"]
     max_freq = params["max_freq"]
-    accel_steps = params["accel_steps"]
-    decel_steps = params["decel_steps"]
+    accel_steps = min(params["accel_steps"], total_steps // 2)  # Limita gli step di accelerazione
+    decel_steps = min(params["decel_steps"], total_steps // 2)  # Limita gli step di decelerazione
 
     motor = MOTORS[motor_id]
     step_pin = motor["STEP"]
