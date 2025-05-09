@@ -6,6 +6,7 @@ import sys
 from django.conf import settings
 from unittest.mock import MagicMock
 from .serializers import SettingsSerializer
+from django.views.decorators.csrf import csrf_exempt
 
 # SU MAC: Simula il modulo pigpio per evitare errori
 if sys.platform == "darwin":
@@ -69,6 +70,9 @@ for motor in MOTORS.values():
     pi.set_mode(motor["EN"], pigpio.OUTPUT)    
 
 running_flags = {"extruder": False, "conveyor": False, "syringe": False}
+
+# Variabile globale per memorizzare le velocità correnti
+current_speeds = {"extruder": 0, "conveyor": 0, "syringe": 0}
 
 # ------------------------------------------------------------------------------
 # Funzione di conversione passi e frequenza
@@ -169,40 +173,39 @@ def move_motor(request):
         running_flags[motor_id] = True
 
         def motor_thread(motor_id, motor, total_steps, step_time, steps_per_mm, max_freq, acceleration, deceleration):
+            global current_speeds
             try:
                 accel_steps = min(int((max_freq ** 2) / (2 * acceleration * steps_per_mm)), total_steps // 2)
                 decel_steps = min(int((max_freq ** 2) / (2 * deceleration * steps_per_mm)), total_steps // 2)
                 constant_steps = total_steps - accel_steps - decel_steps
 
-                # Precalcolo dei tempi per accelerazione e decelerazione
-                accel_step_times = [
-                    1 / min(max_freq, acceleration * step / steps_per_mm)
-                    for step in range(1, accel_steps + 1)
-                ]
-                decel_step_times = [
-                    1 / max(1, max_freq - deceleration * step / steps_per_mm)
-                    for step in range(1, decel_steps + 1)
-                ]
-
                 # Accelerazione
-                for step_time in accel_step_times:
+                for step in range(accel_steps):
                     if not running_flags[motor_id]:
                         break
-                    pi.hardware_PWM(motor["STEP"], int(1 / step_time), 500000)
-                    time.sleep(step_time)
+                    current_speed = min(max_freq, acceleration * step / steps_per_mm)
+                    current_speeds[motor_id] = current_speed / steps_per_mm  # Converti in mm/s
+                    pi.hardware_PWM(motor["STEP"], int(current_speed), 500000)
+                    time.sleep(1 / current_speed)
 
                 # Velocità costante
-                if running_flags[motor_id]:
-                    pi.hardware_PWM(motor["STEP"], int(max_freq), 500000)
-                    time.sleep(step_time * constant_steps)
-
-                # Decelerazione
-                for step_time in decel_step_times:
+                for step in range(constant_steps):
                     if not running_flags[motor_id]:
                         break
-                    pi.hardware_PWM(motor["STEP"], int(1 / step_time), 500000)
+                    current_speeds[motor_id] = max_freq / steps_per_mm  # Converti in mm/s
+                    pi.hardware_PWM(motor["STEP"], int(max_freq), 500000)
                     time.sleep(step_time)
+
+                # Decelerazione
+                for step in range(decel_steps):
+                    if not running_flags[motor_id]:
+                        break
+                    current_speed = max(0, max_freq - deceleration * step / steps_per_mm)
+                    current_speeds[motor_id] = current_speed / steps_per_mm  # Converti in mm/s
+                    pi.hardware_PWM(motor["STEP"], int(current_speed), 500000)
+                    time.sleep(1 / current_speed)
             finally:
+                current_speeds[motor_id] = 0  # Imposta la velocità a 0 quando il motore si ferma
                 pi.hardware_PWM(motor["STEP"], 0, 0)
                 running_flags[motor_id] = False
 
@@ -266,3 +269,18 @@ def save_motor_config(request):
     
     # Restituisci errori di validazione
     return JsonResponse(serializer.errors, status=400)
+
+@csrf_exempt
+@api_view(['GET'])
+def get_motor_speeds(request):
+    """
+    Restituisce le velocità correnti dei motori.
+    """
+    global current_speeds
+    # Assicurarsi che le chiavi siano sempre presenti
+    response = {
+        "syringe": current_speeds.get("syringe", 0),
+        "extruder": current_speeds.get("extruder", 0),
+        "conveyor": current_speeds.get("conveyor", 0),
+    }
+    return JsonResponse(response)
