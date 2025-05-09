@@ -20,7 +20,7 @@ SETTINGS_FILE = os.path.join(settings.BASE_DIR, 'config', 'setup.json')
 # Percorsi dei file di configurazione
 CONFIG_DIR = os.path.join(os.path.dirname(__file__), '../config')
 SETTINGS_FILE = os.path.join(CONFIG_DIR, 'setup.json')
-EXAMPLE_JSON_PATH = os.path.join(SETTINGS_FILE, 'setup.example.json')
+EXAMPLE_JSON_PATH = os.path.join(CONFIG_DIR, 'setup.example.json')
 
 # Verifica ed eventualmente rigenera setup.json
 if not os.path.exists(SETTINGS_FILE):
