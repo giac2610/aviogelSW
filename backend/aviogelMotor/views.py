@@ -87,20 +87,17 @@ def compute_motor_params(motor_id):
     pitch = motor_conf.get("pitch", 5)
     maxSpeed = motor_conf.get("maxSpeed", 250.0)
     acceleration = motor_conf.get("acceleration", 800.0)
-    deceleration = motor_conf.get("deceleration", 1200.0)
 
     steps_per_mm = (stepOneRev * microstep) / pitch
     max_freq = maxSpeed * steps_per_mm
     accel_steps = int((max_freq ** 2) / (2 * acceleration * steps_per_mm))
-    decel_steps = int((max_freq ** 2) / (2 * deceleration * steps_per_mm))
 
     return {
         "steps_per_mm": steps_per_mm,
         "max_freq": max(1, max_freq),
         "accel_steps": accel_steps,
-        "decel_steps": decel_steps,
+        "decel_steps": accel_steps,  # Usato lo stesso valore di accel_steps
         "acceleration": acceleration,
-        "deceleration": deceleration,
     }
 
 def write_settings(data):
@@ -304,3 +301,18 @@ def get_motor_speeds(request):
         "conveyor": current_speeds.get("conveyor", 0),
     }
     return JsonResponse(response)
+
+@api_view(['GET'])
+def get_settings(request):
+    """
+    Restituisce la configurazione attuale dei motori, inclusi gli steps_per_mm calcolati.
+    """
+    try:
+        reload_motor_config()
+        settings_with_steps = config.copy()
+        for motor_id in motor_configs.keys():
+            params = compute_motor_params(motor_id)
+            settings_with_steps["motors"][motor_id]["stepsPerMm"] = params["steps_per_mm"]
+        return JsonResponse(settings_with_steps)
+    except Exception as e:
+        return JsonResponse({"error": "Errore durante il caricamento delle impostazioni", "detail": str(e)}, status=500)

@@ -7,9 +7,9 @@
              "pitch": 3.78,
              "maxSpeed": 250.0,
              "acceleration": 800.0,
-             "deceleration": 1200.0,
              "maxTravel": 150.0,
-             "hertz": 0.0
+             "hertz": 0.0,
+             "stepsPerMm": 423.28
          },
          "conveyor": {
              "homeDir": 1,
@@ -18,9 +18,9 @@
              "pitch": 10.0,
              "maxSpeed": 250.0,
              "acceleration": 1000.0,
-             "deceleration": 1000.0,
              "maxTravel": 100.0,
-             "hertz": 0.0
+             "hertz": 0.0,
+             "stepsPerMm": 160.0
          },
          "syringe": {
              "homeDir": 1,
@@ -29,9 +29,9 @@
              "pitch": 3.78,
              "maxSpeed": 250.0,
              "acceleration": 800.0,
-             "deceleration": 1200.0,
              "maxTravel": 100.0,
-             "hertz": 0.0
+             "hertz": 0.0,
+             "stepsPerMm": 423.28
          }
      },
      "camera": {
