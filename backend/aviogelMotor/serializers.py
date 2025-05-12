@@ -3,7 +3,7 @@ from rest_framework import serializers
 class MotorSettingsSerializer(serializers.Serializer):
     homeDir = serializers.IntegerField()  # 0 o 1
     stepOneRev = serializers.FloatField()
-    microstep = serializers.ChoiceField(choices=[2, 4, 8, 16, 32, 64, 128])
+    microstep = serializers.ChoiceField(choices=[1, 2, 4, 8, 16, 32, 64, 128])
     pitch = serializers.FloatField()
     maxSpeed = serializers.FloatField()
     acceleration = serializers.FloatField()
