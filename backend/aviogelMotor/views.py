@@ -301,18 +301,3 @@ def get_motor_speeds(request):
         "conveyor": current_speeds.get("conveyor", 0),
     }
     return JsonResponse(response)
-
-@api_view(['GET'])
-def get_settings(request):
-    """
-    Restituisce la configurazione attuale dei motori, inclusi gli steps_per_mm calcolati.
-    """
-    try:
-        reload_motor_config()
-        settings_with_steps = config.copy()
-        for motor_id in motor_configs.keys():
-            params = compute_motor_params(motor_id)
-            settings_with_steps["motors"][motor_id]["stepsPerMm"] = params["steps_per_mm"]
-        return JsonResponse(settings_with_steps)
-    except Exception as e:
-        return JsonResponse({"error": "Errore durante il caricamento delle impostazioni", "detail": str(e)}, status=500)
