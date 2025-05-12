@@ -178,10 +178,12 @@ speedPollingSubscription!: Subscription;
   }
 
   saveSettings() {
-    // Aggiorna gli hertz per tutti i motori prima di salvare
-    this.updateMotorHertz("syringe");
-    this.updateMotorHertz("extruder");
-    this.updateMotorHertz("conveyor");
+    // Aggiorna gli hertz e gli stepsPerMm per tutti i motori prima di salvare
+    ["syringe", "extruder", "conveyor"].forEach((motor) => {
+      const motorSettings = this.settings.motors[motor as "syringe" | "extruder" | "conveyor"];
+      motorSettings.hertz = (motorSettings.maxSpeed * motorSettings.stepOneRev * motorSettings.microstep) / motorSettings.pitch;
+      motorSettings.stepsPerMm = (motorSettings.stepOneRev * motorSettings.microstep) / motorSettings.pitch;
+    });
 
     console.log("Dati inviati al backend:", this.settings); // Log dei dati
     this.configService.updateSettings(this.settings).subscribe({
