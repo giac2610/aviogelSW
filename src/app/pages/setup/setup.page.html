@@ -85,7 +85,7 @@
                 </ion-col>
                 <ion-col size="4">
                   <ion-item>
-                    <ion-input label="Deceleration" placeholder="Inserisci la decelerazione in mm/s²" type="number" [(ngModel)]="settings.motors.extruder.deceleration"></ion-input>
+                    <ion-input disabled="true" label="Step per mm" placeholder="" type="number" [value]="settings.motors.extruder.stepsPerMm"></ion-input>
                   </ion-item>
                 </ion-col>
                 <ion-col size="4">
@@ -179,7 +179,7 @@
                 </ion-col>
                 <ion-col size="4">
                   <ion-item>
-                    <ion-input label="Deceleration" placeholder="Inserisci la decelerazione in mm/s²" type="number" [(ngModel)]="settings.motors.conveyor.deceleration"></ion-input>
+                    <ion-input disabled="true" label="Step per mm" placeholder="" type="number" [value]="settings.motors.conveyor.stepsPerMm"></ion-input>
                   </ion-item>
                 </ion-col>
                 <ion-col size="4">
@@ -273,7 +273,7 @@
                 </ion-col>
                 <ion-col size="4">
                   <ion-item>
-                    <ion-input label="Deceleration" placeholder="Inserisci la decelerazione in mm/s²" type="number" [(ngModel)]="settings.motors.syringe.deceleration"></ion-input>
+                    <ion-input disabled="true" label="Step per mm" placeholder="" type="number" [value]="settings.motors.syringe.stepsPerMm"></ion-input>
                   </ion-item>
                 </ion-col>
                 <ion-col size="4">

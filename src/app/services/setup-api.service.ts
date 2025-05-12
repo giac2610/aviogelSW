@@ -13,7 +13,8 @@ export interface Settings {
       acceleration: number,
       deceleration: number,
       maxTravel: number,
-      hertz: number
+      hertz: number,
+      stepsPerMm: number
     },
     conveyor:{
       homeDir: 0 | 1,
@@ -24,7 +25,8 @@ export interface Settings {
       acceleration: number,
       deceleration: number,
       maxTravel: number,
-      hertz: number
+      hertz: number,
+      stepsPerMm: number
     },
     syringe:{
       homeDir: 0 | 1,
@@ -35,7 +37,8 @@ export interface Settings {
       acceleration: number,
       deceleration: number,
       maxTravel: number,
-      hertz: number
+      hertz: number,
+      stepsPerMm: number
     }
 
   }

@@ -101,6 +101,12 @@ speedPollingSubscription!: Subscription;
     this.configService.getSettings().subscribe((data: Settings) => {
       this.settings = data;
       this.isLoading = false;
+
+      // Calcola gli stepsPerMm per ogni motore
+      ["syringe", "extruder", "conveyor"].forEach((motor) => {
+        const motorSettings = this.settings.motors[motor as "syringe" | "extruder" | "conveyor"];
+        motorSettings.stepsPerMm = (motorSettings.stepOneRev * motorSettings.microstep) / motorSettings.pitch;
+      });
     });
   }
 
