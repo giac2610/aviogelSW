@@ -120,130 +120,96 @@ def update_config():
 # ------------------------------------------------------------------------------
 # API: Movimento motore
 # ------------------------------------------------------------------------------
+def generate_waveform(motor_targets):
+    """
+    Genera una waveform DMA multicanale per muovere i motori sincronizzati.
+    """
+    wave = []
+    max_total_steps = 0
+    pulse_plan = {}
+
+    # Prepara i parametri
+    for motor_id, distance in motor_targets.items():
+        params = compute_motor_params(motor_id)
+        steps = int(abs(distance) * params["steps_per_mm"])
+        max_freq = params["max_freq"]
+        delay_us = int(1_000_000 / max_freq)  # in microsecondi
+
+        direction = 1 if distance >= 0 else 0
+        motor = MOTORS[motor_id]
+        pi.write(motor["DIR"], direction)
+        pi.write(motor["EN"], 0)
+
+        pulse_plan[motor_id] = {
+            "pin": motor["STEP"],
+            "steps": steps,
+            "delay_us": delay_us,
+            "next_step": 0
+        }
+
+        max_total_steps = max(max_total_steps, steps)
+
+    # Reset wave
+    pi.wave_clear()
+
+    # Timeline simulata (brute-force: 1 step alla volta)
+    t = 0
+    while any(p["next_step"] < p["steps"] for p in pulse_plan.values()):
+        on_pulses = []
+        off_pulses = []
+
+        for motor_id, plan in pulse_plan.items():
+            if t % plan["delay_us"] == 0 and plan["next_step"] < plan["steps"]:
+                on_pulses.append(pigpio.pulse(1 << plan["pin"], 0, 5))
+                off_pulses.append(pigpio.pulse(0, 1 << plan["pin"], plan["delay_us"] - 5))
+                plan["next_step"] += 1
+
+        wave.extend(on_pulses)
+        wave.extend(off_pulses)
+        t += min(p["delay_us"] for p in pulse_plan.values())
+
+    pi.wave_add_generic(wave)
+    wave_id = pi.wave_create()
+    return wave_id
+
+
 @api_view(['POST'])
 def move_motor(request):
     """
-    Muove uno o più motori ai target specificati.
-    Il body della richiesta deve contenere i target per ogni motore.
+    Nuova versione: muove i motori generando una waveform DMA multicanale.
     """
-    global running_flags
     try:
-        # Ricarica le configurazioni aggiornate
         reload_motor_config()
-
         data = json.loads(request.body)
-        targets = data.get("targets", {})  # Dizionario con i target per ogni motore
-    except Exception as e:
-        return JsonResponse({"error": "Dati non validi", "detail": str(e)}, status=400)
+        targets = data.get("targets", {})
+        if not targets:
+            return JsonResponse({"error": "Nessun target fornito"}, status=400)
 
-    threads = []
-    movement_data = {}
+        for motor_id in targets:
+            if motor_id not in MOTORS:
+                return JsonResponse({"error": f"Motore non valido: {motor_id}"}, status=400)
 
-    # Gestione dell'EN per syringe e altri motori
-    if "syringe" in targets:
-        for motor_id in ["conveyor", "extruder"]:
-            motor = MOTORS.get(motor_id)
-            if motor:
-                pi.write(motor["EN"], 1)
-        syringe_motor = MOTORS.get("syringe")
-        if syringe_motor:
-            pi.write(syringe_motor["EN"], 0)
-    elif any(motor_id in targets for motor_id in ["conveyor", "extruder"]):
-        syringe_motor = MOTORS.get("syringe")
-        if syringe_motor:
-            pi.write(syringe_motor["EN"], 1)
-        for motor_id in ["conveyor", "extruder"]:
-            motor = MOTORS.get(motor_id)
-            if motor:
-                pi.write(motor["EN"], 0)
+        # Ferma eventuali movimenti precedenti
+        pi.wave_tx_stop()
 
-    for motor_id, target in targets.items():
-        if motor_id not in MOTORS:
-            return JsonResponse({"error": f"Motore non valido: {motor_id}"}, status=400)
+        wave_id = generate_waveform(targets)
+        if wave_id >= 0:
+            pi.wave_send_once(wave_id)
+            while pi.wave_tx_busy():
+                time.sleep(0.01)
+            pi.wave_delete(wave_id)
 
-        try:
-            distance = float(target)
-        except ValueError:
-            return JsonResponse({"error": f"Target non valido per il motore {motor_id}"}, status=400)
+            # Disattiva EN
+            for motor_id in targets:
+                pi.write(MOTORS[motor_id]["EN"], 1)
 
-        motor = MOTORS[motor_id]
-        direction = 1 if distance >= 0 else 0
-        pi.write(motor["DIR"], direction)
-
-        params = compute_motor_params(motor_id)
-        steps = abs(distance) * params["steps_per_mm"]
-        total_steps = int(steps)
-
-        # Aggiungi i dati del movimento alla risposta
-        movement_data[motor_id] = {
-            "target_distance": distance,
-            "direction": "Avanti" if direction == 1 else "Indietro",
-            "total_steps": total_steps,
-            "params": params,
-        }
-
-        running_flags[motor_id] = True
-
-        thread = threading.Thread(
-            target=motor_thread,
-            args=(motor_id, total_steps, params),
-            daemon=True
-        )
-        threads.append(thread)
-        thread.start()
-
-    for thread in threads:
-        thread.join()
-
-    return JsonResponse({"status": "Movimento avviato", "movement_data": movement_data})
-
-
-def motor_thread(motor_id, total_steps, params):
-    global running_flags
-
-    steps_per_mm = params["steps_per_mm"]
-    max_freq = params["max_freq"]
-    accel_steps = min(params["accel_steps"], total_steps // 2)
-    decel_steps = min(params["decel_steps"], total_steps // 2)
-
-    motor = MOTORS[motor_id]
-    step_pin = motor["STEP"]
-
-    current_step = 0
-    duty_cycle = 500000  # 50% duty cycle (range 0-1000000)
-
-    start_time = time.time()  # Tempo di inizio del movimento
-
-    while current_step < total_steps and running_flags[motor_id]:
-        if current_step < accel_steps:
-            # Accelerazione
-            freq = (current_step / accel_steps) * max_freq
-        elif current_step > total_steps - decel_steps:
-            # Decelerazione
-            remaining_steps = total_steps - current_step
-            freq = (remaining_steps / decel_steps) * max_freq
+            return JsonResponse({"status": "Movimento completato"})
         else:
-            # Velocità costante
-            freq = max_freq
+            return JsonResponse({"error": "Errore creazione waveform"}, status=500)
 
-        freq = min(freq, max_freq)  # Limita la frequenza al massimo definito
+    except Exception as e:
+        return JsonResponse({"error": "Errore interno", "detail": str(e)}, status=500)
 
-        # Imposta il segnale PWM
-        pi.hardware_PWM(step_pin, int(freq), duty_cycle)
-
-        # Calcola il tempo atteso per il prossimo impulso
-        step_duration = 1 / freq if freq > 0 else 0
-        next_step_time = start_time + (current_step + 1) * step_duration
-
-        # Attendi fino al momento corretto per il prossimo impulso
-        while time.time() < next_step_time:
-            pass
-
-        current_step += 1
-
-    # Ferma il motore al termine
-    pi.hardware_PWM(step_pin, 0, 0)
-    running_flags[motor_id] = False
 # ------------------------------------------------------------------------------
 # API: Stop motori
 # ------------------------------------------------------------------------------
