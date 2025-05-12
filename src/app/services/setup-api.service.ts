@@ -7,7 +7,7 @@ export interface Settings {
     extruder:{
       homeDir: 0 | 1,
       stepOneRev: number,
-      microstep:  2 | 4 | 8 | 16 | 32 | 64 | 128,
+      microstep: 1 | 2 | 4 | 8 | 16 | 32 | 64 | 128,
       pitch: number,
       maxSpeed: number,
       acceleration: number,
@@ -19,7 +19,7 @@ export interface Settings {
     conveyor:{
       homeDir: 0 | 1,
       stepOneRev: number,
-      microstep:  2 | 4 | 8 | 16 | 32 | 64 | 128,
+      microstep: 1 | 2 | 4 | 8 | 16 | 32 | 64 | 128,
       pitch: number,
       maxSpeed: number,
       acceleration: number,
@@ -31,7 +31,7 @@ export interface Settings {
     syringe:{
       homeDir: 0 | 1,
       stepOneRev: number,
-      microstep:  2 | 4 | 8 | 16 | 32 | 64 | 128,
+      microstep:  1 | 2 | 4 | 8 | 16 | 32 | 64 | 128,
       pitch: number,
       maxSpeed: number,
       acceleration: number,
