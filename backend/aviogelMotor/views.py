@@ -197,24 +197,23 @@ def move_motor(request):
 
     return JsonResponse({"status": "Movimento avviato", "movement_data": movement_data})
 
+
 def motor_thread(motor_id, total_steps, params):
-    """
-    Controlla il movimento del motore utilizzando hardware_PWM con una forma trapezoidale.
-    Ogni ciclo corrisponde a uno step del motore.
-    """
     global running_flags
 
     steps_per_mm = params["steps_per_mm"]
     max_freq = params["max_freq"]
-    accel_steps = min(params["accel_steps"], total_steps // 2)  # Limita gli step di accelerazione
-    decel_steps = min(params["decel_steps"], total_steps // 2)  # Limita gli step di decelerazione
+    accel_steps = min(params["accel_steps"], total_steps // 2)
+    decel_steps = min(params["decel_steps"], total_steps // 2)
 
     motor = MOTORS[motor_id]
     step_pin = motor["STEP"]
 
     current_step = 0
     duty_cycle = 500000  # 50% duty cycle (range 0-1000000)
-    
+
+    start_time = time.time()  # Tempo di inizio del movimento
+
     while current_step < total_steps and running_flags[motor_id]:
         if current_step < accel_steps:
             # Accelerazione
@@ -232,16 +231,19 @@ def motor_thread(motor_id, total_steps, params):
         # Imposta il segnale PWM
         pi.hardware_PWM(step_pin, int(freq), duty_cycle)
 
-        # Calcola la durata del ciclo in base alla frequenza
+        # Calcola il tempo atteso per il prossimo impulso
         step_duration = 1 / freq if freq > 0 else 0
-        time.sleep(step_duration)  # Pausa per sincronizzare con lo step
+        next_step_time = start_time + (current_step + 1) * step_duration
+
+        # Attendi fino al momento corretto per il prossimo impulso
+        while time.time() < next_step_time:
+            pass
 
         current_step += 1
 
     # Ferma il motore al termine
     pi.hardware_PWM(step_pin, 0, 0)
     running_flags[motor_id] = False
-
 # ------------------------------------------------------------------------------
 # API: Stop motori
 # ------------------------------------------------------------------------------
