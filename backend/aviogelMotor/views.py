@@ -204,6 +204,9 @@ def generate_waveform(motor_targets):
 
         wave.extend(on_pulses + off_pulses)
 
+        # Log the current wave chunk
+        logging.debug(f"Wave chunk generated: {wave}")
+
         if len(wave) >= MAX_PULSES_PER_WAVE:
             wave_ids.append(create_wave(wave[:MAX_PULSES_PER_WAVE]))
             wave = wave[MAX_PULSES_PER_WAVE:]
@@ -215,6 +218,7 @@ def generate_waveform(motor_targets):
 
     if wave:
         wave_ids.append(create_wave(wave))
+
 
     if wave_ids:
         execute_wave_chain(wave_ids)
