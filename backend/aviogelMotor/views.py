@@ -218,10 +218,11 @@ def compute_frequency(plan):
     if plan["accel_steps"] == 0 or plan["decel_steps"] == 0:  # Evita divisione per zero
         return plan["max_freq"]
     if plan["next_step"] < plan["accel_steps"]:
-        return (plan["next_step"] / plan["accel_steps"]) * plan["max_freq"]
+        # Evita frequenza 0.0 durante la fase iniziale
+        return max(1.0, (plan["next_step"] / plan["accel_steps"]) * plan["max_freq"])
     elif plan["next_step"] > plan["steps"] - plan["decel_steps"]:
         remaining_steps = plan["steps"] - plan["next_step"]
-        return (remaining_steps / plan["decel_steps"]) * plan["max_freq"]
+        return max(1.0, (remaining_steps / plan["decel_steps"]) * plan["max_freq"])
     return plan["max_freq"]
 
 def create_wave(pulses):
