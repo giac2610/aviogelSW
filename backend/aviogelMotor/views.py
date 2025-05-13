@@ -113,9 +113,9 @@ def update_config():
     try:
         config = load_motor_config()
         motor_configs = config.get("motors", {})
-        return JsonResponse({}, status=204)  # No Content
+        return JsonResponse({"log": "Configurazione aggiornata", "status": "success"}, status=204)  # No Content
     except Exception as e:
-        return JsonResponse({"error": "Errore caricamento config", "detail": str(e)}, status=500)
+        return JsonResponse({"log": "Errore aggiornamento configurazione", "error": str(e)}, status=500)
 
 # ------------------------------------------------------------------------------
 # API: Movimento motore
@@ -203,11 +203,11 @@ def move_motor(request):
         data = json.loads(request.body)
         targets = data.get("targets", {})
         if not targets:
-            return JsonResponse({"error": "Nessun target fornito"}, status=400)
+            return JsonResponse({"log": "Nessun target fornito", "error": "Input non valido"}, status=400)
 
         for motor_id in targets:
             if motor_id not in MOTORS:
-                return JsonResponse({"error": f"Motore non valido: {motor_id}"}, status=400)
+                return JsonResponse({"log": f"Motore non valido: {motor_id}", "error": "Motore non riconosciuto"}, status=400)
 
         # Gestione del pin EN per evitare interferenze tra i motori
         if "syringe" in targets:
@@ -234,12 +234,12 @@ def move_motor(request):
             for motor_id in targets:
                 pi.write(MOTORS[motor_id]["EN"], 0)
 
-            return JsonResponse({"status": "Movimento completato"})
+            return JsonResponse({"log": "Movimento completato", "status": "success"})
         else:
-            return JsonResponse({"error": "Errore creazione waveform"}, status=500)
+            return JsonResponse({"log": "Errore creazione waveform", "error": "Waveform non valida"}, status=500)
 
     except Exception as e:
-        return JsonResponse({"error": "Errore interno", "detail": str(e)}, status=500)
+        return JsonResponse({"log": "Errore interno durante il movimento", "error": str(e)}, status=500)
 
 # ------------------------------------------------------------------------------
 # API: Stop motori
@@ -247,11 +247,14 @@ def move_motor(request):
 @api_view(['POST'])
 def stop_motor(body):
     global running_flags
-    for key in running_flags:
-        running_flags[key] = False
-    for motor in MOTORS.values():
-        pi.hardware_PWM(motor["STEP"], 0, 0)
-    return JsonResponse({"status": "Motori fermati"})
+    try:
+        for key in running_flags:
+            running_flags[key] = False
+        for motor in MOTORS.values():
+            pi.hardware_PWM(motor["STEP"], 0, 0)
+        return JsonResponse({"log": "Motori fermati con successo", "status": "success"})
+    except Exception as e:
+        return JsonResponse({"log": "Errore durante lo stop dei motori", "error": str(e)}, status=500)
 
 @api_view(['POST'])
 def save_motor_config(request):
@@ -261,7 +264,7 @@ def save_motor_config(request):
         config = load_motor_config()
         settings_data = config.get("motors", {})  # Ottieni i dati dei motori esistenti
     except Exception as e:
-        return JsonResponse({"error": "Errore caricamento config", "detail": str(e)}, status=500)
+        return JsonResponse({"log": "Errore durante il salvataggio della configurazione", "error": str(e)}, status=500)
 
     # Serializza i dati ricevuti
     serializer = SettingsSerializer(data=request.data, partial=True)
@@ -281,7 +284,7 @@ def save_motor_config(request):
         write_settings(config)
         reload_motor_config()
         # Restituisci la configurazione aggiornata
-        return JsonResponse({"success": True, "settings": config})
+        return JsonResponse({"log": "Configurazione salvata con successo", "success": True, "settings": config})
     
     # Restituisci errori di validazione
     return JsonResponse(serializer.errors, status=400)
@@ -293,10 +296,12 @@ def get_motor_speeds(request):
     Restituisce le velocità correnti dei motori.
     """
     global current_speeds
-    # Assicurarsi che le chiavi siano sempre presenti
-    response = {
-        "syringe": current_speeds.get("syringe", 0),
-        "extruder": current_speeds.get("extruder", 0),
-        "conveyor": current_speeds.get("conveyor", 0),
-    }
-    return JsonResponse(response)
+    try:
+        response = {
+            "syringe": current_speeds.get("syringe", 0),
+            "extruder": current_speeds.get("extruder", 0),
+            "conveyor": current_speeds.get("conveyor", 0),
+        }
+        return JsonResponse({"log": "Velocità motori recuperate", "speeds": response})
+    except Exception as e:
+        return JsonResponse({"log": "Errore durante il recupero delle velocità", "error": str(e)}, status=500)
