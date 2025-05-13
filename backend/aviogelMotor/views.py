@@ -170,7 +170,8 @@ def generate_waveform(motor_targets):
     if wave:
         wave_ids.append(create_wave(wave))
 
-    pi.wave_chain([255, 0, wave_id for wave_id in wave_ids])
+    # Correzione: aggiunta di parentesi quadre attorno alla comprensione della lista
+    pi.wave_chain([255, 0] + [wave_id for wave_id in wave_ids])
     return wave_ids
 
 def compute_frequency(plan):
