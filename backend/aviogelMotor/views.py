@@ -205,7 +205,7 @@ def generate_waveform(motor_targets):
         wave.extend(on_pulses + off_pulses)
 
         # Log the current wave chunk
-        logging.debug(f"Wave chunk generated: {wave}")
+        logging.debug(f"Wave chunk generated: {len(on_pulses) + len(off_pulses)} pulses")
 
         if len(wave) >= MAX_PULSES_PER_WAVE:
             wave_ids.append(create_wave(wave[:MAX_PULSES_PER_WAVE]))
