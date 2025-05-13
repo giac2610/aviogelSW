@@ -225,16 +225,20 @@ def move_motor(request):
 
         wave_id = generate_waveform(targets)
         if wave_id >= 0:
-            pi.wave_send_once(wave_id)
-            while pi.wave_tx_busy():
-                time.sleep(0.01)
-            pi.wave_delete(wave_id)
+            def execute_waveform():
+                pi.wave_send_once(wave_id)
+                while pi.wave_tx_busy():
+                    time.sleep(0.01)
+                pi.wave_delete(wave_id)
 
-            # Mantieni EN attivo per i motori in movimento
-            for motor_id in targets:
-                pi.write(MOTORS[motor_id]["EN"], 0)
+                # Mantieni EN attivo per i motori in movimento
+                for motor_id in targets:
+                    pi.write(MOTORS[motor_id]["EN"], 0)
 
-            return JsonResponse({"log": "Movimento completato", "status": "success"})
+            # Esegui la waveform in un thread separato
+            threading.Thread(target=execute_waveform, daemon=True).start()
+
+            return JsonResponse({"log": "Movimento avviato", "status": "success"})
         else:
             return JsonResponse({"log": "Errore creazione waveform", "error": "Waveform non valida"}, status=500)
 
