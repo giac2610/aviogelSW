@@ -236,6 +236,7 @@ def manage_motor_pins(targets):
 
 def ensure_pigpio_connection():
     """Verifica e ristabilisce la connessione a pigpio."""
+    global pi
     if not pi.connected:
         pi.stop()
         time.sleep(1)
