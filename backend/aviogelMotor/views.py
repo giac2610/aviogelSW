@@ -190,6 +190,10 @@ def generate_waveform(motor_targets):
         for motor_id, plan in pulse_plan.items():
             if plan["next_step"] < plan["steps"]:
                 freq = compute_frequency(plan)
+                if freq <= 0:  # Evita divisione per zero
+                    logging.error(f"Frequenza non valida per motore {motor_id}: {freq}")
+                    raise ValueError(f"Frequenza non valida per motore {motor_id}: {freq}")
+                
                 delay_us = int(1000000 / freq)
 
                 on_pulses.append(pigpio.pulse(1 << plan["pin"], 0, 5))
