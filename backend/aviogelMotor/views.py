@@ -219,7 +219,7 @@ def generate_waveform(motor_targets):
     if wave:
         logging.debug(f"Creazione di una nuova waveform con {len(wave)} impulsi.")
         wave_ids.append(create_wave(wave))
-    
+
     if wave_ids:
         logging.debug(f"Esecuzione della wave_chain con {len(wave_ids)} wave_ids.")
         execute_wave_chain(wave_ids)
@@ -233,10 +233,12 @@ def execute_wave_chain(wave_ids):
         chain = []
         for wave_id in wave_ids:
             chain.extend([wave_id, 0])  # Aggiunge il wave_id e un delay di 0
+            logging.debug("STRONZO")
 
         # Aggiunge il comando di ripetizione se necessario
         if len(chain) > 2:
             chain = [255, 0] + chain
+            logging.debug("Aggiunto comando di ripetizione alla wave_chain")
 
         pi.wave_chain(chain)
         while pi.wave_tx_busy():
