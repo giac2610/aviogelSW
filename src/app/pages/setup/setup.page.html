@@ -36,6 +36,9 @@
           <ion-segment-button value="syringe">
             <ion-label>Syringe</ion-label>
           </ion-segment-button>
+          <ion-segment-button value="all">
+            <ion-label>All</ion-label>
+          </ion-segment-button>
         </ion-segment>
         
         <!-- SETTINGS -->
@@ -319,6 +322,24 @@
               <ion-icon slot="end" name="save"></ion-icon>
             </ion-button>
           </div>
+        </ion-list>
+        <ion-list *ngIf="selectedMotor === 'all'">
+          <ion-item *ngFor="let motor of ['extruder', 'conveyor', 'syringe']">
+            <ion-label>{{ motor | titlecase }} </ion-label>
+            <ion-input 
+              label=" Spostamento in mm" 
+              placeholder="Inserisci uno spostamento" 
+              type="number" 
+              [value]="getTravelValue(motor)" 
+              (ionChange)="setTravelValue(motor, $event.detail.value ? +$event.detail.value : 0)">
+            </ion-input>
+          </ion-item>
+          <ion-button 
+            expand="block" 
+            color="primary" 
+            (click)="goToPositionAll(travels.extruder, travels.conveyor, travels.syringe)">
+            Invia Tutti i Motori
+          </ion-button>
         </ion-list>
         <!-- TEST -->
       </ion-card-content>

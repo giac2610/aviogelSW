@@ -277,4 +277,30 @@ speedPollingSubscription!: Subscription;
       error: () => this.presentToast('Errore nel fermare l\'effetto', 'danger')
     });
   }
+
+  goToPositionAll(extruderDistance: number, conveyorDistance: number, syringeDistance: number) {
+    const targets: { [key: string]: number } = {
+      extruder: extruderDistance,
+      conveyor: conveyorDistance,
+      syringe: syringeDistance
+    };
+  
+    this.configService.moveMotor(targets).subscribe({
+      next: (response) => {
+        this.presentToast(`Tutti i motori sono stati mossi con successo: ${JSON.stringify(response.targets)}`, 'success');
+      },
+      error: (error) => {
+        const errorMessage = error.error.detail || error.error.error || error.message;
+        this.presentToast(`Errore durante il movimento dei motori: ${errorMessage}`, 'danger');
+      }
+    });
+  }
+
+  getTravelValue(motor: string): number {
+    return this.travels[motor as "syringe" | "extruder" | "conveyor"] || 0;
+  }
+
+  setTravelValue(motor: string, value: number): void {
+    this.travels[motor as "syringe" | "extruder" | "conveyor"] = value;
+  }
 }

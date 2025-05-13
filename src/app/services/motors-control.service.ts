@@ -31,6 +31,11 @@ export class MotorsControlService {
       return this.http.post<any>(`${this.apiUrl}stop/`, null);
     }
 
+    stopMotors(): Observable<any> {
+      const url = `${this.apiUrl}stop/`;
+      return this.http.post<any>(url, null);
+    }
+
     saveSettings(body: any):Observable<any>{
       const url = `${this.apiUrl}save/`
       return this.http.post<any>(url, body);
