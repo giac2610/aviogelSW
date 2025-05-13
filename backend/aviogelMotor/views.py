@@ -239,6 +239,9 @@ def move_motor(request):
             return JsonResponse({"log": "Errore creazione waveform", "error": "Waveform non valida"}, status=500)
 
     except Exception as e:
+        import traceback
+        error_details = traceback.format_exc()
+        print(f"[ERROR] Movimento motore fallito: {error_details}")
         return JsonResponse({"log": "Errore interno durante il movimento", "error": str(e)}, status=500)
 
 # ------------------------------------------------------------------------------
