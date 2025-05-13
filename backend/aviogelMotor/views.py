@@ -150,12 +150,13 @@ def update_config():
 def generate_waveform(motor_targets):
     """
     Genera una waveform DMA multicanale per muovere i motori sincronizzati,
-    includendo accelerazione e decelerazione. Utilizza una wave chain per
-    gestire un numero elevato di impulsi.
+    includendo accelerazione e decelerazione. Suddivide le onde in chunk per
+    evitare di sovraccaricare il DMA e pigpio.
     """
     wave = []
     pulse_plan = {}
-    MAX_PULSES_PER_WAVE = 10000
+    MAX_PULSES_PER_WAVE = 5000  # Ridotto per evitare sovraccarico
+    MAX_WAVE_CHAIN_SIZE = 255   # Limite massimo per wave_chain
 
     # Prepara i parametri
     for motor_id, distance in motor_targets.items():
@@ -206,12 +207,37 @@ def generate_waveform(motor_targets):
             wave_ids.append(create_wave(wave[:MAX_PULSES_PER_WAVE]))
             wave = wave[MAX_PULSES_PER_WAVE:]
 
+            # Controlla il limite della wave_chain
+            if len(wave_ids) >= MAX_WAVE_CHAIN_SIZE:
+                execute_wave_chain(wave_ids)
+                wave_ids = []
+
     if wave:
         wave_ids.append(create_wave(wave))
 
-    # Correzione: aggiunta di parentesi quadre attorno alla comprensione della lista
-    pi.wave_chain([255, 0] + [wave_id for wave_id in wave_ids])
-    return wave_ids
+    if wave_ids:
+        execute_wave_chain(wave_ids)
+
+def execute_wave_chain(wave_ids):
+    """
+    Esegue una wave_chain in modo sicuro, rispettando i limiti di pigpio.
+    """
+    ensure_pigpio_connection()
+    try:
+        chain = []
+        for wave_id in wave_ids:
+            chain.extend([wave_id, 0])  # Aggiunge il wave_id e un delay di 0
+
+        # Aggiunge il comando di ripetizione se necessario
+        if len(chain) > 2:
+            chain = [255, 0] + chain
+
+        pi.wave_chain(chain)
+        while pi.wave_tx_busy():
+            time.sleep(0.01)
+    except Exception as e:
+        log_error(f"Errore durante l'esecuzione della wave_chain: {e}")
+        raise
 
 def compute_frequency(plan):
     """Calcola la frequenza in base alla fase del movimento."""
