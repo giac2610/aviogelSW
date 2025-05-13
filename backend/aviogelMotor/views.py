@@ -98,6 +98,10 @@ def compute_motor_params(motor_id):
     max_speed = motor_conf.get("maxSpeed", 250.0)
     acceleration = motor_conf.get("acceleration", 800.0)
 
+    # Log dei parametri del motore
+    logging.debug(f"Parametri motore {motor_id}: stepOneRev={step_one_rev}, microstep={microstep}, "
+                  f"pitch={pitch}, maxSpeed={max_speed}, acceleration={acceleration}")
+
     steps_per_mm = (step_one_rev * microstep) / pitch
     max_freq = max(1, max_speed * steps_per_mm)  # Evita frequenze troppo basse
     accel_steps = int((max_freq ** 2) / max(1, (2 * acceleration * steps_per_mm)))  # Evita divisione per zero
@@ -105,6 +109,10 @@ def compute_motor_params(motor_id):
     # Assicuriamoci che accel_steps non sia 0
     if accel_steps == 0:
         accel_steps = 1
+
+    # Log dell'esito dei calcoli
+    logging.debug(f"Esito calcoli per motore {motor_id}: steps_per_mm={steps_per_mm}, max_freq={max_freq}, "
+                  f"accel_steps={accel_steps}, decel_steps={accel_steps}, acceleration={acceleration}")
 
     return {
         "steps_per_mm": steps_per_mm,
@@ -151,6 +159,7 @@ def generate_waveform(motor_targets):
 
     # Prepara i parametri
     for motor_id, distance in motor_targets.items():
+        logging.debug(f"Target ricevuto per motore {motor_id}: distanza={distance}")
         params = compute_motor_params(motor_id)
         steps = int(abs(distance) * params["steps_per_mm"])
         direction = 1 if distance >= 0 else 0
@@ -167,6 +176,9 @@ def generate_waveform(motor_targets):
             "decel_steps": params["decel_steps"],
             "next_step": 0,
         }
+
+        # Log dei dettagli del piano di impulsi
+        logging.debug(f"Piano di impulsi per motore {motor_id}: {pulse_plan[motor_id]}")
 
     # Reset wave
     pi.wave_clear()
