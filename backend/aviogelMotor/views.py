@@ -190,7 +190,7 @@ def generate_waveform(motor_targets):
         for motor_id, plan in pulse_plan.items():
             if plan["next_step"] < plan["steps"]:
                 freq = compute_frequency(plan)
-                delay_us = int(1_000_000 / freq)
+                delay_us = int(1000000 / freq)
 
                 on_pulses.append(pigpio.pulse(1 << plan["pin"], 0, 5))
                 off_pulses.append(pigpio.pulse(0, 1 << plan["pin"], delay_us - 5))
