@@ -85,12 +85,12 @@ def compute_motor_params(motor_id):
     acceleration = motor_conf.get("acceleration", 800.0)
 
     steps_per_mm = (step_one_rev * microstep) / pitch
-    max_freq = max_speed * steps_per_mm
-    accel_steps = int((max_freq ** 2) / (2 * acceleration * steps_per_mm))
+    max_freq = max(1, max_speed * steps_per_mm)  # Evita frequenze troppo basse
+    accel_steps = int((max_freq ** 2) / max(1, (2 * acceleration * steps_per_mm)))  # Evita divisione per zero
 
     return {
         "steps_per_mm": steps_per_mm,
-        "max_freq": max(1, max_freq),
+        "max_freq": max_freq,
         "accel_steps": accel_steps,
         "decel_steps": accel_steps,
         "acceleration": acceleration,
@@ -176,13 +176,14 @@ def generate_waveform(motor_targets):
 
 def compute_frequency(plan):
     """Calcola la frequenza in base alla fase del movimento."""
+    if plan["accel_steps"] == 0 or plan["decel_steps"] == 0:  # Evita divisione per zero
+        return plan["max_freq"]
     if plan["next_step"] < plan["accel_steps"]:
         return (plan["next_step"] / plan["accel_steps"]) * plan["max_freq"]
     elif plan["next_step"] > plan["steps"] - plan["decel_steps"]:
         remaining_steps = plan["steps"] - plan["next_step"]
         return (remaining_steps / plan["decel_steps"]) * plan["max_freq"]
     return plan["max_freq"]
-
 def create_wave(pulses):
     """Crea una waveform e restituisce il suo ID."""
     pi.wave_add_generic(pulses)
