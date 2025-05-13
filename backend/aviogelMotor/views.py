@@ -227,6 +227,7 @@ def compute_frequency(plan):
 
 def create_wave(pulses):
     """Crea una waveform e restituisce il suo ID."""
+    ensure_pigpio_connection()  # Verifica la connessione
     pi.wave_add_generic(pulses)
     return pi.wave_create()
 
@@ -274,6 +275,7 @@ def validate_targets(targets):
 
 def manage_motor_pins(targets):
     """Gestisce i pin EN per evitare interferenze tra i motori."""
+    ensure_pigpio_connection()  # Verifica la connessione
     if "syringe" in targets:
         for motor_id in ["conveyor", "extruder"]:
             pi.write(MOTORS[motor_id]["EN"], 1)
@@ -288,22 +290,26 @@ def ensure_pigpio_connection():
     """Verifica e ristabilisce la connessione a pigpio."""
     global pi
     if not pi.connected:
+        logging.warning("Connessione a pigpio persa. Tentativo di riconnessione...")
         pi.stop()
         time.sleep(1)
         pi = pigpio.pi()
         if not pi.connected:
+            logging.error("Impossibile riconnettersi a pigpio")
             raise Exception("Impossibile riconnettersi a pigpio")
 
 def execute_waveform(wave_ids):
     """Esegue la waveform in un thread separato."""
     try:
+        ensure_pigpio_connection()  # Verifica la connessione
         for wave_id in wave_ids:
             pi.wave_send_once(wave_id)
             while pi.wave_tx_busy():
                 time.sleep(0.01)
             pi.wave_delete(wave_id)
     except Exception as e:
-        print(f"[ERROR] Errore durante l'esecuzione della waveform: {e}")
+        log_error(f"Errore durante l'esecuzione della waveform: {e}")
+        raise
 
 def handle_exception(e):
     """Gestisce le eccezioni e restituisce un JsonResponse."""
