@@ -105,6 +105,7 @@ def compute_motor_params(motor_id):
     steps_per_mm = (step_one_rev * microstep) / pitch
     max_freq = max(1, max_speed * steps_per_mm)  # Evita frequenze troppo basse
     accel_steps = int((max_freq ** 2) / max(1, (2 * acceleration * steps_per_mm)))  # Evita divisione per zero
+    
 
     # Assicuriamoci che accel_steps non sia 0
     if accel_steps == 0:
@@ -173,8 +174,8 @@ def generate_waveform(motor_targets):
             "pin": motor["STEP"],
             "steps": steps,
             "max_freq": params["max_freq"],
-            "accel_steps": params["accel_steps"],
-            "decel_steps": params["decel_steps"],
+            "accel_steps": min(params["accel_steps"], steps // 2),
+            "decel_steps": min(params["decel_steps"], steps // 2),
             "next_step": 0,
         }
 
