@@ -228,8 +228,14 @@ def compute_frequency(plan):
 def create_wave(pulses):
     """Crea una waveform e restituisce il suo ID."""
     ensure_pigpio_connection()  # Verifica la connessione
-    pi.wave_add_generic(pulses)
-    return pi.wave_create()
+    try:
+        pi.wave_add_generic(pulses)
+        return pi.wave_create()
+    except (ConnectionResetError, BrokenPipeError) as e:
+        log_error(f"Errore durante la creazione della waveform: {e}. Tentativo di riconnessione...")
+        ensure_pigpio_connection()  # Riconnessione
+        pi.wave_add_generic(pulses)  # Ritenta l'operazione
+        return pi.wave_create()
 
 @api_view(['POST'])
 def move_motor(request):
