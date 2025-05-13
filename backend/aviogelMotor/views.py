@@ -223,17 +223,28 @@ def move_motor(request):
         # Ferma eventuali movimenti precedenti
         pi.wave_tx_stop()
 
+        # Verifica connessione a pigpio
+        if not pi.connected:
+            pi.stop()
+            time.sleep(1)  # Attendi prima di tentare la riconnessione
+            pi = pigpio.pi()
+            if not pi.connected:
+                raise Exception("Impossibile riconnettersi a pigpio")
+
         wave_id = generate_waveform(targets)
         if wave_id >= 0:
             def execute_waveform():
-                pi.wave_send_once(wave_id)
-                while pi.wave_tx_busy():
-                    time.sleep(0.01)
-                pi.wave_delete(wave_id)
+                try:
+                    pi.wave_send_once(wave_id)
+                    while pi.wave_tx_busy():
+                        time.sleep(0.01)
+                    pi.wave_delete(wave_id)
 
-                # Mantieni EN attivo per i motori in movimento
-                for motor_id in targets:
-                    pi.write(MOTORS[motor_id]["EN"], 0)
+                    # Mantieni EN attivo per i motori in movimento
+                    for motor_id in targets:
+                        pi.write(MOTORS[motor_id]["EN"], 0)
+                except Exception as e:
+                    print(f"[ERROR] Errore durante l'esecuzione della waveform: {e}")
 
             # Esegui la waveform in un thread separato
             threading.Thread(target=execute_waveform, daemon=True).start()
