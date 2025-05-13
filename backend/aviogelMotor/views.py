@@ -217,10 +217,11 @@ def generate_waveform(motor_targets):
                 wave_ids = []
 
     if wave:
+        logging.debug(f"Creazione di una nuova waveform con {len(wave)} impulsi.")
         wave_ids.append(create_wave(wave))
-
-
+    
     if wave_ids:
+        logging.debug(f"Esecuzione della wave_chain con {len(wave_ids)} wave_ids.")
         execute_wave_chain(wave_ids)
 
 def execute_wave_chain(wave_ids):
