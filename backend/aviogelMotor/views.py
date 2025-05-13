@@ -287,7 +287,7 @@ def move_motor(request):
 
         wave_ids = generate_waveform(targets)
         if wave_ids:
-            threading.Thread(target=execute_waveform, args=(wave_ids,), daemon=True).start()
+            threading.Thread(target=execute_wave_chain, args=(wave_ids,), daemon=True).start()
             response = JsonResponse({"log": "Movimento avviato", "status": "success"})
             log_json_response(response)
             return response
@@ -329,19 +329,6 @@ def ensure_pigpio_connection():
         if not pi.connected:
             logging.error("Impossibile riconnettersi a pigpio")
             raise Exception("Impossibile riconnettersi a pigpio")
-
-def execute_waveform(wave_ids):
-    """Esegue la waveform in un thread separato."""
-    try:
-        ensure_pigpio_connection()  # Verifica la connessione
-        for wave_id in wave_ids:
-            pi.wave_send_once(wave_id)
-            while pi.wave_tx_busy():
-                time.sleep(0.01)
-            pi.wave_delete(wave_id)
-    except Exception as e:
-        log_error(f"Errore durante l'esecuzione della waveform: {e}")
-        raise
 
 def handle_exception(e):
     """Gestisce le eccezioni e restituisce un JsonResponse."""
