@@ -3,6 +3,7 @@ import os
 import time
 import threading
 import sys
+import logging
 from django.conf import settings
 from unittest.mock import MagicMock
 from .serializers import SettingsSerializer
@@ -27,6 +28,22 @@ if not os.path.exists(SETTINGS_FILE):
     from shutil import copyfile
     copyfile(EXAMPLE_JSON_PATH, SETTINGS_FILE)
     print(f"[INFO] File di configurazione creato da setup.example.json")
+
+# Configurazione del logging
+LOG_FILE = os.path.join(os.path.dirname(__file__), 'motorLog.log')
+logging.basicConfig(
+    filename=LOG_FILE,
+    level=logging.DEBUG,
+    format='%(asctime)s - %(levelname)s - %(message)s'
+)
+
+# Funzione per loggare le risposte JSON
+def log_json_response(response):
+    logging.debug(f"JSON Response: {response.content.decode('utf-8')}")
+
+# Funzione per loggare gli errori
+def log_error(error_message):
+    logging.error(error_message)
 
 # ------------------------------------------------------------------------------
 # Caricamento configurazione
@@ -74,9 +91,6 @@ current_speeds = {motor: 0 for motor in MOTORS.keys()}
 # Funzione di conversione passi e frequenza
 # ------------------------------------------------------------------------------
 def compute_motor_params(motor_id):
-    """
-    Calcola i parametri del motore una sola volta per ridurre i calcoli ripetuti.
-    """
     motor_conf = motor_configs.get(motor_id, {})
     step_one_rev = motor_conf.get("stepOneRev", 200.0)
     microstep = motor_conf.get("microstep", 8)
@@ -87,6 +101,10 @@ def compute_motor_params(motor_id):
     steps_per_mm = (step_one_rev * microstep) / pitch
     max_freq = max(1, max_speed * steps_per_mm)  # Evita frequenze troppo basse
     accel_steps = int((max_freq ** 2) / max(1, (2 * acceleration * steps_per_mm)))  # Evita divisione per zero
+
+    # Assicuriamoci che accel_steps non sia 0
+    if accel_steps == 0:
+        accel_steps = 1
 
     return {
         "steps_per_mm": steps_per_mm,
@@ -109,9 +127,14 @@ def update_config():
     global config, motor_configs
     try:
         reload_motor_config()
-        return JsonResponse({"log": "Configurazione aggiornata", "status": "success"}, status=204)
+        response = JsonResponse({"log": "Configurazione aggiornata", "status": "success"}, status=204)
+        log_json_response(response)
+        return response
     except Exception as e:
-        return JsonResponse({"log": "Errore aggiornamento configurazione", "error": str(e)}, status=500)
+        log_error(f"Errore aggiornamento configurazione: {str(e)}")
+        response = JsonResponse({"log": "Errore aggiornamento configurazione", "error": str(e)}, status=500)
+        log_json_response(response)
+        return response
 
 # ------------------------------------------------------------------------------
 # API: Movimento motore
@@ -184,6 +207,7 @@ def compute_frequency(plan):
         remaining_steps = plan["steps"] - plan["next_step"]
         return (remaining_steps / plan["decel_steps"]) * plan["max_freq"]
     return plan["max_freq"]
+
 def create_wave(pulses):
     """Crea una waveform e restituisce il suo ID."""
     pi.wave_add_generic(pulses)
@@ -198,9 +222,12 @@ def move_motor(request):
     try:
         reload_motor_config()
         data = json.loads(request.body)
+        logging.debug(f"Richiesta ricevuta: {data}")
         targets = data.get("targets", {})
         if not targets:
-            return JsonResponse({"log": "Nessun target fornito", "error": "Input non valido"}, status=400)
+            response = JsonResponse({"log": "Nessun target fornito", "error": "Input non valido"}, status=400)
+            log_json_response(response)
+            return response
 
         validate_targets(targets)
         manage_motor_pins(targets)
@@ -211,10 +238,15 @@ def move_motor(request):
         wave_ids = generate_waveform(targets)
         if wave_ids:
             threading.Thread(target=execute_waveform, args=(wave_ids,), daemon=True).start()
-            return JsonResponse({"log": "Movimento avviato", "status": "success"})
-        return JsonResponse({"log": "Errore creazione waveform", "error": "Waveform non valida"}, status=500)
+            response = JsonResponse({"log": "Movimento avviato", "status": "success"})
+            log_json_response(response)
+            return response
+        response = JsonResponse({"log": "Errore creazione waveform", "error": "Waveform non valida"}, status=500)
+        log_json_response(response)
+        return response
 
     except Exception as e:
+        log_error(f"Errore durante il movimento del motore: {str(e)}")
         return handle_exception(e)
 
 def validate_targets(targets):
@@ -260,8 +292,10 @@ def handle_exception(e):
     """Gestisce le eccezioni e restituisce un JsonResponse."""
     import traceback
     error_details = traceback.format_exc()
-    print(f"[ERROR] Movimento motore fallito: {error_details}")
-    return JsonResponse({"log": "Errore interno durante il movimento", "error": str(e)}, status=500)
+    log_error(f"Errore interno: {error_details}")
+    response = JsonResponse({"log": "Errore interno durante il movimento", "error": str(e)}, status=500)
+    log_json_response(response)
+    return response
 
 # ------------------------------------------------------------------------------
 # API: Stop motori
@@ -274,9 +308,14 @@ def stop_motor(body):
             running_flags[key] = False
         for motor in MOTORS.values():
             pi.hardware_PWM(motor["STEP"], 0, 0)
-        return JsonResponse({"log": "Motori fermati con successo", "status": "success"})
+        response = JsonResponse({"log": "Motori fermati con successo", "status": "success"})
+        log_json_response(response)
+        return response
     except Exception as e:
-        return JsonResponse({"log": "Errore durante lo stop dei motori", "error": str(e)}, status=500)
+        log_error(f"Errore durante lo stop dei motori: {str(e)}")
+        response = JsonResponse({"log": "Errore durante lo stop dei motori", "error": str(e)}, status=500)
+        log_json_response(response)
+        return response
 
 # ------------------------------------------------------------------------------
 # API: Salvataggio configurazione
@@ -288,7 +327,10 @@ def save_motor_config(request):
         config = load_motor_config()
         settings_data = config.get("motors", {})
     except Exception as e:
-        return JsonResponse({"log": "Errore durante il salvataggio della configurazione", "error": str(e)}, status=500)
+        log_error(f"Errore durante il caricamento della configurazione: {str(e)}")
+        response = JsonResponse({"log": "Errore durante il salvataggio della configurazione", "error": str(e)}, status=500)
+        log_json_response(response)
+        return response
 
     serializer = SettingsSerializer(data=request.data, partial=True)
     if serializer.is_valid():
@@ -299,9 +341,14 @@ def save_motor_config(request):
 
         write_settings(config)
         reload_motor_config()
-        return JsonResponse({"log": "Configurazione salvata con successo", "success": True, "settings": config})
+        response = JsonResponse({"log": "Configurazione salvata con successo", "success": True, "settings": config})
+        log_json_response(response)
+        return response
 
-    return JsonResponse(serializer.errors, status=400)
+    log_error(f"Errore di validazione: {serializer.errors}")
+    response = JsonResponse(serializer.errors, status=400)
+    log_json_response(response)
+    return response
 
 # ------------------------------------------------------------------------------
 # API: Velocità motori
@@ -312,6 +359,11 @@ def get_motor_speeds(request):
     global current_speeds
     try:
         response = {motor: current_speeds.get(motor, 0) for motor in MOTORS.keys()}
-        return JsonResponse({"log": "Velocità motori recuperate", "speeds": response})
+        json_response = JsonResponse({"log": "Velocità motori recuperate", "speeds": response})
+        log_json_response(json_response)
+        return json_response
     except Exception as e:
-        return JsonResponse({"log": "Errore durante il recupero delle velocità", "error": str(e)}, status=500)
+        log_error(f"Errore durante il recupero delle velocità: {str(e)}")
+        response = JsonResponse({"log": "Errore durante il recupero delle velocità", "error": str(e)}, status=500)
+        log_json_response(response)
+        return response
