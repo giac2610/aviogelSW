@@ -213,16 +213,60 @@ def generate_waveform(motor_targets):
 
             # Controlla il limite della wave_chain
             if len(wave_ids) >= MAX_WAVE_CHAIN_SIZE:
-                execute_wave_chain(wave_ids)
-                wave_ids = []
+                break  # Interrompe la generazione per evitare overflow
 
     if wave:
         logging.debug(f"Creazione di una nuova waveform con {len(wave)} impulsi.")
         wave_ids.append(create_wave(wave))
 
-    if wave_ids:
-        logging.debug(f"Esecuzione della wave_chain con {len(wave_ids)} wave_ids.")
-        execute_wave_chain(wave_ids)
+    return wave_ids
+
+def start_motor_movement(wave_ids):
+    """
+    Avvia il movimento dei motori eseguendo la wave_chain generata.
+    """
+    if not wave_ids:
+        logging.error("Nessuna waveform generata per l'esecuzione.")
+        raise ValueError("Nessuna waveform generata per l'esecuzione.")
+
+    logging.debug(f"Esecuzione della wave_chain con {len(wave_ids)} wave_ids.")
+    execute_wave_chain(wave_ids)
+
+@api_view(['POST'])
+def move_motor(request):
+    """
+    Muove i motori generando una waveform DMA multicanale.
+    """
+    global pi
+    try:
+        reload_motor_config()
+        data = json.loads(request.body)
+        logging.debug(f"Richiesta ricevuta: {data}")
+        targets = data.get("targets", {})
+        if not targets:
+            response = JsonResponse({"log": "Nessun target fornito", "error": "Input non valido"}, status=400)
+            log_json_response(response)
+            return response
+
+        validate_targets(targets)
+        manage_motor_pins(targets)
+
+        pi.wave_tx_stop()
+        ensure_pigpio_connection()
+
+        wave_ids = generate_waveform(targets)
+        if wave_ids:
+            threading.Thread(target=start_motor_movement, args=(wave_ids,), daemon=True).start()
+            response = JsonResponse({"log": "Movimento avviato", "status": "success"})
+            log_json_response(response)
+            return response
+        response = JsonResponse({"log": "Errore creazione waveform", "error": "Waveform non valida"}, status=500)
+        log_json_response(response)
+        return response
+
+    except Exception as e:
+        log_error(f"Errore durante il movimento del motore: {str(e)}")
+        return handle_exception(e)
 
 def execute_wave_chain(wave_ids):
     """
@@ -295,7 +339,7 @@ def move_motor(request):
 
         wave_ids = generate_waveform(targets)
         if wave_ids:
-            threading.Thread(target=execute_wave_chain, args=(wave_ids,), daemon=True).start()
+            threading.Thread(target=start_motor_movement, args=(wave_ids,), daemon=True).start()
             response = JsonResponse({"log": "Movimento avviato", "status": "success"})
             log_json_response(response)
             return response
