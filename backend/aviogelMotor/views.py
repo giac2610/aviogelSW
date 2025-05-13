@@ -217,6 +217,7 @@ def move_motor(request):
     """
     Nuova versione: muove i motori generando una waveform DMA multicanale.
     """
+    global pi  # Aggiunta dichiarazione globale per pi
     try:
         reload_motor_config()
         data = json.loads(request.body)
