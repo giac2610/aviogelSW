@@ -123,11 +123,13 @@ def update_config():
 def generate_waveform(motor_targets):
     """
     Genera una waveform DMA multicanale per muovere i motori sincronizzati,
-    includendo accelerazione e decelerazione.
+    includendo accelerazione e decelerazione. Utilizza una wave chain per
+    gestire un numero elevato di impulsi.
     """
     wave = []
     max_total_steps = 0
     pulse_plan = {}
+    MAX_PULSES_PER_WAVE = 10000  # Limite massimo di impulsi per waveform
 
     # Prepara i parametri
     for motor_id, distance in motor_targets.items():
@@ -158,6 +160,7 @@ def generate_waveform(motor_targets):
 
     # Timeline simulata con accelerazione e decelerazione
     t = 0
+    wave_ids = []
     while any(p["next_step"] < p["steps"] for p in pulse_plan.values()):
         on_pulses = []
         off_pulses = []
@@ -186,11 +189,27 @@ def generate_waveform(motor_targets):
 
         wave.extend(on_pulses)
         wave.extend(off_pulses)
-        t += min(p["next_step"] for p in pulse_plan.values())
 
-    pi.wave_add_generic(wave)
-    wave_id = pi.wave_create()
-    return wave_id
+        # Se la waveform supera il limite, crea un blocco
+        if len(wave) >= MAX_PULSES_PER_WAVE:
+            pi.wave_add_generic(wave[:MAX_PULSES_PER_WAVE])
+            wave_id = pi.wave_create()
+            wave_ids.append(wave_id)
+            wave = wave[MAX_PULSES_PER_WAVE:]  # Rimuovi i pulsanti già processati
+
+    # Aggiungi eventuali impulsi rimanenti
+    if wave:
+        pi.wave_add_generic(wave)
+        wave_id = pi.wave_create()
+        wave_ids.append(wave_id)
+
+    # Crea una wave chain
+    chain = []
+    for wave_id in wave_ids:
+        chain.extend([255, 0, wave_id])  # 255, 0 indica una singola waveform
+
+    pi.wave_chain(chain)
+    return wave_ids
 
 
 @api_view(['POST'])
