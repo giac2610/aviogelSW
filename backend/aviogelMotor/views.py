@@ -122,7 +122,8 @@ def update_config():
 # ------------------------------------------------------------------------------
 def generate_waveform(motor_targets):
     """
-    Genera una waveform DMA multicanale per muovere i motori sincronizzati.
+    Genera una waveform DMA multicanale per muovere i motori sincronizzati,
+    includendo accelerazione e decelerazione.
     """
     wave = []
     max_total_steps = 0
@@ -133,7 +134,8 @@ def generate_waveform(motor_targets):
         params = compute_motor_params(motor_id)
         steps = int(abs(distance) * params["steps_per_mm"])
         max_freq = params["max_freq"]
-        delay_us = int(1_000_000 / max_freq)  # in microsecondi
+        accel_steps = params["accel_steps"]
+        decel_steps = params["decel_steps"]
 
         direction = 1 if distance >= 0 else 0
         motor = MOTORS[motor_id]
@@ -143,7 +145,9 @@ def generate_waveform(motor_targets):
         pulse_plan[motor_id] = {
             "pin": motor["STEP"],
             "steps": steps,
-            "delay_us": delay_us,
+            "max_freq": max_freq,
+            "accel_steps": accel_steps,
+            "decel_steps": decel_steps,
             "next_step": 0
         }
 
@@ -152,21 +156,37 @@ def generate_waveform(motor_targets):
     # Reset wave
     pi.wave_clear()
 
-    # Timeline simulata (brute-force: 1 step alla volta)
+    # Timeline simulata con accelerazione e decelerazione
     t = 0
     while any(p["next_step"] < p["steps"] for p in pulse_plan.values()):
         on_pulses = []
         off_pulses = []
 
         for motor_id, plan in pulse_plan.items():
-            if t % plan["delay_us"] == 0 and plan["next_step"] < plan["steps"]:
+            if plan["next_step"] < plan["steps"]:
+                # Calcola la frequenza in base alla fase del movimento
+                if plan["next_step"] < plan["accel_steps"]:
+                    # Accelerazione
+                    freq = (plan["next_step"] / plan["accel_steps"]) * plan["max_freq"]
+                elif plan["next_step"] > plan["steps"] - plan["decel_steps"]:
+                    # Decelerazione
+                    remaining_steps = plan["steps"] - plan["next_step"]
+                    freq = (remaining_steps / plan["decel_steps"]) * plan["max_freq"]
+                else:
+                    # Velocità costante
+                    freq = plan["max_freq"]
+
+                freq = max(1, min(freq, plan["max_freq"]))  # Limita la frequenza
+                delay_us = int(1_000_000 / freq)  # Calcola il ritardo in microsecondi
+
+                # Genera impulsi
                 on_pulses.append(pigpio.pulse(1 << plan["pin"], 0, 5))
-                off_pulses.append(pigpio.pulse(0, 1 << plan["pin"], plan["delay_us"] - 5))
+                off_pulses.append(pigpio.pulse(0, 1 << plan["pin"], delay_us - 5))
                 plan["next_step"] += 1
 
         wave.extend(on_pulses)
         wave.extend(off_pulses)
-        t += min(p["delay_us"] for p in pulse_plan.values())
+        t += min(p["next_step"] for p in pulse_plan.values())
 
     pi.wave_add_generic(wave)
     wave_id = pi.wave_create()
@@ -189,6 +209,17 @@ def move_motor(request):
             if motor_id not in MOTORS:
                 return JsonResponse({"error": f"Motore non valido: {motor_id}"}, status=400)
 
+        # Gestione del pin EN per evitare interferenze tra i motori
+        if "syringe" in targets:
+            for motor_id in ["conveyor", "extruder"]:
+                pi.write(MOTORS[motor_id]["EN"], 1)  # Disabilita conveyor ed extruder
+            pi.write(MOTORS["syringe"]["EN"], 0)  # Abilita syringe
+        elif any(motor_id in targets for motor_id in ["conveyor", "extruder"]):
+            pi.write(MOTORS["syringe"]["EN"], 1)  # Disabilita syringe
+            for motor_id in ["conveyor", "extruder"]:
+                if motor_id in targets:
+                    pi.write(MOTORS[motor_id]["EN"], 0)  # Abilita conveyor o extruder
+
         # Ferma eventuali movimenti precedenti
         pi.wave_tx_stop()
 
@@ -199,9 +230,9 @@ def move_motor(request):
                 time.sleep(0.01)
             pi.wave_delete(wave_id)
 
-            # Disattiva EN
+            # Mantieni EN attivo per i motori in movimento
             for motor_id in targets:
-                pi.write(MOTORS[motor_id]["EN"], 1)
+                pi.write(MOTORS[motor_id]["EN"], 0)
 
             return JsonResponse({"status": "Movimento completato"})
         else:
