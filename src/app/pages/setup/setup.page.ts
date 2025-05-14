@@ -303,4 +303,17 @@ speedPollingSubscription!: Subscription;
   setTravelValue(motor: string, value: number): void {
     this.travels[motor as "syringe" | "extruder" | "conveyor"] = value;
   }
+
+  startSimulation() {
+    this.motorsService.simulate().subscribe({
+      next: (response) => {
+        this.presentToast('Simulazione avviata con successo', 'success');
+        console.log('Risposta dal backend:', response);
+      },
+      error: (error) => {
+        const errorMessage = error.error.detail || error.error.error || error.message;
+        this.presentToast(`Errore durante la simulazione: ${errorMessage}`, 'danger');
+      }
+    });
+  }
 }
