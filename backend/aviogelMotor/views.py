@@ -768,10 +768,13 @@ def start_simulation_view(request):
     try:
         # Definizione del percorso simulato
         simulation_steps = []
+        extruder_direction = 1  # Direzione iniziale positiva
+
         for _ in range(5):  # Ripeti 5 volte
             for _ in range(3):  # Ripeti 3 volte
                 simulation_steps.append({"syringe": 5})  # Syringe si sposta di 5mm
-                simulation_steps.append({"extruder": 50})  # Extruder si sposta di 50mm
+                simulation_steps.append({"extruder": 50 * extruder_direction})  # Extruder si sposta di 50mm nella direzione corrente
+            extruder_direction *= -1  # Inverti la direzione dell'extruder
             simulation_steps.append({"conveyor": 50})  # Conveyor si sposta di 50mm
 
         # Esegui ogni step della simulazione
