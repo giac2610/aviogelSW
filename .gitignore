@@ -7,3 +7,4 @@ backend/requirments.txt
 *.pyc
 __pycache__/
 backend/config/setup.json
+backend/aviogelMotor/motorLog.log
