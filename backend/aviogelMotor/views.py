@@ -754,3 +754,36 @@ def get_motor_speeds_view(request): # Rinominata
         response = JsonResponse({"log": "Errore durante il recupero delle velocità", "error": str(e)}, status=500)
         log_json_response(response)
         return response
+
+@api_view(['POST'])
+def start_simulation_view(request):
+    """
+    API per avviare una simulazione di un percorso predefinito.
+    """
+    global pi
+    if not pi or not pi.connected:
+        log_error("start_simulation_view: pigpio non connesso.")
+        return JsonResponse({"log": "Errore: pigpio non connesso", "error": "Pigpio connection issue"}, status=503)
+
+    try:
+        # Definizione del percorso simulato
+        simulation_steps = []
+        for _ in range(5):  # Ripeti 5 volte
+            for _ in range(3):  # Ripeti 3 volte
+                simulation_steps.append({"syringe": 5})  # Syringe si sposta di 5mm
+                simulation_steps.append({"extruder": 50})  # Extruder si sposta di 50mm
+            simulation_steps.append({"conveyor": 50})  # Conveyor si sposta di 50mm
+
+        # Esegui ogni step della simulazione
+        for step in simulation_steps:
+            wave_ids = generate_waveform(step)  # Genera waveform per il movimento
+            if wave_ids:
+                execute_wave_chain(wave_ids)  # Esegui il movimento
+            else:
+                log_error(f"Errore nella generazione della waveform per il passo: {step}")
+                return JsonResponse({"log": "Errore nella simulazione", "error": "Waveform non generata"}, status=500)
+
+        return JsonResponse({"log": "Simulazione completata con successo", "status": "success"})
+    except Exception as e:
+        log_error(f"Errore durante la simulazione: {str(e)}")
+        return handle_exception(e)
