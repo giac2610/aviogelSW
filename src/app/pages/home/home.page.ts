@@ -4,6 +4,7 @@ import { Router} from '@angular/router';
 import { RestAPIfromDjangoService, User } from '../../services/rest-apifrom-django.service';
 import { Keyboard } from '@capacitor/keyboard';
 import { LedService } from '../../services/led.service';
+import { EditUserModalComponent } from '../../components/edit-user-modal/edit-user-modal.component';
 
 @Component({
   selector: 'app-home',
@@ -27,7 +28,8 @@ export class HomePage {
     private usersService: RestAPIfromDjangoService,  
     private modalCtrl: ModalController, 
     private router: Router,
-    private ledService: LedService // Aggiunto LedService
+    private ledService: LedService,
+    private alertCtrl: AlertController
   ) {}
   
   ngOnInit() {
@@ -76,10 +78,64 @@ enterSetup(){
     this.numberOfTap = 0;
   }
 }
-showDeleteButton(user: User) {
-  // Mostra il pulsante di eliminazione per l'utente specificato
-  // user.showDeleteButton = true;
-  console.log("long press on: ", user)
+
+async openAddUserModal() {
+  const modal = await this.modalCtrl.create({
+    component: EditUserModalComponent,
+    componentProps: {
+      user: { name: '', gender: 'male', expertUser: false, avatar_url: '', id: null }
+    }
+  });
+  modal.onDidDismiss().then(result => {
+    if (result.data && result.data.action === 'save') {
+      // Chiamata al service per aggiungere l’utente
+      this.addUser(
+        result.data.user.name,
+        result.data.user.gender,
+        result.data.user.expertUser
+      );
+    }
+  });
+  await modal.present();
+}
+async openEditUserModal(user: User, event: Event) {
+  event.stopPropagation(); // Evita il click sulla card
+  const modal = await this.modalCtrl.create({
+    component: EditUserModalComponent,
+    componentProps: { user }
+  });
+  modal.onDidDismiss().then(result => {
+    if (result.data) {
+      if (result.data.action === 'save') {
+        // Aggiorna l'utente (implementa updateUser nel service se necessario)
+        // this.usersService.updateUser(result.data.user).subscribe(...);
+        this.usersService.modifyUser(result.data.user).subscribe({
+          next: (response) => {
+            console.log('User updated successfully', response);
+          },
+          error: (error) => {
+            console.error('Error updating user', error);
+          }
+        })
+        Object.assign(user, result.data.user); // Aggiorna localmente
+      } else if (result.data.action === 'delete') {
+        this.deleteUser(user);
+      }
+    }
+  });
+  await modal.present();
 }
 
+  deleteUser(user: User) {
+    // Qui dovrai implementare la chiamata API per eliminare l'utente
+    // Esempio:
+    this.usersService.deleteUser(user.id).subscribe({
+      next: () => {
+        this.users = this.users.filter(u => u.id !== user.id);
+      },
+      error: (err) => {
+        console.error('Errore durante l\'eliminazione:', err);
+      }
+    });
+  }
 }

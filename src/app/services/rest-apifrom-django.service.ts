@@ -10,9 +10,6 @@ export interface User {
   gender: string;
   avatar_url: string;
 }
-
-
-
 @Injectable({
   providedIn: 'root'
 })
@@ -37,8 +34,17 @@ export class RestAPIfromDjangoService {
     return this.http.post<User>(url, body);
   }
 
-  deleteUser(){
-    // TODO
+  modifyUser(user: User): Observable<User> {
+    const url = `${this.apiUrl}users/update/${user.id}/`;
+    console.log(url)
+    const body = { ...user };
+    console.log(body)
+    return this.http.put<User>(url, body);
+  }
+
+  deleteUser(id: number): Observable<any> {
+    const url = `${this.apiUrl}users/delete/${id}/`;
+    return this.http.delete(url);
   }
 
   setCurrentUser(user: User){

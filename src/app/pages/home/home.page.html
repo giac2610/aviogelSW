@@ -46,6 +46,9 @@
               <img [src]="user.avatar_url">
             </ion-avatar>
           </div>
+          <ion-button fill="clear" size="small" color="medium" class="edit-btn" (click)="openEditUserModal(user, $event)">
+        <ion-icon name="create-outline"></ion-icon>
+      </ion-button>
           <ion-card-header>
             <div class="card-footer">
               <h2>{{user.name}}</h2>
@@ -56,7 +59,7 @@
 
       <!-- Card per aggiungere un nuovo utente -->
       <div class="swiperCard">
-        <ion-card id="open-modal">
+        <ion-card id="open-modal" (click)="openAddUserModal()">
           <div class="card-background">
             <ion-icon name="add-circle-outline" slot="center" size="large"></ion-icon>
           </div>

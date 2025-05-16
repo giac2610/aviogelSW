@@ -1,0 +1,40 @@
+<ion-header>
+  <ion-toolbar>
+    <ion-title>{{ name ? 'Modifica ' + name : 'Nuovo Utente' }}</ion-title>
+    <ion-buttons slot="end">
+      <ion-button (click)="close()">
+        <ion-icon name="close"></ion-icon>
+      </ion-button>
+    </ion-buttons>
+  </ion-toolbar>
+</ion-header>
+
+<ion-content>
+  <ion-list>
+    <ion-item>
+      <ion-label position="stacked">Nome</ion-label>
+      <ion-input [(ngModel)]="name"></ion-input>
+    </ion-item>
+    <ion-item>
+      <ion-label position="stacked">Genere</ion-label>
+      <ion-select [(ngModel)]="gender">
+        <ion-select-option value="male">Maschio</ion-select-option>
+        <ion-select-option value="female">Femmina</ion-select-option>
+        <ion-select-option value="other">Altro</ion-select-option>
+      </ion-select>
+    </ion-item>
+    <ion-item>
+      <ion-label>Esperto</ion-label>
+      <ion-checkbox slot="start" [(ngModel)]="expertUser"></ion-checkbox>
+    </ion-item>
+  </ion-list>
+</ion-content>
+
+<ion-footer>
+  <ion-toolbar>
+    <ion-row class="ion-justify-content-evenly">
+      <ion-button expand="expand" color="danger" (click)="delete()">Elimina Utente</ion-button>
+      <ion-button expand="expand" color="primary" (click)="save_user()">Salva</ion-button>
+    </ion-row>
+  </ion-toolbar>
+</ion-footer>

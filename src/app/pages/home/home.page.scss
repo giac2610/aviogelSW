@@ -21,6 +21,18 @@
     --background-rgb: 58, 46, 57;
   }
   
+.edit-btn {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  z-index: 10;
+
+  ion-icon {
+    color: #3A2E39; // Sostituisci con il colore che preferisci (es: #007bff per blu)
+    // font-size: 24px; // opzionale, per cambiare la dimensione
+  }
+}
+
   .skeleton-avatar {
     width: 190px; /* Larghezza dell'avatar */
     height: 190px; /* Altezza dell'avatar */
