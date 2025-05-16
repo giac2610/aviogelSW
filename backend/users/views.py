@@ -31,3 +31,16 @@ def delete_user(request, user_id):
         return Response({"message": "Utente eliminato con successo"}, status=status.HTTP_204_NO_CONTENT)
     except UserProfile.DoesNotExist:
         return Response({"error": "Utente non trovato"}, status=status.HTTP_404_NOT_FOUND)
+    
+@api_view(['PUT'])
+def update_user(request, user_id):
+    """Aggiorna un utente dato il suo ID"""
+    try:
+        user = UserProfile.objects.get(id=user_id)
+        serializer = UserProfileSerializer(user, data=request.data, partial=True)
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    except UserProfile.DoesNotExist:
+        return Response({"error": "Utente non trovato"}, status=status.HTTP_404_NOT_FOUND)

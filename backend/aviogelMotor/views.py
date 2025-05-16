@@ -400,7 +400,7 @@ def move_motor_view(request): # Rinominata per chiarezza
         log_error(f"Errore di valore durante il movimento del motore: {str(ve)}")
         return JsonResponse({"log": "Errore nei dati forniti", "error": str(ve)}, status=400)
     except ConnectionError as ce: # Errore di connessione pigpio gestito
-         return JsonResponse({"log": "Errore di connessione pigpio", "error": str(ce)}, status=503)
+        return JsonResponse({"log": "Errore di connessione pigpio", "error": str(ce)}, status=503)
     except Exception as e:
         log_error(f"Errore generico durante il movimento del motore: {str(e)}")
         return handle_exception(e)
