@@ -44,6 +44,8 @@ export interface Settings {
   }
 
   camera: {
+    x: number,
+    y: number,
     minThreshold: number,
     maxThreshold: number,
     areaFilter: boolean,
@@ -66,38 +68,85 @@ export class SetupAPIService {
   
   constructor(private http: HttpClient) { }
   
-  // Ottieni le impostazioni macchina
   getSettings(): Observable<Settings>{
     const url = `${this.apiUrl}config/get/`
     return this.http.get<Settings>(url);
-    }
-  
-    updateSettings(newSettings: Settings): Observable<Settings> {
-      // console.log("Dati inviati al backend:", newSettings);
-      return this.http.post<Settings>(`${this.apiUrl}config/update/`, newSettings);
-    }
+  }
 
-    getThresholdStreamUrl(): string {
-      return `http://${window.location.hostname}:8000/camera/stream/?mode=threshold&keyframe=true`; // Modalità threshold con keyframe
-    }
+  updateSettings(newSettings: Settings): Observable<Settings> {
+    return this.http.post<Settings>(`${this.apiUrl}config/update/`, newSettings);
+  }
 
-    updateCameraSettings(cameraSettings: Settings['camera']): Observable<any> {
-      const url = `${this.apiUrl}config/update/`;
-      return this.http.post(url, { camera: cameraSettings });
-    }
+  updateCameraSettings(cameraSettings: Settings['camera']): Observable<any> {
+    const url = `${this.apiUrl}camera/update-camera-settings/`;
+    return this.http.post(url, cameraSettings);
+  }
 
-    stopMotors(): Observable<any> {
-      const url = `${this.apiUrl}motors/stop/`;
-      return this.http.post(url, {});
-    }
+  stopMotors(): Observable<any> {
+    const url = `${this.apiUrl}motors/stop/`;
+    return this.http.post(url, {});
+  }
 
-    moveMotor(targets: { [key: string]: number }): Observable<any> {
-      const url = `${this.apiUrl}motors/move/`;
-      return this.http.post(url, { targets: { ...targets } }); // Ensure targets are properly spread into the body
-    }
+  moveMotor(targets: { [key: string]: number }): Observable<any> {
+    const url = `${this.apiUrl}motors/move/`;
+    return this.http.post(url, { targets: { ...targets } });
+  }
 
-    getCurrentSpeeds(): Observable<{ syringe: number; extruder: number; conveyor: number }> {
-      const url = `${this.apiUrl}motors/speeds/`;
-      return this.http.get<{ syringe: number; extruder: number; conveyor: number }>(url);
-    }
+  getCurrentSpeeds(): Observable<{ syringe: number; extruder: number; conveyor: number }> {
+    const url = `${this.apiUrl}motors/speeds/`;
+    return this.http.get<{ syringe: number; extruder: number; conveyor: number }>(url);
+  }
+
+  setCameraOrigin(x: number, y: number): Observable<any> {
+    const url = `${this.apiUrl}camera/set-origin/`;
+    return this.http.post(url, { x, y });
+  }
+
+  getKeypoints(): Observable<any> {
+    return this.http.get<any>(`${this.apiUrl}camera/keypoints/`);
+  }
+
+  getKeypointsAll(): Observable<any> {
+    return this.http.get<any>(`${this.apiUrl}camera/keypoints-all/`);
+  }
+
+  getHomography(): Observable<any> {
+    return this.http.get<any>(`${this.apiUrl}camera/homography/`);
+  }
+
+  getFrame(): Observable<Blob> {
+    return this.http.get(`${this.apiUrl}camera/frame/`, { responseType: 'blob' });
+  }
+
+  getThresholdStreamUrl(): string {
+    return `${this.apiUrl}camera/stream/?mode=threshold&keyframe=true`;
+  }
+
+  getNormalStreamUrl(): string {
+    return `${this.apiUrl}camera/stream/?mode=normal&keyframe=true`;
+  }
+
+  getDynamicWarpedStreamUrl(): string {
+    return `${this.apiUrl}camera/dynamic-warped-stream/`;
+  }
+
+  captureAndWarpFrame(): Observable<any> {
+    return this.http.get<any>(`${this.apiUrl}camera/capture-and-warp-frame/`);
+  }
+
+  getContourParams(): Observable<any> {
+    return this.http.get<any>(`${this.apiUrl}camera/contour-params/`);
+  }
+
+  updateContourParams(params: any): Observable<any> {
+    return this.http.post<any>(`${this.apiUrl}camera/contour-params/`, params);
+  }
+
+  getContourStreamUrl(): string {
+    return `${this.apiUrl}camera/contour-stream/`;
+  }
+
+  getContourHomography(): Observable<any> {
+    return this.http.get<any>(`${this.apiUrl}camera/contour-homography/`);
+  }
 }

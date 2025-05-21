@@ -49,6 +49,8 @@ speedPollingSubscription!: Subscription;
 
   private cameraSettingsSubject = new Subject<Settings['camera']>();
 
+  cameraOrigin = { x: 0, y: 0 };
+
   constructor(private configService: SetupAPIService, private toastController: ToastController, private motorsService: MotorsControlService, private router: Router, private ledService: LedService) { }
 
   ngOnInit() {
@@ -100,6 +102,11 @@ speedPollingSubscription!: Subscription;
   loadConfig() {
     this.configService.getSettings().subscribe((data: Settings) => {
       this.settings = data;
+      // Carica x e y della camera se presenti
+      if (this.settings.camera && typeof this.settings.camera.x === 'number' && typeof this.settings.camera.y === 'number') {
+        this.cameraOrigin.x = this.settings.camera.x;
+        this.cameraOrigin.y = this.settings.camera.y;
+      }
       this.isLoading = false;
 
       // Calcola gli stepsPerMm per ogni motore
@@ -215,6 +222,20 @@ speedPollingSubscription!: Subscription;
     });
   }
 
+  updateCameraOrigin() {
+    // Aggiorna x e y sia localmente che sul backend
+    this.settings.camera.x = this.cameraOrigin.x;
+    this.settings.camera.y = this.cameraOrigin.y;
+    this.configService.setCameraOrigin(this.cameraOrigin.x, this.cameraOrigin.y).subscribe({
+      next: (res) => {
+        this.presentToast('Origine camera aggiornata', 'success');
+      },
+      error: () => {
+        this.presentToast('Errore aggiornamento origine camera', 'danger');
+      }
+    });
+  }
+
   async presentToast(message: string, color: string = 'success') {
     const toast = await this.toastController.create({
       message: message,
@@ -315,5 +336,9 @@ speedPollingSubscription!: Subscription;
         this.presentToast(`Errore durante la simulazione: ${errorMessage}`, 'danger');
       }
     });
+  }
+
+  goToBlobSimulation() {
+    this.router.navigate(['/blob-simulation']);
   }
 }

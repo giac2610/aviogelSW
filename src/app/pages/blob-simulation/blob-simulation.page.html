@@ -1,0 +1,65 @@
+<ion-header [translucent]="true">
+  <ion-toolbar>
+    <ion-title>Simulazione Contour & Omografia</ion-title>
+  </ion-toolbar>
+</ion-header>
+
+<ion-content [fullscreen]="true">
+
+  <!-- 1. Parametri findContour -->
+  <ion-card>
+    <ion-card-header>
+      <ion-card-title>Parametri Contour Detection</ion-card-title>
+    </ion-card-header>
+    <ion-card-content>
+      <form (ngSubmit)="updateContourParams()">
+        <ion-item>
+          <ion-label position="stacked">minThreshold</ion-label>
+          <ion-input type="number" [(ngModel)]="contourParams.minThreshold" name="minThreshold"></ion-input>
+        </ion-item>
+        <ion-item>
+          <ion-label position="stacked">maxThreshold</ion-label>
+          <ion-input type="number" [(ngModel)]="contourParams.maxThreshold" name="maxThreshold"></ion-input>
+        </ion-item>
+        <ion-item>
+          <ion-label position="stacked">minArea</ion-label>
+          <ion-input type="number" [(ngModel)]="contourParams.minArea" name="minArea"></ion-input>
+        </ion-item>
+        <ion-item>
+          <ion-label position="stacked">maxArea</ion-label>
+          <ion-input type="number" [(ngModel)]="contourParams.maxArea" name="maxArea"></ion-input>
+        </ion-item>
+        <!-- Aggiungi altri parametri se necessario -->
+        <ion-button expand="block" type="submit">Salva Parametri</ion-button>
+      </form>
+      <div *ngIf="contourParamsSaved" style="color:green;">Parametri salvati!</div>
+    </ion-card-content>
+  </ion-card>
+
+  <!-- 2. Streaming con Contour -->
+  <ion-card>
+    <ion-card-header>
+      <ion-card-title>Streaming Camera con Contour</ion-card-title>
+    </ion-card-header>
+    <ion-card-content>
+      <img [src]="contourStreamUrl" alt="Contour Stream" style="max-width:100%;border:1px solid #ccc;" />
+    </ion-card-content>
+  </ion-card>
+
+  <!-- 3. Matrice di Omografia dal Contour -->
+  <ion-card>
+    <ion-card-header>
+      <ion-card-title>Matrice di Omografia dal Contour</ion-card-title>
+    </ion-card-header>
+    <ion-card-content>
+      <ion-button (click)="fetchContourHomography()">Calcola Omografia</ion-button>
+      <div *ngIf="contourHomography">
+        <h4>Matrice Omografica</h4>
+        <div *ngFor="let row of contourHomography">
+          <span *ngFor="let val of row" style="display:inline-block;width:80px;">{{ val | number:'1.4-4' }}</span>
+        </div>
+      </div>
+    </ion-card-content>
+  </ion-card>
+
+</ion-content>

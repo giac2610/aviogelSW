@@ -27,6 +27,10 @@ const routes: Routes = [
     path: 'user',
     loadChildren: () => import('./pages/user/user.module').then( m => m.UserPageModule)
   },
+  {
+    path: 'blob-simulation',
+    loadChildren: () => import('./pages/blob-simulation/blob-simulation.module').then( m => m.BlobSimulationPageModule)
+  },
 ];
 
 @NgModule({
