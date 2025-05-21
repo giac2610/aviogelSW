@@ -54,12 +54,6 @@
         "maxCircularity": 1.0,
         "inertiaFilter": true,
         "minInertia": 0.1,
-        "maxInertia": 1.0,
-        "contour": {
-            "minThreshold": 44,
-            "maxThreshold": 251,
-            "minArea": 70,
-            "maxArea": 1000
-        }
+        "maxInertia": 1.0
      }
  }

@@ -11,11 +11,7 @@ from .views import (
     get_frame_api,
     dynamic_warped_stream,
     capture_and_warp_frame,
-    contour_params,  # Cambia qui: importa la funzione unificata
-    contour_stream,
-    contour_homography,
-    # debug_keypoints_view,
-    # detect_grid_points,
+    calculate_homography_from_points,
 )
 
 urlpatterns = [
@@ -28,11 +24,7 @@ urlpatterns = [
     path('frame/', get_frame_api, name='get_frame_api'),
     path('dynamic-warped-stream/', dynamic_warped_stream, name='dynamic_warped_stream'),
     path('capture-and-warp-frame/', capture_and_warp_frame, name='capture_and_warp_frame'),
-    path('contour-params/', contour_params, name='contour_params'),  # Solo una view per GET/POST
-    path('contour-stream/', contour_stream, name='contour_stream'),
-    path('contour-homography/', contour_homography, name='contour_homography'),
-    # path('camera/detect-grid/', detect_grid_points, name='detect_grid'),
-    # path('camera/debug-keypoints/', debug_keypoints_view, name='debug_keypoints'),
+    path('calculate-homography-from-points/', calculate_homography_from_points, name='calculate_homography_from_points'),
 ]
 
 # Serve i file media solo in sviluppo (DEBUG=True)
