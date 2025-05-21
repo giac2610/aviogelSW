@@ -37,6 +37,7 @@ export class BlobSimulationPage implements OnInit {
   contourParamsSaved = false;
   contourStreamUrl: string;
   contourHomography: number[][] | null = null;
+  selectedStream: string = 'normal';
 
   constructor(
     private motorsService: MotorsControlService,
@@ -45,13 +46,14 @@ export class BlobSimulationPage implements OnInit {
     private configService: SetupAPIService
   ) {
     this.streamUrl = this.configService.getNormalStreamUrl();
-    this.contourStreamUrl = this.configService.getContourStreamUrl();
+    this.contourStreamUrl = this.getContourStreamUrl();
   }
 
   ngOnInit() {
     this.fetchKeypoints();
     this.loadHomography();
     this.loadContourParams();
+    this.updateContourStreamUrl();
   }
 
   fetchKeypoints() {
@@ -171,5 +173,16 @@ export class BlobSimulationPage implements OnInit {
         this.staticHomography = res.homography;
       }
     });
+  }
+
+  updateContourStreamUrl() {
+    // Aggiungi il parametro mode all'URL dello stream contour
+    this.contourStreamUrl = this.getContourStreamUrl();
+  }
+
+  getContourStreamUrl(): string {
+    return this.selectedStream === 'threshold'
+      ? this.configService.getContourStreamUrl() + '?mode=threshold'
+      : this.configService.getContourStreamUrl() + '?mode=normal';
   }
 }

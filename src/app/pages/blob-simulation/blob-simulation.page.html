@@ -42,6 +42,17 @@
       <ion-card-title>Streaming Camera con Contour</ion-card-title>
     </ion-card-header>
     <ion-card-content>
+      <ion-item>
+        <ion-label>Tipo Stream:</ion-label>
+        <ion-segment [(ngModel)]="selectedStream" (ionChange)="updateContourStreamUrl()">
+          <ion-segment-button value="normal">
+            <ion-label>Normale</ion-label>
+          </ion-segment-button>
+          <ion-segment-button value="threshold">
+            <ion-label>Threshold</ion-label>
+          </ion-segment-button>
+        </ion-segment>
+      </ion-item>
       <img [src]="contourStreamUrl" alt="Contour Stream" style="max-width:100%;border:1px solid #ccc;" />
     </ion-card-content>
   </ion-card>
