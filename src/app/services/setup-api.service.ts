@@ -134,19 +134,7 @@ export class SetupAPIService {
     return this.http.get<any>(`${this.apiUrl}camera/capture-and-warp-frame/`);
   }
 
-  getContourParams(): Observable<any> {
-    return this.http.get<any>(`${this.apiUrl}camera/contour-params/`);
-  }
-
-  updateContourParams(params: any): Observable<any> {
-    return this.http.post<any>(`${this.apiUrl}camera/contour-params/`, params);
-  }
-
-  getContourStreamUrl(): string {
-    return `${this.apiUrl}camera/contour-stream/`;
-  }
-
-  getContourHomography(): Observable<any> {
-    return this.http.get<any>(`${this.apiUrl}camera/contour-homography/`);
+  calculateHomographyFromPoints(points: {x: number, y: number}[]): Observable<any> {
+    return this.http.post<any>(`${this.apiUrl}camera/calculate-homography-from-points/`, { points });
   }
 }

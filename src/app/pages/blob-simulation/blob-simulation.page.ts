@@ -1,4 +1,4 @@
-import { Component, OnInit } from '@angular/core';
+import { Component, OnInit, ViewChild, ElementRef } from '@angular/core';
 import { MotorsControlService } from '../../services/motors-control.service';
 import { ToastController, AlertController } from '@ionic/angular';
 import { SetupAPIService } from 'src/app/services/setup-api.service';
@@ -27,17 +27,20 @@ export class BlobSimulationPage implements OnInit {
   staticOriginalUrl: string | null = null;
   staticWarpedUrl: string | null = null;
   staticHomography: number[][] | null = null;
-  contourParams = {
-    minThreshold: 44,
-    maxThreshold: 251,
-    minArea: 70,
-    maxArea: 1000
-    // aggiungi altri parametri se vuoi
-  };
-  contourParamsSaved = false;
-  contourStreamUrl: string;
-  contourHomography: number[][] | null = null;
-  selectedStream: string = 'normal';
+
+  @ViewChild('cameraImg', { static: false }) cameraImgRef!: ElementRef<HTMLImageElement>;
+  imgWidth: number = 300;
+  imgHeight: number = 280;
+
+  points: { x: number, y: number }[] = [
+    { x: 100, y: 100 },
+    { x: 300, y: 100 },
+    { x: 300, y: 300 },
+    { x: 100, y: 300 }
+  ];
+  selectedPoint: number | null = null;
+  warpedImgUrl: string | null = null;
+  draggingPoint: number | null = null;
 
   constructor(
     private motorsService: MotorsControlService,
@@ -46,14 +49,11 @@ export class BlobSimulationPage implements OnInit {
     private configService: SetupAPIService
   ) {
     this.streamUrl = this.configService.getNormalStreamUrl();
-    this.contourStreamUrl = this.getContourStreamUrl();
   }
 
   ngOnInit() {
     this.fetchKeypoints();
     this.loadHomography();
-    this.loadContourParams();
-    this.updateContourStreamUrl();
   }
 
   fetchKeypoints() {
@@ -71,31 +71,20 @@ export class BlobSimulationPage implements OnInit {
       }
     });
   }
+  
+  getPolygonPoints(): string {
+    // Assumes this.points is an array of objects with x and y properties
+    if (!this.points || this.points.length !== 4) {
+      return '';
+    }
+    return this.points.map(p => `${p.x},${p.y}`).join(' ');
+  }
 
   loadHomography() {
     this.configService.getHomography().subscribe({
       next: (res) => {
         if (res.homography) this.homography = res.homography;
       }
-    });
-  }
-
-  loadContourParams() {
-    this.configService.getContourParams().subscribe(params => {
-      this.contourParams = { ...this.contourParams, ...params };
-    });
-  }
-
-  updateContourParams() {
-    this.configService.updateContourParams(this.contourParams).subscribe(() => {
-      this.contourParamsSaved = true;
-      setTimeout(() => this.contourParamsSaved = false, 1500);
-    });
-  }
-
-  fetchContourHomography() {
-    this.configService.getContourHomography().subscribe(res => {
-      this.contourHomography = res.homography;
     });
   }
 
@@ -175,14 +164,65 @@ export class BlobSimulationPage implements OnInit {
     });
   }
 
-  updateContourStreamUrl() {
-    // Aggiungi il parametro mode all'URL dello stream contour
-    this.contourStreamUrl = this.getContourStreamUrl();
+  onCameraLoad(img: HTMLImageElement) {
+    // Aggiorna solo se disponibili valori validi
+    if (img.naturalWidth && img.naturalHeight) {
+      this.imgWidth = img.naturalWidth;
+      this.imgHeight = img.naturalHeight;
+    }
   }
 
-  getContourStreamUrl(): string {
-    return this.selectedStream === 'threshold'
-      ? this.configService.getContourStreamUrl() + '?mode=threshold'
-      : this.configService.getContourStreamUrl() + '?mode=normal';
+  selectPoint(i: number) {
+    this.selectedPoint = i;
+  }
+
+  // (opzionale) Gestione drag dei punti sull'immagine
+  // Puoi aggiungere eventi mouse/touch per spostare i punti direttamente sull'immagine
+
+  calculateHomography() {
+    // Chiamata al backend per calcolare la warp e restituire l'immagine post-processata
+    this.configService.calculateHomographyFromPoints(this.points).subscribe({
+      next: (res) => {
+        this.warpedImgUrl = res.warped_url;
+      },
+      error: () => {
+        this.presentToast('Errore nel calcolo omografia', 'danger');
+      }
+    });
+  }
+
+  onPointPointerDown(event: PointerEvent, i: number) {
+    event.preventDefault();
+    event.stopPropagation();
+    this.draggingPoint = i;
+    this.selectedPoint = i;
+    const svg = (event.target as SVGElement).ownerSVGElement || event.target as SVGSVGElement;
+    if (svg && event.pointerId) {
+      svg.setPointerCapture(event.pointerId);
+    }
+  }
+  
+
+  onSvgPointerMove(event: PointerEvent) {
+    if (this.draggingPoint !== null) {
+      event.preventDefault();
+      event.stopPropagation();
+      const svg = (event.target as SVGElement).ownerSVGElement || event.target as SVGSVGElement;
+      const rect = svg.getBoundingClientRect();
+      // Calcola coordinate relative allo SVG
+      const x = Math.max(0, Math.min(this.imgWidth, event.clientX - rect.left));
+      const y = Math.max(0, Math.min(this.imgHeight, event.clientY - rect.top));
+      this.points[this.draggingPoint] = { x, y };
+    }
+  }
+
+  onSvgPointerUp(event?: PointerEvent) {
+    if (event && event.pointerId) {
+      const svg = (event.target as SVGElement).ownerSVGElement || event.target as SVGSVGElement;
+      if (svg) {
+        svg.releasePointerCapture(event.pointerId);
+      }
+    }
+    this.draggingPoint = null;
   }
 }

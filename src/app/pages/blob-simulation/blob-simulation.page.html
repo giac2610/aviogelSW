@@ -1,76 +1,95 @@
 <ion-header [translucent]="true">
   <ion-toolbar>
-    <ion-title>Simulazione Contour & Omografia</ion-title>
+    <ion-title>Simulazione Camera & Omografia</ion-title>
   </ion-toolbar>
 </ion-header>
 
 <ion-content [fullscreen]="true">
+  <div style="display: flex; flex-direction: column; align-items: center;">
+    <!-- Camera live view con overlay punti -->
+    <div style="position: relative; display: inline-block;">
+      <img
+        [src]="streamUrl"
+        alt="Camera"
+        #cameraImg
+        (load)="onCameraLoad(cameraImg)"
+        style="border: 1px solid #ccc; display: block;"
+        width="{{ imgWidth }}"
+        height="{{ imgHeight }}"
+      />
+      <svg
+        *ngIf="imgWidth && imgHeight"
+        [attr.width]="imgWidth"
+        [attr.height]="imgHeight"
+        style="position: absolute; top: 0; left: 0; pointer-events: auto; touch-action: none;"
+        (pointermove)="onSvgPointerMove($event)"
+        (pointerup)="onSvgPointerUp()"
+        (pointerleave)="onSvgPointerUp()"
+      >
+        <!-- Rettangolo -->
+        <polygon
+          *ngIf="points.length === 4"
+          [attr.points]="getPolygonPoints()"
+          style="fill: none; stroke: blue; stroke-width: 2;"
+        ></polygon>
+        <!-- Punti (solo bordo, trasparente dentro) -->
+        <g *ngFor="let p of points; let i = index">
+          <circle
+            [attr.cx]="p.x"
+            [attr.cy]="p.y"
+            r="14"
+            fill="none"
+            [attr.stroke]="selectedPoint === i ? 'red' : 'orange'"
+            stroke-width="3"
+            style="cursor: pointer; filter: drop-shadow(0 0 4px #fff);"
+            (pointerdown)="onPointPointerDown($event, i)"
+          ></circle>
+          <!-- Handle quadrato per facilitare il touch -->
+          <rect
+            [attr.x]="p.x - 10"
+            [attr.y]="p.y - 10"
+            width="20"
+            height="20"
+            fill="rgba(255,255,255,0.01)"
+            style="cursor: pointer;"
+            (pointerdown)="onPointPointerDown($event, i)"
+          ></rect>
+        </g>
+      </svg>
+    </div>
 
-  <!-- 1. Parametri findContour -->
-  <ion-card>
-    <ion-card-header>
-      <ion-card-title>Parametri Contour Detection</ion-card-title>
-    </ion-card-header>
-    <ion-card-content>
-      <form (ngSubmit)="updateContourParams()">
-        <ion-item>
-          <ion-label position="stacked">minThreshold</ion-label>
-          <ion-input type="number" [(ngModel)]="contourParams.minThreshold" name="minThreshold"></ion-input>
-        </ion-item>
-        <ion-item>
-          <ion-label position="stacked">maxThreshold</ion-label>
-          <ion-input type="number" [(ngModel)]="contourParams.maxThreshold" name="maxThreshold"></ion-input>
-        </ion-item>
-        <ion-item>
-          <ion-label position="stacked">minArea</ion-label>
-          <ion-input type="number" [(ngModel)]="contourParams.minArea" name="minArea"></ion-input>
-        </ion-item>
-        <ion-item>
-          <ion-label position="stacked">maxArea</ion-label>
-          <ion-input type="number" [(ngModel)]="contourParams.maxArea" name="maxArea"></ion-input>
-        </ion-item>
-        <!-- Aggiungi altri parametri se necessario -->
-        <ion-button expand="block" type="submit">Salva Parametri</ion-button>
-      </form>
-      <div *ngIf="contourParamsSaved" style="color:green;">Parametri salvati!</div>
-    </ion-card-content>
-  </ion-card>
-
-  <!-- 2. Streaming con Contour -->
-  <ion-card>
-    <ion-card-header>
-      <ion-card-title>Streaming Camera con Contour</ion-card-title>
-    </ion-card-header>
-    <ion-card-content>
-      <ion-item>
-        <ion-label>Tipo Stream:</ion-label>
-        <ion-segment [(ngModel)]="selectedStream" (ionChange)="updateContourStreamUrl()">
-          <ion-segment-button value="normal">
-            <ion-label>Normale</ion-label>
-          </ion-segment-button>
-          <ion-segment-button value="threshold">
-            <ion-label>Threshold</ion-label>
-          </ion-segment-button>
-        </ion-segment>
-      </ion-item>
-      <img [src]="contourStreamUrl" alt="Contour Stream" style="max-width:100%;border:1px solid #ccc;" />
-    </ion-card-content>
-  </ion-card>
-
-  <!-- 3. Matrice di Omografia dal Contour -->
-  <ion-card>
-    <ion-card-header>
-      <ion-card-title>Matrice di Omografia dal Contour</ion-card-title>
-    </ion-card-header>
-    <ion-card-content>
-      <ion-button (click)="fetchContourHomography()">Calcola Omografia</ion-button>
-      <div *ngIf="contourHomography">
-        <h4>Matrice Omografica</h4>
-        <div *ngFor="let row of contourHomography">
-          <span *ngFor="let val of row" style="display:inline-block;width:80px;">{{ val | number:'1.4-4' }}</span>
+    <!-- Input dei 4 punti -->
+    <div style="display: flex; flex-direction: row; gap: 16px; margin: 16px 0;">
+      <ng-container *ngFor="let p of points; let i = index">
+        <div style="display: flex; flex-direction: column; align-items: center;">
+          <ion-label>Punto {{i+1}}</ion-label>
+          <ion-input
+            type="number"
+            [(ngModel)]="points[i].x"
+            (ionFocus)="selectPoint(i)"
+            style="width: 70px;"
+            min="0"
+            [max]="imgWidth"
+          ></ion-input>
+          <ion-input
+            type="number"
+            [(ngModel)]="points[i].y"
+            (ionFocus)="selectPoint(i)"
+            style="width: 70px;"
+            min="0"
+            [max]="imgHeight"
+          ></ion-input>
         </div>
-      </div>
-    </ion-card-content>
-  </ion-card>
+      </ng-container>
+    </div>
 
+    <!-- Calcola omografia -->
+    <ion-button (click)="calculateHomography()">Calcola Omografia</ion-button>
+
+    <!-- Immagine post-processata -->
+    <div *ngIf="warpedImgUrl" style="margin-top: 24px;">
+      <h3>Immagine post-processata</h3>
+      <img [src]="warpedImgUrl" alt="Warped" style="max-width: 600px; border: 1px solid #ccc;">
+    </div>
+  </div>
 </ion-content>
