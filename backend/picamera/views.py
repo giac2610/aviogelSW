@@ -383,7 +383,9 @@ def contour_params(request):
 def contour_stream(request):
     """
     Stream MJPEG con il contour trovato (contour nero).
+    Supporta modalità normale e threshold tramite parametro GET 'mode'.
     """
+    mode = request.GET.get("mode", "normal")
     def gen_frames():
         with open(SETUP_JSON_PATH, 'r') as f:
             config = json.load(f)
@@ -395,13 +397,22 @@ def contour_stream(request):
         while True:
             frame = get_frame()
             gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-            _, thresh = cv2.threshold(gray, minThreshold, maxThreshold, cv2.THRESH_BINARY)
-            contours, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-            # Filtra per area
-            filtered = [cnt for cnt in contours if minArea <= cv2.contourArea(cnt) <= maxArea]
-            frame_contour = frame.copy()
-            # Disegna i contorni in nero
-            cv2.drawContours(frame_contour, filtered, -1, (0, 180, 0), 2)
+            if mode == "threshold":
+                _, thresh = cv2.threshold(gray, minThreshold, maxThreshold, cv2.THRESH_BINARY)
+                contours, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+                filtered = [cnt for cnt in contours if minArea <= cv2.contourArea(cnt) <= maxArea]
+                frame_contour = cv2.cvtColor(thresh, cv2.COLOR_GRAY2BGR)
+                if filtered:
+                    main_contour = max(filtered, key=cv2.contourArea)
+                    cv2.drawContours(frame_contour, [main_contour], -1, (0, 180, 0), 2)
+            else:
+                _, thresh = cv2.threshold(gray, minThreshold, maxThreshold, cv2.THRESH_BINARY)
+                contours, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+                filtered = [cnt for cnt in contours if minArea <= cv2.contourArea(cnt) <= maxArea]
+                frame_contour = frame.copy()
+                if filtered:
+                    main_contour = max(filtered, key=cv2.contourArea)
+                    cv2.drawContours(frame_contour, [main_contour], -1, (0, 180, 0), 2)
             _, buffer = cv2.imencode('.jpg', frame_contour)
             frame_bytes = buffer.tobytes()
             yield (b'--frame\r\n'
@@ -430,17 +441,16 @@ def contour_homography(request):
     if not filtered:
         return JsonResponse({"homography": None, "error": "No contour found"})
     # Prendi il più grande
-    contour = max(filtered, key=cv2.contourArea)
+    main_contour = max(filtered, key=cv2.contourArea)
     # Approssima a 4 punti (rettangolo)
-    epsilon = 0.02 * cv2.arcLength(contour, True)
-    approx = cv2.approxPolyDP(contour, epsilon, True)
+    epsilon = 0.02 * cv2.arcLength(main_contour, True)
+    approx = cv2.approxPolyDP(main_contour, epsilon, True)
     if len(approx) != 4:
         return JsonResponse({"homography": None, "error": "Contour non quadrilatero"})
     pts_src = np.array([p[0] for p in approx], dtype=np.float32)
 
     # Verifica che sia un parallelogramma (lati opposti circa uguali, angoli circa 90°)
     def is_parallelogram(pts, tol=0.15):
-        # Ordina i punti (top-left, top-right, bottom-right, bottom-left)
         s = pts.sum(axis=1)
         diff = np.diff(pts, axis=1)
         rect = np.zeros((4,2), dtype="float32")
@@ -448,15 +458,12 @@ def contour_homography(request):
         rect[2] = pts[np.argmax(s)]
         rect[1] = pts[np.argmin(diff)]
         rect[3] = pts[np.argmax(diff)]
-        # Lati
         d01 = np.linalg.norm(rect[0] - rect[1])
         d12 = np.linalg.norm(rect[1] - rect[2])
         d23 = np.linalg.norm(rect[2] - rect[3])
         d30 = np.linalg.norm(rect[3] - rect[0])
-        # Lati opposti simili
         opp1 = abs(d01 - d23) / max(d01, d23)
         opp2 = abs(d12 - d30) / max(d12, d30)
-        # Angoli ~90°
         def angle(a, b, c):
             ba = a - b
             bc = c - b
@@ -480,7 +487,6 @@ def contour_homography(request):
     rect[2] = pts_src[np.argmax(s)]
     rect[1] = pts_src[np.argmin(diff)]
     rect[3] = pts_src[np.argmax(diff)]
-    # Definisci destinazione (rettangolo)
     w = max(np.linalg.norm(rect[0]-rect[1]), np.linalg.norm(rect[2]-rect[3]))
     h = max(np.linalg.norm(rect[0]-rect[3]), np.linalg.norm(rect[1]-rect[2]))
     dst = np.array([[0,0],[w-1,0],[w-1,h-1],[0,h-1]], dtype="float32")
