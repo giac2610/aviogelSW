@@ -406,14 +406,13 @@
           </ion-segment>
         </ion-item>
 
-        <ion-item>
-          <ion-label position="stacked">Origine Camera (x, y)</ion-label>
-          <ion-input type="number" [(ngModel)]="cameraOrigin.x" placeholder="x"></ion-input>
-          <ion-input type="number" [(ngModel)]="cameraOrigin.y" placeholder="y"></ion-input>
-          <ion-button size="small" (click)="updateCameraOrigin()">Aggiorna Origine</ion-button>
+        <ion-item lines="none" class="camera-origin-row">
+          <ion-label style="min-width: 120px;">Origine Camera (x, y)</ion-label>
+          <ion-input type="number" [(ngModel)]="settings.camera.origin_x" placeholder="x" style="max-width: 80px; margin-right: 8px;"></ion-input>
+          <ion-input type="number" [(ngModel)]="settings.camera.origin_y" placeholder="y" style="max-width: 80px; margin-right: 8px;"></ion-input>
+          <!-- <ion-button size="small" (click)="updateCameraOrigin()">Aggiorna Origine</ion-button> -->
         </ion-item>
       </ion-list>
-      <ion-button color="secondary" class="ion-margin-top" (click)="updateCameraSettings()">Aggiorna</ion-button>
       <ion-item>
         <ion-label>Stream:</ion-label>
         <ion-segment [(ngModel)]="selectedStream" (ionChange)="updateStreamUrl()">

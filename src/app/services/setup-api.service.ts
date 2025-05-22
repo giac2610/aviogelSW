@@ -44,8 +44,13 @@ export interface Settings {
   }
 
   camera: {
-    x: number,
-    y: number,
+    origin_x: number,
+    origin_y: number,
+    hole_spacing_x_mm: number,
+    hole_spacing_y_mm: number,
+    grid_rows: number,
+    grid_cols: number,
+    homography: number[],
     minThreshold: number,
     maxThreshold: number,
     areaFilter: boolean,
@@ -92,30 +97,17 @@ export class SetupAPIService {
     return this.http.post(url, { targets: { ...targets } });
   }
 
-  getCurrentSpeeds(): Observable<{ syringe: number; extruder: number; conveyor: number }> {
-    const url = `${this.apiUrl}motors/speeds/`;
-    return this.http.get<{ syringe: number; extruder: number; conveyor: number }>(url);
-  }
-
-  setCameraOrigin(x: number, y: number): Observable<any> {
+  setCameraOrigin(origin_x: number, origin_y: number): Observable<any> {
     const url = `${this.apiUrl}camera/set-origin/`;
-    return this.http.post(url, { x, y });
+    return this.http.post(url, { origin_x, origin_y });
   }
 
   getKeypoints(): Observable<any> {
     return this.http.get<any>(`${this.apiUrl}camera/keypoints/`);
   }
 
-  getKeypointsAll(): Observable<any> {
-    return this.http.get<any>(`${this.apiUrl}camera/keypoints-all/`);
-  }
-
   getHomography(): Observable<any> {
     return this.http.get<any>(`${this.apiUrl}camera/homography/`);
-  }
-
-  getFrame(): Observable<Blob> {
-    return this.http.get(`${this.apiUrl}camera/frame/`, { responseType: 'blob' });
   }
 
   getThresholdStreamUrl(): string {
@@ -130,11 +122,13 @@ export class SetupAPIService {
     return `${this.apiUrl}camera/dynamic-warped-stream/`;
   }
 
-  captureAndWarpFrame(): Observable<any> {
-    return this.http.get<any>(`${this.apiUrl}camera/capture-and-warp-frame/`);
+  calibrateCamera(): Observable<any> {
+    const url = `${this.apiUrl}camera/calibrate_camera/`;
+    return this.http.post(url, {});
   }
 
-  calculateHomographyFromPoints(points: {x: number, y: number}[]): Observable<any> {
-    return this.http.post<any>(`${this.apiUrl}camera/calculate-homography-from-points/`, { points });
-  }
+  saveFrameCalibration(): Observable<any> {
+  const url = `${this.apiUrl}camera/save-frame-calibration/`;
+  return this.http.post(url, {});
+}
 }

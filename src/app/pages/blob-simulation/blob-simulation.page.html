@@ -5,91 +5,120 @@
 </ion-header>
 
 <ion-content [fullscreen]="true">
-  <div style="display: flex; flex-direction: column; align-items: center;">
-    <!-- Camera live view con overlay punti -->
-    <div style="position: relative; display: inline-block;">
-      <img
-        [src]="streamUrl"
-        alt="Camera"
-        #cameraImg
-        (load)="onCameraLoad(cameraImg)"
-        style="border: 1px solid #ccc; display: block;"
-        width="{{ imgWidth }}"
-        height="{{ imgHeight }}"
-      />
-      <svg
-        *ngIf="imgWidth && imgHeight"
-        [attr.width]="imgWidth"
-        [attr.height]="imgHeight"
-        style="position: absolute; top: 0; left: 0; pointer-events: auto; touch-action: none;"
-        (pointermove)="onSvgPointerMove($event)"
-        (pointerup)="onSvgPointerUp()"
-        (pointerleave)="onSvgPointerUp()"
-      >
-        <!-- Rettangolo -->
-        <polygon
-          *ngIf="points.length === 4"
-          [attr.points]="getPolygonPoints()"
-          style="fill: none; stroke: blue; stroke-width: 2;"
-        ></polygon>
-        <!-- Punti (solo bordo, trasparente dentro) -->
-        <g *ngFor="let p of points; let i = index">
-          <circle
-            [attr.cx]="p.x"
-            [attr.cy]="p.y"
-            r="14"
-            fill="none"
-            [attr.stroke]="selectedPoint === i ? 'red' : 'orange'"
-            stroke-width="3"
-            style="cursor: pointer; filter: drop-shadow(0 0 4px #fff);"
-            (pointerdown)="onPointPointerDown($event, i)"
-          ></circle>
-          <!-- Handle quadrato per facilitare il touch -->
-          <rect
-            [attr.x]="p.x - 10"
-            [attr.y]="p.y - 10"
-            width="20"
-            height="20"
-            fill="rgba(255,255,255,0.01)"
-            style="cursor: pointer;"
-            (pointerdown)="onPointPointerDown($event, i)"
-          ></rect>
-        </g>
-      </svg>
-    </div>
+  <ion-card>
+    <ion-card-header>
+      <ion-card-title>Test Omografia & Blob World Coordinates</ion-card-title>
+    </ion-card-header>
+    <ion-card-content>
+      <ion-item lines="none">
+        <img #cameraImgRef
+             [src]="streamUrl"
+             [width]="imgWidth"
+             (load)="onCameraLoad(cameraImgRef)"
+             style="border:1px solid #888; margin-top: 0.5em; max-width:100%; height:auto; display:block;">
+      </ion-item>
+      <ion-button expand="block" color="secondary" (click)="saveFrameCalibration()">Salva Frame Calibrazione</ion-button>
+      <ion-button (click)="calibrateCamera()">Calibra</ion-button>
+      <!-- Keypoints -->
 
-    <!-- Input dei 4 punti -->
-    <div style="display: flex; flex-direction: row; gap: 16px; margin: 16px 0;">
-      <ng-container *ngFor="let p of points; let i = index">
-        <div style="display: flex; flex-direction: column; align-items: center;">
-          <ion-label>Punto {{i+1}}</ion-label>
-          <ion-input
-            type="number"
-            [(ngModel)]="points[i].x"
-            (ionFocus)="selectPoint(i)"
-            style="width: 70px;"
-            min="0"
-            [max]="imgWidth"
-          ></ion-input>
-          <ion-input
-            type="number"
-            [(ngModel)]="points[i].y"
-            (ionFocus)="selectPoint(i)"
-            style="width: 70px;"
-            min="0"
-            [max]="imgHeight"
-          ></ion-input>
-        </div>
-      </ng-container>
-    </div>
+      <ion-accordion-group>
+        <ion-accordion value="keypoints">
+          <ion-item slot="header">
+            <ion-label>Mostra/Nascondi Keypoints ({{ keypoints.length }})</ion-label>
+          </ion-item>
+          <ion-list slot="content">
+            <div style="display: flex; flex-wrap: wrap; gap: 1em;">
+              <span *ngFor="let kp of keypoints; let i = index">
+                [{{ kp[0] | number:'1.0-1' }}, {{ kp[1] | number:'1.0-1' }}]
+              </span>
+            </div>
+          </ion-list>
+        </ion-accordion>
+      </ion-accordion-group>
+      <ion-item *ngIf="keypoints.length === 0" lines="none">
+        <ion-label>Nessuno</ion-label>
+      </ion-item>
+      <ion-button expand="block" (click)="fetchKeypoints()">Aggiorna Keypoints</ion-button>
 
-    <!-- Calcola omografia -->
-    <ion-button (click)="calculateHomography()">Calcola Omografia</ion-button>
+      <!-- Parallelepipedo punti -->
+      <ion-list *ngIf="parallelepipedVertices && parallelepipedVertices.length === 4" style="margin-top:0.5em;">
+        <ion-item lines="none">
+          <ion-label>
+            <b>Vertici parallelepipedo (rettangolo prospettico):</b>
+          </ion-label>
+        </ion-item>
+        <ion-item *ngFor="let v of parallelepipedVertices; let i = index" lines="none">
+          Vertice {{i+1}}: [{{ v[0] | number:'1.0-1' }}, {{ v[1] | number:'1.0-1' }}]
+        </ion-item>
+      </ion-list>
 
-    <!-- Immagine post-processata -->
-    <div *ngIf="warpedImgUrl" style="margin-top: 24px;">
-      <h3>Immagine post-processata</h3>
-      <img [src]="warpedImgUrl" alt="Warped" style="max-width: 600px; border: 1px solid #ccc;">
-    </div>
-  </div>
+      <!-- Omografia
+      <ion-item lines="none" style="margin-top:1em;">
+        <ion-label>
+          <b>Matrice Omografica:</b>
+        </ion-label>
+      </ion-item>
+      <ion-grid *ngIf="homography" style="margin-top:0.5em;">
+        <ion-row *ngFor="let row of homography">
+          <ion-col *ngFor="let val of row" style="border:1px solid #888; padding:0.3em 0.7em; text-align:right;">
+            {{ val | number:'1.4-4' }}
+          </ion-col>
+        </ion-row>
+      </ion-grid>
+      <ion-button expand="block" (click)="loadHomography()">Ricarica Omografia</ion-button>
+      <ion-button expand="block" (click)="reconstructGrid()">Ricostruisci Griglia (API)</ion-button>
+      <ion-text *ngIf="reconstructGridStatus">
+        <span>{{ reconstructGridStatus }}</span>
+      </ion-text> -->
+
+      <!-- Statiche: immagini annotate e warped -->
+      <!-- <ion-item lines="none" style="margin-top:1em;">
+        <ion-button expand="block" (click)="captureAndWarpFrame()">Cattura e Warpa Frame</ion-button>
+      </ion-item>
+      <ion-grid *ngIf="staticOriginalUrl || staticWarpedUrl" style="margin-top:0.5em;">
+        <ion-row>
+          <ion-col *ngIf="staticOriginalUrl">
+            <b>Originale Annotata:</b><br>
+            <img [src]="staticOriginalUrl" width="200" style="border:1px solid #888;">
+          </ion-col>
+          <ion-col *ngIf="staticWarpedUrl">
+            <b>Warped:</b><br>
+            <img [src]="staticWarpedUrl" width="200" style="border:1px solid #888;">
+          </ion-col>
+        </ion-row>
+      </ion-grid>
+      <ion-item *ngIf="staticHomography" lines="none">
+        <ion-label>
+          <b>Omografia usata:</b>
+          <pre>{{ staticHomography | json }}</pre>
+        </ion-label>
+      </ion-item> -->
+
+      <!-- Coordinate mondo dei blob -->
+      <!-- <ion-item lines="none" style="margin-top:1em;">
+        <ion-button expand="block" (click)="getBlobWorldCoordinates()">Ottieni Coordinate Mondo dei Blob</ion-button>
+      </ion-item>
+      <ion-list *ngIf="blobWorldCoords">
+        <ion-item lines="none">
+          <ion-label>
+            <b>Coordinate mondo:</b>
+          </ion-label>
+        </ion-item>
+        <ion-item *ngFor="let pt of blobWorldCoords" lines="none">
+          [{{ pt[0] | number:'1.0-1' }}, {{ pt[1] | number:'1.0-1' }}]
+        </ion-item>
+        <ion-item>
+          <ion-label>
+            <span>Totale: {{ blobWorldCoords.length }}</span>
+          </ion-label>
+        </ion-item>
+      </ion-list>
+      <ion-item *ngIf="blobWorldCoordsError" lines="none">
+        <ion-label color="danger">
+          {{ blobWorldCoordsError }}
+        </ion-label>
+      </ion-item> -->
+
+    </ion-card-content>
+  </ion-card>
 </ion-content>

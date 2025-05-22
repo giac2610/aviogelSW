@@ -103,9 +103,9 @@ speedPollingSubscription!: Subscription;
     this.configService.getSettings().subscribe((data: Settings) => {
       this.settings = data;
       // Carica x e y della camera se presenti
-      if (this.settings.camera && typeof this.settings.camera.x === 'number' && typeof this.settings.camera.y === 'number') {
-        this.cameraOrigin.x = this.settings.camera.x;
-        this.cameraOrigin.y = this.settings.camera.y;
+      if (this.settings.camera && typeof this.settings.camera.origin_x === 'number' && typeof this.settings.camera.origin_y === 'number') {
+        this.cameraOrigin.x = this.settings.camera.origin_x;
+        this.cameraOrigin.y = this.settings.camera.origin_y;
       }
       this.isLoading = false;
 
@@ -208,24 +208,10 @@ speedPollingSubscription!: Subscription;
     this.cameraSettingsSubject.next(this.settings.camera);
   }
 
-  updateCameraSettings() {
-    // Metodo manuale per aggiornare i settaggi (opzionale)
-    this.configService.updateCameraSettings(this.settings.camera).subscribe({
-      next: (response) => {
-        console.log('Impostazioni aggiornate:', response);
-        this.presentToast('Impostazioni aggiornate con successo', 'success');
-      },
-      error: (error) => {
-        console.error('Errore durante l\'aggiornamento delle impostazioni:', error);
-        this.presentToast('Errore durante l\'aggiornamento delle impostazioni', 'danger');
-      }
-    });
-  }
-
   updateCameraOrigin() {
     // Aggiorna x e y sia localmente che sul backend
-    this.settings.camera.x = this.cameraOrigin.x;
-    this.settings.camera.y = this.cameraOrigin.y;
+    this.settings.camera.origin_x = this.cameraOrigin.x;
+    this.settings.camera.origin_y = this.cameraOrigin.y;
     this.configService.setCameraOrigin(this.cameraOrigin.x, this.cameraOrigin.y).subscribe({
       next: (res) => {
         this.presentToast('Origine camera aggiornata', 'success');
