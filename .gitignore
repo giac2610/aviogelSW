@@ -8,3 +8,5 @@ backend/requirments.txt
 __pycache__/
 backend/config/setup.json
 backend/aviogelMotor/motorLog.log
+backend/calibrationMedia/*.jpg
+backend/calibrationMedia

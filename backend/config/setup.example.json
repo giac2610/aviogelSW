@@ -1,49 +1,46 @@
 {
-     "motors": {
-         "extruder": {
-             "homeDir": 0,
-             "stepOneRev": 200.0,
-             "microstep": 8,
-             "pitch": 3.78,
-             "maxSpeed": 250.0,
-             "acceleration": 800.0,
-             "maxTravel": 150.0,
-             "hertz": 0.0,
-             "stepsPerMm": 423.28
-         },
-         "conveyor": {
-             "homeDir": 1,
-             "stepOneRev": 200.0,
-             "microstep": 8,
-             "pitch": 10.0,
-             "maxSpeed": 250.0,
-             "acceleration": 1000.0,
-             "maxTravel": 100.0,
-             "hertz": 0.0,
-             "stepsPerMm": 160.0
-         },
-         "syringe": {
-             "homeDir": 1,
-             "stepOneRev": 200.0,
-             "microstep": 8,
-             "pitch": 3.78,
-             "maxSpeed": 250.0,
-             "acceleration": 800.0,
-             "maxTravel": 100.0,
-             "hertz": 0.0,
-             "stepsPerMm": 423.28
-         }
-     },
-     "camera": {
-        "x": 0,
-        "y": 0,
-        "homography": [
-            [1.0, 0.0, 0.0],
-            [0.0, 1.0, 0.0],
-            [0.0, 0.0, 1.0]
-        ],
-        "righe": 8,
-        "colonne": 6,
+    "motors": {
+        "extruder": {
+            "homeDir": 0,
+            "stepOneRev": 200.0,
+            "microstep": 8,
+            "pitch": 3.78,
+            "maxSpeed": 250.0,
+            "acceleration": 800.0,
+            "maxTravel": 150.0,
+            "hertz": 0.0,
+            "stepsPerMm": 423.28
+        },
+        "conveyor": {
+            "homeDir": 1,
+            "stepOneRev": 200.0,
+            "microstep": 8,
+            "pitch": 10.0,
+            "maxSpeed": 250.0,
+            "acceleration": 1000.0,
+            "maxTravel": 100.0,
+            "hertz": 0.0,
+            "stepsPerMm": 160.0
+        },
+        "syringe": {
+            "homeDir": 1,
+            "stepOneRev": 200.0,
+            "microstep": 8,
+            "pitch": 3.78,
+            "maxSpeed": 250.0,
+            "acceleration": 800.0,
+            "maxTravel": 100.0,
+            "hertz": 0.0,
+            "stepsPerMm": 423.28
+        }
+    },
+    "camera": {
+        "origin_x": 0.0,
+        "origin_y": 0.0,
+        "hole_spacing_x_mm": 50.0,
+        "hole_spacing_y_mm": 50.0,
+        "grid_rows": 8,
+        "grid_cols": 6,
         "minThreshold": 44,
         "maxThreshold": 251,
         "areaFilter": true,
@@ -54,6 +51,42 @@
         "maxCircularity": 1.0,
         "inertiaFilter": true,
         "minInertia": 0.1,
-        "maxInertia": 1.0
-     }
- }
+        "maxInertia": 1.0,
+        "filterByConvexity": true,
+        "minConvexity": 0.87,
+        "contour": {
+            "minThreshold": 160,
+            "maxThreshold": 255,
+            "minArea": 200000,
+            "maxArea": 2000000
+        },
+        "calibration": {
+            "camera_matrix": [
+                [
+                    1184.8510420742073,
+                    0.0,
+                    623.7151852256341
+                ],
+                [
+                    0.0,
+                    1252.4789958181375,
+                    380.06398398407384
+                ],
+                [
+                    0.0,
+                    0.0,
+                    1.0
+                ]
+            ],
+            "distortion_coefficients": [
+                [
+                    -0.2389519822232525,
+                    2.008810987235629,
+                    0.0033940768054379223,
+                    -0.0017196863592207697,
+                    -5.325985830272763
+                ]
+            ]
+        }
+    }
+}
