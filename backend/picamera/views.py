@@ -17,12 +17,6 @@ BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__))) # Assumen
 CONFIG_DIR = os.path.join(BASE_DIR, 'config')
 SETUP_JSON_PATH = os.path.join(CONFIG_DIR, 'setup.json')
 EXAMPLE_JSON_PATH = os.path.join(CONFIG_DIR, 'setup.example.json')
-
-# MEDIA_DIR per calibrationMedia (relativo alla posizione di questo file views.py)
-# Assumendo che views.py sia in /app_name/views.py e media in /media/
-# Quindi ../media -> /media/
-# Se calibrationMedia è dentro media: /media/calibrationMedia
-# Se calibrationMedia è allo stesso livello di config: /calibrationMedia (relativo a BASE_DIR)
 CALIBRATION_MEDIA_DIR = os.path.join(BASE_DIR, 'calibrationMedia') # Metti le immagini di calibrazione qui
 os.makedirs(CALIBRATION_MEDIA_DIR, exist_ok=True) # Crea la cartella se non esiste
 
@@ -57,8 +51,11 @@ def initialize_camera():
             if hasattr(camera_instance, 'release'):
                 camera_instance.release()
             elif hasattr(camera_instance, 'stop'): # Per Picamera2
-                if getattr(camera_instance, 'started', False):
+                # Rilascia solo se esiste il metodo stop
+                try:
                     camera_instance.stop()
+                except Exception:
+                    pass
             camera_instance = None
 
         if sys.platform == "darwin":
@@ -115,12 +112,20 @@ def get_frame(release_after=False):
                 return np.zeros((480, 640, 3), dtype=np.uint8)
             return frame
         else: # Picamera2
-            if not camera_instance or not getattr(camera_instance, 'started', False):
-                print("get_frame (Pi): Picamera2 non avviata, restituisco frame vuoto.")
+            # Nuovo controllo: la camera è pronta se esiste il metodo capture_array
+            if not camera_instance or not hasattr(camera_instance, 'capture_array'):
+                print("get_frame (Pi): Picamera2 non pronta, restituisco frame vuoto.")
                 return np.zeros((480, 640, 3), dtype=np.uint8)
-            frame = camera_instance.capture_array()
+            try:
+                frame = camera_instance.capture_array()
+            except Exception as e:
+                print(f"get_frame (Pi): Errore nella cattura del frame: {e}")
+                return np.zeros((480, 640, 3), dtype=np.uint8)
             if should_release:
-                camera_instance.stop()
+                try:
+                    camera_instance.stop()
+                except Exception:
+                    pass
                 camera_instance = None
             return cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
 
@@ -511,22 +516,22 @@ def set_fixed_perspective_view(request):
             frame_cap = get_frame(release_after=True)
             if frame_cap is None or frame_cap.size == 0: 
                 return JsonResponse({"status": "error", "message": "Impossibile ottenere frame dalla camera."}, status=500)
-            
+
             h_cam_cap, w_cam_cap = frame_cap.shape[:2]
             new_camera_matrix_cv, _ = cv2.getOptimalNewCameraMatrix(camera_matrix_cv, dist_coeffs_cv, (w_cam_cap,h_cam_cap), 1.0, (w_cam_cap,h_cam_cap))
             undistorted_frame_cap = cv2.undistort(frame_cap, camera_matrix_cv, dist_coeffs_cv, None, new_camera_matrix_cv)
-    
+
             H_canonical, canonical_dims = get_board_and_canonical_homography_for_django(
                 undistorted_frame_cap, new_camera_matrix_cv, calib_settings_dict
             )
-    
+
             if H_canonical is not None:
                 cb_w, cb_h = canonical_dims
                 offset_x = (FIXED_WIDTH - cb_w) / 2.0
                 offset_y = (FIXED_HEIGHT - cb_h) / 2.0
                 M_translate = np.array([[1,0,offset_x], [0,1,offset_y], [0,0,1]], dtype=np.float32)
                 H_ref = M_translate @ H_canonical
-                
+
                 if save_fixed_perspective_homography(H_ref):
                     return JsonResponse({"status": "success", "message": "Vista fissa del piano stabilita e salvata."})
                 else:
