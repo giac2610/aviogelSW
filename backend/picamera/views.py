@@ -73,7 +73,7 @@ def initialize_camera():
                 picam2 = Picamera2()
                 cfg_data = load_config_data()
                 # picam_config = cfg_data.get("camera", {}).get("picamera_config", {"main": {"size": (640, 480)}})
-                # picam2.configure(picam2.create_video_configuration(**picam_config))
+                picam2.configure(picam2.create_video_configuration(main={"size": (640, 480)}))
                 picam2.start()
                 camera_instance = picam2
                 print("[INFO] Picamera2 inizializzata.")
@@ -313,19 +313,19 @@ def camera_feed(request): # Tua funzione originale per i blob
                         cv2.DRAW_MATCHES_FLAGS_DRAW_RICH_KEYPOINTS)
 
                     # Parallelepipedo (dal tuo script)
-                    if keypoints_blob and len(keypoints_blob) >= 4:
-                        pts = np.array([kp.pt for kp in keypoints_blob], dtype=np.float32)
-                        s = pts.sum(axis=1)
-                        diff = np.diff(pts, axis=1)
-                        corners = np.zeros((4,2), dtype=np.float32)
-                        corners[0] = pts[np.argmin(s)]
-                        corners[2] = pts[np.argmax(s)]
-                        corners[1] = pts[np.argmin(diff)]
-                        corners[3] = pts[np.argmax(diff)]
-                        corners_int = corners.astype(np.intp)
-                        inside = all(cv2.pointPolygonTest(corners, (pt[0], pt[1]), False) >= 0 for pt in pts)
-                        if inside:
-                            cv2.polylines(frame_with_keypoints, [corners_int], isClosed=True, color=(0,255,0), thickness=2)
+                    # if keypoints_blob and len(keypoints_blob) >= 4:
+                    #     pts = np.array([kp.pt for kp in keypoints_blob], dtype=np.float32)
+                    #     s = pts.sum(axis=1)
+                    #     diff = np.diff(pts, axis=1)
+                    #     corners = np.zeros((4,2), dtype=np.float32)
+                    #     corners[0] = pts[np.argmin(s)]
+                    #     corners[2] = pts[np.argmax(s)]
+                    #     corners[1] = pts[np.argmin(diff)]
+                    #     corners[3] = pts[np.argmax(diff)]
+                    #     corners_int = corners.astype(np.intp)
+                    #     inside = all(cv2.pointPolygonTest(corners, (pt[0], pt[1]), False) >= 0 for pt in pts)
+                    #     if inside:
+                    #         cv2.polylines(frame_with_keypoints, [corners_int], isClosed=True, color=(0,255,0), thickness=2)
 
                     _, buffer = cv2.imencode('.jpg', frame_with_keypoints)
                     frame_bytes = buffer.tobytes()
