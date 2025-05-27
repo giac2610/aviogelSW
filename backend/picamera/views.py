@@ -47,15 +47,16 @@ def initialize_camera():
     global camera_instance
     with camera_lock:
         if camera_instance is not None:
-            # Tenta di rilasciare la camera se già inizializzata, per sicurezza
-            if hasattr(camera_instance, 'release'):
-                camera_instance.release()
-            elif hasattr(camera_instance, 'stop'): # Per Picamera2
-                # Rilascia solo se esiste il metodo stop
-                try:
+            # Rilascia risorse in modo robusto
+            try:
+                if hasattr(camera_instance, 'release'):
+                    camera_instance.release()
+                if hasattr(camera_instance, 'stop'):
                     camera_instance.stop()
-                except Exception:
-                    pass
+                if hasattr(camera_instance, 'close'):
+                    camera_instance.close()
+            except Exception as e:
+                print(f"[WARN] Errore nel rilascio camera: {e}")
             camera_instance = None
 
         if sys.platform == "darwin":
@@ -72,13 +73,18 @@ def initialize_camera():
                 from picamera2 import Picamera2
                 picam2 = Picamera2()
                 cfg_data = load_config_data()
-                # picam_config = cfg_data.get("camera", {}).get("picamera_config", {"main": {"size": (640, 480)}})
                 picam2.configure(picam2.create_video_configuration(main={"size": (640, 480)}))
                 picam2.start()
                 camera_instance = picam2
                 print("[INFO] Picamera2 inizializzata.")
             except Exception as e:
                 print(f"Errore durante l'inizializzazione della Picamera2: {e}")
+                # Prova a chiudere comunque
+                try:
+                    if 'picam2' in locals():
+                        picam2.close()
+                except Exception:
+                    pass
                 camera_instance = None
                 return None
         return camera_instance
@@ -124,6 +130,8 @@ def get_frame(release_after=False):
             if should_release:
                 try:
                     camera_instance.stop()
+                    if sys.platform != "darwin":
+                        camera_instance.close()
                 except Exception:
                     pass
                 camera_instance = None
