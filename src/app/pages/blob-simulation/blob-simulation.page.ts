@@ -11,17 +11,19 @@ import { SetupAPIService } from 'src/app/services/setup-api.service';
 })
 export class BlobSimulationPage implements OnInit {
   keypoints: [number, number][] = [];
+  coordinates: [number, number][] = [];
   loading = false;
   error: string | null = null;
   streamUrl: string;
-  homography: number[] = [
-    1,0,0,
-    0,1,0,
-    0,0,1
+  homography: number[][] = [
+    [1,0,0],
+    [0,1,0],
+    [0,0,1]
   ];
   reconstructGridStatus: string | null = null;
   boundingBoxVertices: [number, number][] = [];
   parallelepipedVertices: [number, number][] = [];
+  dynamicWarpedStreamUrl: string;
 
   @ViewChild('cameraImg', { static: false }) cameraImgRef!: ElementRef<HTMLImageElement>;
   imgWidth: number = 300;
@@ -33,11 +35,13 @@ export class BlobSimulationPage implements OnInit {
     private configService: SetupAPIService
   ) {
     this.streamUrl = this.configService.getNormalStreamUrl();
+    this.dynamicWarpedStreamUrl = this.configService.getDynamicWarpedStreamUrl();
   }
 
   ngOnInit() {
     this.fetchKeypoints();
     this.loadHomography();
+    this.getRealCoordinates();
   }
 
   fetchKeypoints() {
@@ -60,8 +64,9 @@ export class BlobSimulationPage implements OnInit {
   loadHomography() {
     this.configService.getSettings().subscribe({
       next: (res) => {
-        if (res.camera.homography) {
-          this.homography = res.camera.homography;
+        console.log('Settings:', res);
+        if (res.camera.calibration.camera_matrix) {
+          this.homography = res.camera.calibration.camera_matrix;
         } else {
           this.presentToast('Nessuna omografia disponibile');
         }
@@ -100,17 +105,46 @@ export class BlobSimulationPage implements OnInit {
   }
 
   saveFrameCalibration() {
-  this.configService.saveFrameCalibration().subscribe({
-    next: (res) => {
-      if (res.status === 'success') {
-        this.presentToast('Frame salvato: ' + res.filename);
-      } else {
+    this.configService.saveFrameCalibration().subscribe({
+      next: (res) => {
+        if (res.status === 'success') {
+          this.presentToast('Frame salvato: ' + res.filename);
+        } else {
+          this.presentToast('Errore nel salvataggio frame', 'danger');
+        }
+      },
+      error: () => {
         this.presentToast('Errore nel salvataggio frame', 'danger');
       }
-    },
-    error: () => {
-      this.presentToast('Errore nel salvataggio frame', 'danger');
-    }
-  });
-}
+    });
+  }
+
+  getRealCoordinates(){
+    this.configService.getKeypointsCoordinates().subscribe({
+      next: (res) => {
+          this.presentToast('Coordinate reali recuperate con successo');
+          console.log('Coordinate reali:', res.coordinates);
+          this.coordinates = res.coordinates;
+        
+      },
+      error: () => {
+        this.presentToast('Errore nel recupero delle coordinate reali', 'danger');
+      }
+    });
+  }
+
+  setFixedPerspectiveView() {
+    this.configService.setFixedPerspectiveView().subscribe({
+      next: (res) => {
+        if (res.status === 'success') {
+          this.presentToast('Vista prospettica fissa impostata con successo');
+        } else {
+          this.presentToast('Errore nell\'impostazione della vista prospettica', 'danger');
+        }
+      },
+      error: () => {
+        this.presentToast('Errore nella richiesta di impostazione della vista prospettica', 'danger');
+      }
+    });
+  }
 }

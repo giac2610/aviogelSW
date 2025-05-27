@@ -50,7 +50,6 @@ export interface Settings {
     hole_spacing_y_mm: number,
     grid_rows: number,
     grid_cols: number,
-    homography: number[],
     minThreshold: number,
     maxThreshold: number,
     areaFilter: boolean,
@@ -61,10 +60,34 @@ export interface Settings {
     maxCircularity: number,
     inertiaFilter: boolean,
     minInertia: number,
-    maxInertia: number
-  }
+    maxInertia: number,
+    picamera_config: {
+      controls: {
+        FrameRate: number,
+      }
+      lores: {
+        size: [number, number],
+      }
+      main: {
+        size: [number, number],
+      }
+    }
+    calibration: {
+      camera_matrix: number[][],
+      dist_coeffs: number[],
+    },
+    calibration_settings: {
+      chessboard_cols: number,
+      chessboard_rows: number,
+      square_size_mm: number,
+    },
+    fixed_perspective: {
+      homography_matrix: number[][],
+      output_width: number,
+      output_height: number,
+    }
 }
-
+}
 @Injectable({
   providedIn: 'root'
 })
@@ -119,7 +142,8 @@ export class SetupAPIService {
   }
 
   getDynamicWarpedStreamUrl(): string {
-    return `${this.apiUrl}camera/dynamic-warped-stream/`;
+    // return `${this.apiUrl}camera/dynamic-warped-stream/`;
+      return `${this.apiUrl}camera/fixed-perspective-stream/`;
   }
 
   calibrateCamera(): Observable<any> {
@@ -130,5 +154,19 @@ export class SetupAPIService {
   saveFrameCalibration(): Observable<any> {
   const url = `${this.apiUrl}camera/save-frame-calibration/`;
   return this.http.post(url, {});
-}
+  }
+
+  getKeypointsCoordinates(): Observable<any> {
+    const url = `${this.apiUrl}camera/get_coordinates/`;
+    return this.http.get(url);
+  }
+
+  getFixedPerspectiveStreamUrl(): string {
+    return `${this.apiUrl}camera/fixed-perspective-stream/`;
+  }
+
+  setFixedPerspectiveView(): Observable<any> {
+    const url = `${this.apiUrl}camera/set-fixed-perspective/`;
+    return this.http.post(url, {});
+  }
 }

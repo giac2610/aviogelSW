@@ -1,3 +1,4 @@
+
 <ion-header [translucent]="true">
   <ion-toolbar>
     <ion-title>Simulazione Camera & Omografia</ion-title>
@@ -16,11 +17,12 @@
              [width]="imgWidth"
              (load)="onCameraLoad(cameraImgRef)"
              style="border:1px solid #888; margin-top: 0.5em; max-width:100%; height:auto; display:block;">
-      </ion-item>
-      <ion-button expand="block" color="secondary" (click)="saveFrameCalibration()">Salva Frame Calibrazione</ion-button>
-      <ion-button (click)="calibrateCamera()">Calibra</ion-button>
-      <!-- Keypoints -->
-
+            </ion-item>
+          <div style="display: flex; gap: 0.5em; margin-top: 1em;">
+            <ion-button color="secondary" (click)="saveFrameCalibration()">Salva Frame Calibrazione</ion-button>
+            <ion-button (click)="calibrateCamera()">Calibra</ion-button>
+          </div>
+      <!-- Keypoints
       <ion-accordion-group>
         <ion-accordion value="keypoints">
           <ion-item slot="header">
@@ -38,86 +40,52 @@
       <ion-item *ngIf="keypoints.length === 0" lines="none">
         <ion-label>Nessuno</ion-label>
       </ion-item>
-      <ion-button expand="block" (click)="fetchKeypoints()">Aggiorna Keypoints</ion-button>
+      <ion-button expand="block" (click)="fetchKeypoints()">Aggiorna Keypoints</ion-button> -->
 
-      <!-- Parallelepipedo punti -->
-      <ion-list *ngIf="parallelepipedVertices && parallelepipedVertices.length === 4" style="margin-top:0.5em;">
-        <ion-item lines="none">
-          <ion-label>
-            <b>Vertici parallelepipedo (rettangolo prospettico):</b>
-          </ion-label>
-        </ion-item>
-        <ion-item *ngFor="let v of parallelepipedVertices; let i = index" lines="none">
-          Vertice {{i+1}}: [{{ v[0] | number:'1.0-1' }}, {{ v[1] | number:'1.0-1' }}]
-        </ion-item>
-      </ion-list>
 
-      <!-- Omografia
-      <ion-item lines="none" style="margin-top:1em;">
+    <!-- <ion-item lines="none" style="margin-top:1em;">
         <ion-label>
-          <b>Matrice Omografica:</b>
+          <b>Camera Matrix:</b>
         </ion-label>
       </ion-item>
-      <ion-grid *ngIf="homography" style="margin-top:0.5em;">
+      <ion-grid *ngIf="homography.length">
         <ion-row *ngFor="let row of homography">
           <ion-col *ngFor="let val of row" style="border:1px solid #888; padding:0.3em 0.7em; text-align:right;">
             {{ val | number:'1.4-4' }}
           </ion-col>
         </ion-row>
-      </ion-grid>
-      <ion-button expand="block" (click)="loadHomography()">Ricarica Omografia</ion-button>
-      <ion-button expand="block" (click)="reconstructGrid()">Ricostruisci Griglia (API)</ion-button>
-      <ion-text *ngIf="reconstructGridStatus">
-        <span>{{ reconstructGridStatus }}</span>
-      </ion-text> -->
+      </ion-grid> -->
 
-      <!-- Statiche: immagini annotate e warped -->
-      <!-- <ion-item lines="none" style="margin-top:1em;">
-        <ion-button expand="block" (click)="captureAndWarpFrame()">Cattura e Warpa Frame</ion-button>
-      </ion-item>
-      <ion-grid *ngIf="staticOriginalUrl || staticWarpedUrl" style="margin-top:0.5em;">
-        <ion-row>
-          <ion-col *ngIf="staticOriginalUrl">
-            <b>Originale Annotata:</b><br>
-            <img [src]="staticOriginalUrl" width="200" style="border:1px solid #888;">
-          </ion-col>
-          <ion-col *ngIf="staticWarpedUrl">
-            <b>Warped:</b><br>
-            <img [src]="staticWarpedUrl" width="200" style="border:1px solid #888;">
-          </ion-col>
-        </ion-row>
-      </ion-grid>
-      <ion-item *ngIf="staticHomography" lines="none">
+      <ion-accordion-group>
+        <ion-accordion value="coordinates">
+          <ion-item slot="header">
+            <ion-label>Mostra/Nascondi coordinate ({{ coordinates.length }})</ion-label>
+          </ion-item>
+          <ion-list slot="content">
+            <div style="display: flex; flex-wrap: wrap; gap: 1em;">
+              <span *ngFor="let point of coordinates; let i = index">
+                [{{ point[0] | number:'1.0-1' }}, {{ point[1] | number:'1.0-1' }}]
+              </span>
+            </div>
+          </ion-list>
+        </ion-accordion>
+      </ion-accordion-group>
+
+      <div style="display: flex; gap: 0.5em; margin-top: 1em;">
+        <ion-button expand="block" (click)="getRealCoordinates()">Aggiorna coordinate</ion-button>
+        <ion-button expand="block" (click)="setFixedPerspectiveView()">Set Fixed Perspective</ion-button>
+      </div>
+
+      <ion-item lines="none" style="margin-top:1em;">
         <ion-label>
-          <b>Omografia usata:</b>
-          <pre>{{ staticHomography | json }}</pre>
+          <b>Vista Warped (rettificata):</b>
         </ion-label>
-      </ion-item> -->
-
-      <!-- Coordinate mondo dei blob -->
-      <!-- <ion-item lines="none" style="margin-top:1em;">
-        <ion-button expand="block" (click)="getBlobWorldCoordinates()">Ottieni Coordinate Mondo dei Blob</ion-button>
       </ion-item>
-      <ion-list *ngIf="blobWorldCoords">
-        <ion-item lines="none">
-          <ion-label>
-            <b>Coordinate mondo:</b>
-          </ion-label>
-        </ion-item>
-        <ion-item *ngFor="let pt of blobWorldCoords" lines="none">
-          [{{ pt[0] | number:'1.0-1' }}, {{ pt[1] | number:'1.0-1' }}]
-        </ion-item>
-        <ion-item>
-          <ion-label>
-            <span>Totale: {{ blobWorldCoords.length }}</span>
-          </ion-label>
-        </ion-item>
-      </ion-list>
-      <ion-item *ngIf="blobWorldCoordsError" lines="none">
-        <ion-label color="danger">
-          {{ blobWorldCoordsError }}
-        </ion-label>
-      </ion-item> -->
+      <ion-item lines="none">
+        <img [src]="dynamicWarpedStreamUrl"
+             [width]="imgWidth"
+             style="border:1px solid #888; max-width:100%; height:auto; display:block;">
+      </ion-item>
 
     </ion-card-content>
   </ion-card>
