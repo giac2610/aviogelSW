@@ -72,8 +72,8 @@ def initialize_camera():
                 from picamera2 import Picamera2
                 picam2 = Picamera2()
                 cfg_data = load_config_data()
-                picam_config = cfg_data.get("camera", {}).get("picamera_config", {"main": {"size": (640, 480)}})
-                picam2.configure(picam2.create_video_configuration(**picam_config))
+                # picam_config = cfg_data.get("camera", {}).get("picamera_config", {"main": {"size": (640, 480)}})
+                # picam2.configure(picam2.create_video_configuration(**picam_config))
                 picam2.start()
                 camera_instance = picam2
                 print("[INFO] Picamera2 inizializzata.")
