@@ -39,6 +39,15 @@ export class BlobSimulationPage implements OnInit {
   }
 
   ngOnInit() {
+    this.configService.initializeCamera().subscribe({
+      next: (res) => {
+        if (res.success) {
+          this.presentToast('Camera inizializzata con successo');
+        } else {
+          this.presentToast('Errore nell\'inizializzazione della camera', 'danger');
+        }
+      },
+    });
     this.fetchKeypoints();
     this.loadHomography();
     this.getRealCoordinates();
