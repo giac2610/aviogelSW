@@ -150,6 +150,9 @@ export class BlobSimulationPage implements OnInit {
         } else {
           this.presentToast(res.message || 'Errore nell\'impostazione della vista prospettica', 'danger');
         }
+      },
+      error: (res) => {
+        this.presentToast(res.message || 'Errore nella richiesta di impostazione della vista prospettica', 'danger');
       }
     });
   }
