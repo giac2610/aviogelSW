@@ -98,7 +98,7 @@ def get_frame(release_after=False):
     with camera_lock:
         if camera_instance is None:
             print("get_frame: Tentativo di reinizializzare la camera.")
-            camera_instance = initialize_camera()
+            camera_instance = initialize_camera({})
             if camera_instance is None:
                 print("get_frame: Camera non disponibile, restituisco frame vuoto.")
                 return np.zeros((480, 640, 3), dtype=np.uint8)
