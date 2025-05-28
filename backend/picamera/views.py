@@ -10,7 +10,6 @@ import threading
 from django.http import StreamingHttpResponse, JsonResponse, HttpResponse
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_POST, require_GET
-# from django.conf import settings # Non usato direttamente qui, ma potresti averlo per MEDIA_ROOT ecc.
 
 # --- Configurazione file ---
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__))) # Assumendo che views.py sia in una subdir dell'app
@@ -72,8 +71,8 @@ def initialize_camera():
             try:
                 from picamera2 import Picamera2
                 picam2 = Picamera2()
-                cfg_data = load_config_data()
-                picam2.configure(picam2.create_video_configuration(main={"size": (640, 480)}))
+                cfg_data = load_config_data().get("camera", {})
+                picam2.configure(picam2.create_video_configuration(main={"size": (640, 480), "format": "RGB888"}))
                 picam2.start()
                 camera_instance = picam2
                 print("[INFO] Picamera2 inizializzata.")
@@ -102,7 +101,6 @@ def get_frame(release_after=False):
                 print("get_frame: Camera non disponibile, restituisco frame vuoto.")
                 return np.zeros((480, 640, 3), dtype=np.uint8)
 
-        # Se c'è almeno uno stream attivo, non chiudere la camera
         should_release = release_after and active_streams == 0
 
         if sys.platform == "darwin":
@@ -118,7 +116,6 @@ def get_frame(release_after=False):
                 return np.zeros((480, 640, 3), dtype=np.uint8)
             return frame
         else: # Picamera2
-            # Nuovo controllo: la camera è pronta se esiste il metodo capture_array
             if not camera_instance or not hasattr(camera_instance, 'capture_array'):
                 print("get_frame (Pi): Picamera2 non pronta, restituisco frame vuoto.")
                 return np.zeros((480, 640, 3), dtype=np.uint8)
@@ -130,14 +127,11 @@ def get_frame(release_after=False):
             if should_release:
                 try:
                     camera_instance.stop()
-                    if sys.platform != "darwin":
-                        camera_instance.close()
+                    camera_instance.close()
                 except Exception:
                     pass
                 camera_instance = None
-            return cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
-
-
+            return frame
 
 # --- Utility ---
 def load_config_data():
