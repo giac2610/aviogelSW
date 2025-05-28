@@ -42,7 +42,9 @@ camera_instance = None
 camera_lock = threading.Lock()  # Lock globale per accesso thread-safe
 active_streams = 0
 
-def initialize_camera():
+@csrf_exempt
+@require_POST
+def initialize_camera(request):
     global camera_instance
     with camera_lock:
         if camera_instance is not None:
@@ -89,7 +91,7 @@ def initialize_camera():
         return camera_instance
 
 # Inizializza la camera subito all'avvio del modulo, così è pronta per il primo accesso
-initialize_camera()
+# initialize_camera()
 
 def get_frame(release_after=False):
     global camera_instance, active_streams

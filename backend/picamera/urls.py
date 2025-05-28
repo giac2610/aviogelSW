@@ -5,6 +5,7 @@ from .views import (
     camera_feed,
     fixed_perspective_stream,
     get_keypoints,
+    initialize_camera,
     set_camera_origin,
     set_fixed_perspective_view,
     update_camera_settings,
@@ -23,6 +24,7 @@ urlpatterns = [
     path('calibrate_camera/', calibrate_camera_endpoint, name='calibrate_camera_view'),
     path('fixed-perspective-stream/', fixed_perspective_stream, name='fixed_perspective_stream'),
     path('set-fixed-perspective/', set_fixed_perspective_view, name='set_fixed_perspective_view'),
+    path('initialize-camera/', initialize_camera, name='initialize_camera'),
 ]
 
 # Serve i file media solo in sviluppo (DEBUG=True)
