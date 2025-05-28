@@ -148,7 +148,7 @@ export class BlobSimulationPage implements OnInit {
         if (res.status === 'success') {
           this.presentToast('Vista prospettica fissa impostata con successo');
         } else {
-          this.presentToast('Errore nell\'impostazione della vista prospettica', 'danger');
+          this.presentToast(res.message || 'Errore nell\'impostazione della vista prospettica', 'danger');
         }
       },
       error: () => {
