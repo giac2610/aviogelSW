@@ -103,11 +103,11 @@ export class BlobSimulationPage implements OnInit {
   calibrateCamera() {
    this.configService.calibrateCamera().subscribe({
       next: (res) => {
-        if (res.success) {
-          this.presentToast('Calibrazione completata con successo');
+        if (res.status === 'success') {
+          this.presentToast(res.message || 'Calibrazione completata con successo', 'success');
           this.fetchKeypoints();
         } else {
-          this.presentToast('Errore nella calibrazione', 'danger');
+          this.presentToast(res.message || 'Errore nella calibrazione', 'danger');
         }
       } 
     })
