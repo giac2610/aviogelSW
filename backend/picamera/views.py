@@ -251,8 +251,8 @@ def get_current_frame_and_keypoints_from_config(): # Uses global config
 # --- Key Logic for Fixed View (Adapted from Script) ---
 # This function is mostly self-contained and uses passed-in parameters. Seems okay.
 def get_board_and_canonical_homography_for_django(undistorted_frame, new_camera_matrix_cv, calibration_cfg_dict):
-    cs_cols = calibration_cfg_dict.get("chessboard_cols", 7)
-    cs_rows = calibration_cfg_dict.get("chessboard_rows", 9)
+    cs_cols = calibration_cfg_dict.get("chessboard_cols", 9)
+    cs_rows = calibration_cfg_dict.get("chessboard_rows", 7)
     sq_size = calibration_cfg_dict.get("square_size_mm", 15.0)
     chessboard_dim_cv = (cs_cols, cs_rows)
 
