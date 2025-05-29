@@ -92,12 +92,12 @@ def _initialize_camera_internally():
             capture_width = cfg_data_for_init.get("capture_width", 640)
             capture_height = cfg_data_for_init.get("capture_height", 480)
             video_config = picam2.create_video_configuration(
-                main={"size": (capture_width, capture_height), "format": "BGR888"}
+                main={"size": (capture_width, capture_height), "format": "RGB888"}
             )
             picam2.configure(video_config)
             picam2.start()
             camera_instance = picam2
-            print(f"[INFO] Picamera2 initialized ({capture_width}x{capture_height}, BGR888).")
+            print(f"[INFO] Picamera2 initialized ({capture_width}x{capture_height}, RGB888).")
         except Exception as e:
             print(f"[ERROR] Error during Picamera2 initialization: {e}")
             if 'picam2' in locals() and hasattr(picam2, 'close'):
