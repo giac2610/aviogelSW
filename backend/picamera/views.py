@@ -89,8 +89,9 @@ def _initialize_camera_internally():
         try:
             from picamera2 import Picamera2
             picam2 = Picamera2()
-            capture_width = cfg_data_for_init.get("capture_width", 640)
-            capture_height = cfg_data_for_init.get("capture_height", 480)
+            picam_main_size = cfg_data_for_init.get("picamera_config", {}).get("main", {}).get("size", [640, 480])
+            capture_width = picam_main_size[0]
+            capture_height = picam_main_size[1]
             video_config = picam2.create_video_configuration(
                 main={"size": (capture_width, capture_height), "format": "RGB888"}
             )
@@ -248,7 +249,6 @@ def get_current_frame_and_keypoints_from_config(): # Uses global config
     keypoints = detect_blobs_from_params(thresh, camera_settings)
     return frame, keypoints
 
-# --- Key Logic for Fixed View (Adapted from Script) ---
 # This function is mostly self-contained and uses passed-in parameters. Seems okay.
 def get_board_and_canonical_homography_for_django(undistorted_frame, new_camera_matrix_cv, calibration_cfg_dict):
     cs_cols = calibration_cfg_dict.get("chessboard_cols", 9)
@@ -306,7 +306,6 @@ def get_board_and_canonical_homography_for_django(undistorted_frame, new_camera_
     
     return H_canonical, canonical_board_size_tuple
 
-
 @contextmanager
 def stream_context():
     global active_streams
@@ -325,7 +324,6 @@ def stream_context():
         #         # Similar release logic as in get_frame
         #         # This part needs careful thought to avoid conflicts with get_frame's own release logic
         #         pass
-
 
 # --- Django Endpoints ---
 @csrf_exempt
