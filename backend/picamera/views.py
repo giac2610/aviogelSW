@@ -122,7 +122,7 @@ def initialize_camera_endpoint(request):
 # _initialize_camera_internally() # Commented out: prefer explicit init or lazy init
 
 def get_frame(release_after=False):
-    global camera_instance # active_streams is handled by stream_context or implicitly for single calls
+    global camera_instance # active_streams is handled by stream_context or implicitly for singl e calls
     with camera_lock:
         if camera_instance is None:
             print("get_frame: Camera not initialized. Attempting to initialize.")
@@ -599,7 +599,9 @@ def set_fixed_perspective_view(request):
             undistorted_frame_cap, new_camera_matrix_cv, calib_settings_dict # calib_settings_dict from global
         )
 
+        # Check if H_canonical and canonical_dims are valid for proceeding
         if H_canonical is not None and canonical_dims is not None and canonical_dims[0] > 0 and canonical_dims[1] > 0:
+            # --- SUCCESS CASE: Proceed with homography calculation and saving ---
             cb_w, cb_h = canonical_dims
             offset_x = max(0, (FIXED_WIDTH - cb_w) / 2.0) # Ensure offset is not negative
             offset_y = max(0, (FIXED_HEIGHT - cb_h) / 2.0)
@@ -607,16 +609,51 @@ def set_fixed_perspective_view(request):
             H_ref = M_translate @ H_canonical
 
             if save_fixed_perspective_homography_to_config(H_ref): # This function handles file I/O
-                return JsonResponse({"status": "success", "message": "Fixed perspective view established and saved."})
+                return JsonResponse({
+                    "status": "success",
+                    "message": "Fixed perspective view established and saved."
+                })
             else:
-                return JsonResponse({"status": "error", "message": "Error saving fixed perspective homography."}, status=500)
+                # This is an error during the saving process itself
+                print("[ERROR] set_fixed_perspective_view: Failed to save homography to config file.")
+                return JsonResponse({
+                    "status": "error",
+                    "message": "Error saving fixed perspective homography to configuration file.",
+                    "error_code": "SAVE_HOMOGRAPHY_FAILED"
+                }, status=500)
         else:
-            msg = "Chessboard not found or invalid canonical dimensions. Cannot define fixed view."
-            if canonical_dims is not None and (canonical_dims[0] <= 0 or canonical_dims[1] <= 0) :
-                msg = f"Invalid canonical dimensions: {canonical_dims}. Chessboard likely not detected correctly."
-            print(f"[ERROR] set_fixed_perspective_view: {msg}")
+            # --- ERROR CASE: Determine the specific reason for failure ---
+            error_message = "Cannot define fixed view. An unknown error occurred." # Default message
+            error_code = "UNKNOWN_FIXED_VIEW_ERROR" # Default error code
+            status_code = 400 # Default HTTP status
 
-            return JsonResponse({"status": "error", "message": msg}, status=400)
+            if H_canonical is None:
+                # This is the most common failure: chessboard not found.
+                # get_board_and_canonical_homography_for_django returns (None, None) in this case.
+                error_message = "Chessboard pattern not detected in the current camera view. Ensure the full pattern is clearly visible and well-lit."
+                error_code = "CHESSBOARD_NOT_DETECTED"
+                print(f"[ERROR] set_fixed_perspective_view ({error_code}): {error_message}")
+            elif canonical_dims is None:
+                # This case should ideally not be reached if H_canonical is not None,
+                # as get_board_and_canonical_homography_for_django should return both or neither.
+                # If it does, it might indicate an internal logic issue in that helper function.
+                error_message = "Internal error: Chessboard detected, but its dimensions could not be determined."
+                error_code = "CANONICAL_DIMS_MISSING_UNEXPECTEDLY"
+                status_code = 500 # Internal server error
+                print(f"[ERROR] set_fixed_perspective_view ({error_code}): {error_message}")
+            elif canonical_dims[0] <= 0 or canonical_dims[1] <= 0:
+                # Chessboard was found, H_canonical exists, but the calculated dimensions are invalid (e.g., negative or zero).
+                error_message = (f"Invalid canonical dimensions calculated for the chessboard: {canonical_dims}. "
+                                 f"This might indicate an issue with the chessboard configuration (e.g., square size, pattern size in settings) "
+                                 f"or a highly distorted detection.")
+                error_code = "INVALID_CANONICAL_DIMS_CALCULATED"
+                print(f"[ERROR] set_fixed_perspective_view ({error_code}): {error_message} - Dimensions: {canonical_dims}")
+            
+            return JsonResponse({
+                "status": "error",
+                "message": error_message,
+                "error_code": error_code # Adding an error_code can be useful for frontend handling
+            }, status=status_code)
     except Exception as e:
         print(f"Exception in set_fixed_perspective_view: {e}")
         traceback.print_exc()
