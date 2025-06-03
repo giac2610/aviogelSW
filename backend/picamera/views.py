@@ -249,7 +249,6 @@ def get_current_frame_and_keypoints_from_config(): # Uses global config
     keypoints = detect_blobs_from_params(thresh, camera_settings)
     return frame, keypoints
 
-# This function is mostly self-contained and uses passed-in parameters. Seems okay.
 def get_board_and_canonical_homography_for_django(undistorted_frame, new_camera_matrix_cv, calibration_cfg_dict):
     cs_cols = calibration_cfg_dict.get("chessboard_cols", 9)
     cs_rows = calibration_cfg_dict.get("chessboard_rows", 7)
@@ -693,7 +692,7 @@ def fixed_perspective_stream(request):
             # Get a sample frame to determine dimensions for new_camera_matrix
             # Using get_frame with release_after=True to ensure camera is free if it was the first call
             sample_frame_for_dims = get_frame(release_after=True) 
-            if sample_frame_for_dims is not None and sample_frame_for_dims.size > 0 :
+            if sample_frame_for_dims is not None and sample_frame_for_dims.size > 0:
                 h_str, w_str = sample_frame_for_dims.shape[:2]
                 new_cam_matrix_stream, _ = cv2.getOptimalNewCameraMatrix(cam_matrix, dist_coeffs, (w_str,h_str), 1.0, (w_str,h_str))
             else:
@@ -718,7 +717,6 @@ def fixed_perspective_stream(request):
                         yield (b'--frame\r\nContent-Type: image/jpeg\r\n\r\n' + buf_err.tobytes() + b'\r\n')
                         time.sleep(0.1)
                         continue
-
                     # Undistort using the new_cam_matrix_stream calculated once for this stream
                     undistorted_live = cv2.undistort(frame_live, cam_matrix, dist_coeffs, None, new_cam_matrix_stream)
                     
@@ -759,7 +757,6 @@ def fixed_perspective_stream(request):
                     else: # H_ref is None
                         cv2.putText(output_img, "Fixed View Not Set", (30,30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255,255,0),1)
                         cv2.putText(output_img, "Use endpoint to set it", (30,60), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255,255,0),1)
-
                     _, buffer_ok = cv2.imencode('.jpg', output_img)
                     frame_bytes_ok = buffer_ok.tobytes()
                     yield (b'--frame\r\nContent-Type: image/jpeg\r\n\r\n' + frame_bytes_ok + b'\r\n')
@@ -773,56 +770,72 @@ def fixed_perspective_stream(request):
                     _, buf_err = cv2.imencode('.jpg', err_f_loop)
                     yield (b'--frame\r\nContent-Type: image/jpeg\r\n\r\n' + buf_err.tobytes() + b'\r\n')
                     time.sleep(1)
-
     return StreamingHttpResponse(gen_frames(), content_type='multipart/x-mixed-replace; boundary=frame')
-
 
 @csrf_exempt
 @require_GET
 def get_world_coordinates(request):
-    # Uses global 'camera_settings' for calibration data
     H_fixed_ref = get_fixed_perspective_homography_from_config() # From global config
     if H_fixed_ref is None:
-        return JsonResponse({"status": "error", "message": "Fixed perspective homography not available."}, status=400)
-    
+        return JsonResponse({"status": "error", "message": "Fixed perspective homography not available. Please set it first via its endpoint."}, status=400)
+
     cam_calib_wc = camera_settings.get("calibration", None)
     if not (cam_calib_wc and cam_calib_wc.get("camera_matrix") and cam_calib_wc.get("distortion_coefficients")):
-        return JsonResponse({"status": "error", "message": "Camera calibration data missing."}, status=400)
+        return JsonResponse({"status": "error", "message": "Camera calibration data missing. Please calibrate the camera first."}, status=400)
 
     cam_matrix_wc = np.array(cam_calib_wc["camera_matrix"], dtype=np.float32)
     dist_coeffs_wc = np.array(cam_calib_wc["distortion_coefficients"], dtype=np.float32)
 
     # Gets keypoints detected on the *original possibly distorted* frame
     frame_for_coords, keypoints_for_coords = get_current_frame_and_keypoints_from_config()
-    
+
     if frame_for_coords is None or frame_for_coords.size == 0:
-         return JsonResponse({"status": "error", "message": "Could not get frame for coordinates."}, status=500)
+         return JsonResponse({"status": "error", "message": "Could not get frame for coordinates calculation."}, status=500)
 
     if not keypoints_for_coords:
+        # Se non ci sono keypoint, restituisci una lista vuota di coordinate
         return JsonResponse({"status": "success", "coordinates": []})
 
     # These are points from the original, possibly distorted image
     img_pts_distorted = np.array([kp.pt for kp in keypoints_for_coords], dtype=np.float32).reshape(-1,1,2)
-    
+
     h_frame_wc, w_frame_wc = frame_for_coords.shape[:2]
     # This new_cam_matrix_wc should ideally be the same as the one used when H_fixed_ref was calculated
     # or derived in the exact same way.
     new_cam_matrix_wc, _ = cv2.getOptimalNewCameraMatrix(cam_matrix_wc, dist_coeffs_wc, (w_frame_wc,h_frame_wc), 1.0, (w_frame_wc,h_frame_wc))
-    
+
     # Undistort points and map them to the coordinate system of new_cam_matrix_wc
     img_pts_undistorted_remapped = cv2.undistortPoints(img_pts_distorted, cam_matrix_wc, dist_coeffs_wc, P=new_cam_matrix_wc)
-    
-    if img_pts_undistorted_remapped is None: # Should not happen if inputs are valid
-        return JsonResponse({"status": "error", "message": "Point undistortion failed."}, status=500)
 
-    # Now apply the homography H_fixed_ref, which maps from this undistorted-remapped space to world space
-    world_coords_list = []
+    if img_pts_undistorted_remapped is None: # Should not happen if inputs are valid
+        return JsonResponse({"status": "error", "message": "Point undistortion failed unexpectedly."}, status=500)
+
+    world_coords_top_left_origin = []
     if img_pts_undistorted_remapped.size > 0: # Check if there are points
         # cv2.perspectiveTransform expects Nx1x2 array
         transformed_pts = cv2.perspectiveTransform(img_pts_undistorted_remapped, H_fixed_ref)
         if transformed_pts is not None:
-             world_coords_list = transformed_pts.reshape(-1, 2).tolist()
+             world_coords_top_left_origin = transformed_pts.reshape(-1, 2).tolist()
         else: # Should not happen if H_fixed_ref is valid 3x3
-            print("[WARN] cv2.perspectiveTransform returned None in get_world_coordinates")
-    
-    return JsonResponse({"status": "success", "coordinates": world_coords_list})
+            print("[WARN] cv2.perspectiveTransform returned None in get_world_coordinates. This might indicate an issue with H_fixed_ref.")
+            # Restituisce comunque una lista vuota o un errore a seconda della gravità percepita
+            return JsonResponse({"status": "error", "message": "Perspective transformation of points failed."}, status=500)
+
+    # --- TRASFORMAZIONE COORDINATE A ORIGINE BASSO-DESTRA ---
+    # Ottieni le dimensioni del frame di output della prospettiva fissa dalla configurazione globale
+    # Queste dovrebbero corrispondere alle dimensioni usate per generare H_fixed_ref
+    # e per lo stream fixed_perspective_stream.
+    fixed_persp_cfg = camera_settings.get("fixed_perspective", {})
+    OUTPUT_WIDTH = fixed_persp_cfg.get("output_width", 1000) # Default se non specificato
+    OUTPUT_HEIGHT = fixed_persp_cfg.get("output_height", 800) # Default se non specificato
+
+    world_coords_bottom_right_origin = []
+    for x_tl, y_tl in world_coords_top_left_origin:
+        # x_nuovo aumenta verso sinistra dalla nuova origine (basso-destra)
+        # y_nuovo aumenta verso l'alto dalla nuova origine (basso-destra)
+        x_br = OUTPUT_WIDTH - x_tl
+        y_br = OUTPUT_HEIGHT - y_tl
+        world_coords_bottom_right_origin.append([x_br, y_br])
+    # --- FINE TRASFORMAZIONE ---
+
+    return JsonResponse({"status": "success", "coordinates": world_coords_bottom_right_origin})
