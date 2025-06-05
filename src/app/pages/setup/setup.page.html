@@ -454,7 +454,7 @@
             <ion-select-option value="1280x720@30">1280x720p30 (MacOS)</ion-select-option>
           </ion-select>
         </ion-item>
-                <ion-item lines="none" class="camera-origin-row">
+        <ion-item lines="none" class="camera-origin-row">
           <ion-label style="min-width: 120px;">Origine Camera (x, y)</ion-label>
           <ion-input type="number" [(ngModel)]="settings.camera.origin_x" placeholder="x" style="max-width: 80px; margin-right: 8px;"></ion-input>
           <ion-input type="number" [(ngModel)]="settings.camera.origin_y" placeholder="y" style="max-width: 80px; margin-right: 8px;"></ion-input>
@@ -499,6 +499,7 @@
                 </tbody>
               </table>
             </div>
+            
             <!-- <ion-input [disabled]="true" [(ngModel)]="settings.camera.calibration.camera_matrix[0]"></ion-input> -->
           </ion-item>
           <ion-item *ngIf="settings.camera.calibration.camera_matrix != null && settings.camera.calibration.distortion_coefficients != null">
@@ -543,6 +544,7 @@
               <ion-icon name="camera"></ion-icon>
               Update calibration images
             </ion-button>
+
             <ion-button (click)="calibrateCamera()">
               <ion-icon name="barcode-outline"></ion-icon>
               Calibrate Camera
@@ -554,6 +556,13 @@
               <ion-icon name="tablet-portrait-outline"></ion-icon>
               Set Fixed Perspective
             </ion-button>
+          </ion-item>
+          <ion-button  *ngIf="settings.camera.fixed_perspective.homography_matrix != null || settings.camera.calibration.camera_matrix != null || settings.camera.calibration.distortion_coefficients != null" (click)="resetCameraCalibration()">Recalibrate</ion-button>
+          <ion-item *ngIf="settings.camera.calibration.camera_matrix == null">
+            <ion-label>Chessboard Settings</ion-label>
+            <ion-input placeholder="chess table Size (mm)" [(ngModel)]="settings.camera.calibration_settings.square_size_mm" label="mm" (ionChange)="onCameraSettingChange()"></ion-input>
+            <ion-input placeholder="chess table Rows" [(ngModel)]="settings.camera.calibration_settings.chessboard_rows" label="rows" (ionChange)="onCameraSettingChange()"></ion-input>
+            <ion-input placeholder="chess table Column" [(ngModel)]="settings.camera.calibration_settings.chessboard_cols" label="cols" (ionChange)="onCameraSettingChange()"></ion-input>
           </ion-item>
         </ion-list>
     </ion-card-content>

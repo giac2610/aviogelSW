@@ -156,6 +156,10 @@ export class SetupAPIService {
     return this.http.post(url, {});
   }
 
+  resetCameraCalibration(): Observable<any> {
+    const url = `${this.apiUrl}camera/reset-camera-calibration/`;
+    return this.http.post(url, {});
+  }
   saveFrameCalibration(): Observable<any> {
   const url = `${this.apiUrl}camera/save-frame-calibration/`;
   return this.http.post(url, {});

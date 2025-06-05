@@ -335,6 +335,21 @@ onPresetChange() {
     });
   }
 
+  resetCameraCalibration() {
+    this.configService.resetCameraCalibration().subscribe({
+      next: (response) => {
+
+        this.presentToast('Calibrazione della camera resettata con successo', 'success');
+        console.log('Risposta dal backend:', response);
+      },
+      error: (error) => {
+        const errorMessage = error.error.detail || error.error.error || error.message;
+        this.presentToast(`Errore durante il reset della calibrazione della camera: ${errorMessage}`, 'danger');
+        console.log('Risposta dal backend:', errorMessage);
+      }
+    });
+  }
+
   setFixedPerspective(){
     this.configService.setFixedPerspectiveView().subscribe({
       next: (response) => {
