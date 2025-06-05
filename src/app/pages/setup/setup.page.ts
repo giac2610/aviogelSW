@@ -14,11 +14,15 @@ import { LedService } from 'src/app/services/led.service';
 })
 export class SetupPage implements OnInit, OnDestroy {
   selectedMotor: string = 'none';
+  selectedCameraSettings: string = 'none';
   settings!: Settings;
   testMode: boolean = false;
   isLoading = true; 
   globalGranularity: number = 1; // Variabile globale per la granularità degli input numerici
+
+  selectedPreset: string = '';
   isThreshold: boolean = false; // Variabile per gestire la visualizzazione threshold
+
   thresholdStreamUrl: string = this.configService.getThresholdStreamUrl();
   normalStreamUrl: string = 'http://localhost:8000/camera/stream/';
   selectedStream: string = 'normal'; // Default stream type
@@ -57,17 +61,16 @@ speedPollingSubscription!: Subscription;
     this.isLoading = true;
     this.loadConfig();
 
-    // Avvia il polling della velocità in modalità test
-    this.startSpeedPolling();
-
     // Ascolta i cambiamenti nei settaggi della camera e invia al backend
     this.cameraSettingsSubject.pipe(debounceTime(300)).subscribe((cameraSettings) => {
       this.configService.updateCameraSettings(cameraSettings).subscribe({
         next: (response) => {
           console.log('Impostazioni aggiornate in live:', response);
+          this.presentToast('Impostazioni camera aggiornate in live', 'success');
         },
         error: (error) => {
           console.error('Errore durante l\'aggiornamento delle impostazioni in live:', error);
+          this.presentToast('Errore durante l\'aggiornamento delle impostazioni in live', 'danger');
         }
       });
     });
@@ -76,27 +79,7 @@ speedPollingSubscription!: Subscription;
     // console.log('test');
   }
 
-  startSpeedPolling() {
-    // this.speedPollingSubscription = interval(10).subscribe(() => {
-    //   this.configService.getCurrentSpeeds().subscribe({
-    //     next: (speeds) => {
-    //       this.currentSpeeds = speeds; // Rimosso il cast esplicito
-    //     },
-    //     error: (error) => {
-    //       console.error('Errore durante il polling della velocità:', error);
-    //     }
-    //   });
-    // });
-  }
-
-  stopSpeedPolling() {
-    if (this.speedPollingSubscription) {
-      this.speedPollingSubscription.unsubscribe();
-    }
-  }
-
   ngOnDestroy() {
-    this.stopSpeedPolling();
   }
 
   loadConfig() {
@@ -107,6 +90,7 @@ speedPollingSubscription!: Subscription;
         this.cameraOrigin.x = this.settings.camera.origin_x;
         this.cameraOrigin.y = this.settings.camera.origin_y;
       }
+      this.selectedPreset = `${this.settings.camera.picamera_config.main.size[0]}x${this.settings.camera.picamera_config.main.size[1]}@${this.settings.camera.picamera_config.controls.FrameRate}`;
       this.isLoading = false;
 
       // Calcola gli stepsPerMm per ogni motore
@@ -135,6 +119,21 @@ speedPollingSubscription!: Subscription;
   closeMotors(){
     this.selectedMotor = 'none';
   }
+
+  closeCamera(){
+    this.selectedCameraSettings = 'none';
+  }
+
+onPresetChange() {
+  const [resolution, fps] = this.selectedPreset.split('@');
+  const [width, height] = resolution.split('x').map(Number);
+
+  this.settings.camera.picamera_config.main.size[0] = width;
+  this.settings.camera.picamera_config.main.size[1] = height;
+  this.settings.camera.picamera_config.controls.FrameRate = Number(fps);
+
+  this.onCameraSettingChange();
+}
   // Funzione per far muovere il motore
   // selezionando il motore e la distanza
   goToPosition(motor: "syringe" | "extruder" | "conveyor", distance: number) {

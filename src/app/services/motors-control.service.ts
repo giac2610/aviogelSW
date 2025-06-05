@@ -16,33 +16,28 @@ export class MotorsControlService {
     return this.http.get<any>(url);
     }
   
-    // richiesta per muovere il motore
-    // il body deve essere un oggetto con le seguenti proprietà:
-    // motor: string, // il nome del motore (syringe, extruder, conveyor)
-    // distance: number, // la distanza da percorrere
-    moveMotor(body: any):Observable<any> {
-      // console.log(body)
-      const url = `${this.apiUrl}move/`
-      return this.http.post<any>(url, body);
-    }
-
-    // ferma tutti i motori
-    stopMotor():Observable<any>{
-      return this.http.post<any>(`${this.apiUrl}stop/`, null);
-    }
-
-    stopMotors(): Observable<any> {
-      const url = `${this.apiUrl}stop/`;
-      return this.http.post<any>(url, null);
-    }
-
-    saveSettings(body: any):Observable<any>{
-      const url = `${this.apiUrl}save/`
-      return this.http.post<any>(url, body);
-    }
-
-    simulate(): Observable<any> {
-      const url = `${this.apiUrl}simulate/`;
-      return this.http.post<any>(url, null);
-    }
+  // richiesta per muovere il motore
+  // il body deve essere un oggetto con le seguenti proprietà:
+  // motor: string, // il nome del motore (syringe, extruder, conveyor)
+  // distance: number, // la distanza da percorrere
+  moveMotor(body: any):Observable<any> {
+    const url = `${this.apiUrl}move/`
+    return this.http.post<any>(url, body);
+  }
+  // ferma tutti i motori
+  stopMotor():Observable<any>{
+    return this.http.post<any>(`${this.apiUrl}stop/`, null);
+  }
+  stopMotors(): Observable<any> {
+    const url = `${this.apiUrl}stop/`;
+    return this.http.post<any>(url, null);
+  }
+  saveSettings(body: any):Observable<any>{
+    const url = `${this.apiUrl}save/`
+    return this.http.post<any>(url, body);
+  }
+  simulate(): Observable<any> {
+    const url = `${this.apiUrl}simulate/`;
+    return this.http.post<any>(url, null);
+  }
 }

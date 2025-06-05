@@ -22,7 +22,7 @@
           <ion-card-title *ngIf="!testMode">Motor Setting</ion-card-title>
           <ion-card-title *ngIf="testMode">Motor Testing</ion-card-title>
         </ion-card-header>
-          <ion-icon *ngIf="selectedMotor != 'none'" slot="end" size="large" name="chevron-up-outline" (click)="closeMotors()"></ion-icon>
+        <ion-icon *ngIf="selectedMotor != 'none'" slot="end" size="large" name="chevron-up-outline" (click)="closeMotors()"></ion-icon>
       </div>
     
       <ion-card-content>
@@ -347,12 +347,30 @@
 
    <!-- camera settings -->
    <ion-card>
-    <ion-card-header>
-      <ion-card-title>Camera Setting</ion-card-title>
-    </ion-card-header>
-  
+    <div class="titleContainer">
+      <ion-card-header>
+        <ion-card-title>Camera Setting</ion-card-title>
+      </ion-card-header>
+      <ion-icon *ngIf="selectedCameraSettings != 'none'" slot="end" size="large" name="chevron-up-outline" (click)="closeCamera()"></ion-icon>
+    </div>
+    
     <ion-card-content>
-      <ion-list>
+      <ion-segment [(ngModel)]="selectedCameraSettings">
+        <ion-segment-button value="picamera">
+          <ion-label>Picamera</ion-label>
+        </ion-segment-button>
+        <ion-segment-button value="threshold">
+          <ion-label>Thresholding</ion-label>
+        </ion-segment-button>
+        <ion-segment-button value="calibration">
+          <ion-label>Calibration</ion-label>
+        </ion-segment-button>
+        <ion-segment-button value="streaming">
+          <ion-label>Streaming</ion-label>
+        </ion-segment-button>
+      </ion-segment>
+
+      <ion-list *ngIf="selectedCameraSettings === 'threshold'">
         <!-- Min Threshold -->
         <ion-item>
           <ion-icon name="contrast-outline" slot="start"></ion-icon>
@@ -406,26 +424,37 @@
           </ion-segment>
         </ion-item>
 
-        <ion-item lines="none" class="camera-origin-row">
+      </ion-list>
+
+      <ion-list *ngIf="selectedCameraSettings === 'streaming'">
+        <ion-item>
+          <ion-segment [(ngModel)]="selectedStream" (ionChange)="updateStreamUrl()">
+            <ion-segment-button value="normal">
+              <ion-label>Normale</ion-label>
+            </ion-segment-button>
+            <ion-segment-button value="threshold">
+              <ion-label>Threshold</ion-label>
+            </ion-segment-button>
+          </ion-segment>
+        </ion-item>
+        <img [src]="currentStreamUrl" alt="Camera Feed" (error)="onImageError()" />
+      </ion-list>
+      <ion-list *ngIf="selectedCameraSettings === 'picamera'">
+        <ion-item>
+          <ion-label>Risoluzione + Frame Rate</ion-label>
+          <ion-select interface="popover" [(ngModel)]="selectedPreset" (ionChange)="onPresetChange()">
+            <ion-select-option value="2304x1296@56">2304x1296p56</ion-select-option>
+            <ion-select-option value="2304x1296@30">2304x1296p30</ion-select-option>
+            <ion-select-option value="1536x864@120">1536x864p120</ion-select-option>
+          </ion-select>
+        </ion-item>
+                <ion-item lines="none" class="camera-origin-row">
           <ion-label style="min-width: 120px;">Origine Camera (x, y)</ion-label>
           <ion-input type="number" [(ngModel)]="settings.camera.origin_x" placeholder="x" style="max-width: 80px; margin-right: 8px;"></ion-input>
           <ion-input type="number" [(ngModel)]="settings.camera.origin_y" placeholder="y" style="max-width: 80px; margin-right: 8px;"></ion-input>
           <!-- <ion-button size="small" (click)="updateCameraOrigin()">Aggiorna Origine</ion-button> -->
         </ion-item>
       </ion-list>
-      <ion-item>
-        <ion-label>Stream:</ion-label>
-        <ion-segment [(ngModel)]="selectedStream" (ionChange)="updateStreamUrl()">
-          <ion-segment-button value="normal">
-            <ion-label>Normale</ion-label>
-          </ion-segment-button>
-          <ion-segment-button value="threshold">
-            <ion-label>Threshold</ion-label>
-          </ion-segment-button>
-        </ion-segment>
-      </ion-item>
-      <h1>Streaming della Telecamera</h1>
-      <img [src]="currentStreamUrl" alt="Camera Feed" (error)="onImageError()" />
     </ion-card-content>
   </ion-card>
 
