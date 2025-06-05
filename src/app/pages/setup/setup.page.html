@@ -292,10 +292,10 @@
             <ion-item>
               <ion-input label="spostamento in mm" placeholder="inserisci uno spostamento" type="number" [(ngModel)]="travels.syringe"></ion-input>
             </ion-item>
-            <ion-item>
+            <!-- <ion-item>
               <ion-label>Velocità Corrente:</ion-label>
               <ion-badge color="primary">{{ currentSpeeds.syringe }} mm/s</ion-badge>
-            </ion-item>
+            </ion-item> -->
             <ion-item class="iconContainer">
                 <ion-button size="large" (click)="goHome('syringe')">
                   <ion-icon slot="icon-only" name="home"></ion-icon>
@@ -370,6 +370,7 @@
         </ion-segment-button>
       </ion-segment>
 
+      <!-- THRESHOLDING -->
       <ion-list *ngIf="selectedCameraSettings === 'threshold'">
         <!-- Min Threshold -->
         <ion-item>
@@ -425,7 +426,7 @@
         </ion-item>
 
       </ion-list>
-
+      <!-- STREAMING -->
       <ion-list *ngIf="selectedCameraSettings === 'streaming'">
         <ion-item>
           <ion-segment [(ngModel)]="selectedStream" (ionChange)="updateStreamUrl()">
@@ -435,10 +436,14 @@
             <ion-segment-button value="threshold">
               <ion-label>Threshold</ion-label>
             </ion-segment-button>
+            <ion-segment-button value="fixed" *ngIf="settings.camera.fixed_perspective.homography_matrix != null">
+              <ion-label>Fixed View</ion-label>
+            </ion-segment-button>
           </ion-segment>
         </ion-item>
         <img [src]="currentStreamUrl" alt="Camera Feed" (error)="onImageError()" />
       </ion-list>
+      <!-- PICAMERA -->
       <ion-list *ngIf="selectedCameraSettings === 'picamera'">
         <ion-item>
           <ion-label>Risoluzione + Frame Rate</ion-label>
@@ -455,6 +460,101 @@
           <!-- <ion-button size="small" (click)="updateCameraOrigin()">Aggiorna Origine</ion-button> -->
         </ion-item>
       </ion-list>
+      <!-- CALIBRATION -->
+      <ion-list *ngIf="selectedCameraSettings === 'calibration'">
+          <ion-item *ngIf="settings.camera.calibration.camera_matrix != null && settings.camera.calibration.distortion_coefficients != null">
+            <ion-label> Camera Matrix</ion-label>
+            <div class="tableContainer">
+              <table class="camera-matrix-table">
+                <thead>
+                  <tr>
+                    <th>
+                      Column 1
+                    </th>
+                    <th>
+                      Column 2
+                    </th>
+                    <th>
+                      Column 3
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td>{{ settings.camera.calibration.camera_matrix[0][0] | number:'1.2-2'}}</td>
+                    <td>{{ settings.camera.calibration.camera_matrix[0][1] | number:'1.2-2'}}</td>
+                    <td>{{ settings.camera.calibration.camera_matrix[0][2] | number:'1.2-2'}}</td>
+                  </tr>
+                  <tr>
+                    <td>{{ settings.camera.calibration.camera_matrix[1][0] | number:'1.2-2'}}</td>
+                    <td>{{ settings.camera.calibration.camera_matrix[1][1] | number:'1.2-2'}}</td>
+                    <td>{{ settings.camera.calibration.camera_matrix[1][2] | number:'1.2-2'}}</td>
+                  </tr>
+                  <tr>
+                    <td>{{ settings.camera.calibration.camera_matrix[2][0] | number:'1.2-2'}}</td>
+                    <td>{{ settings.camera.calibration.camera_matrix[2][1] | number:'1.2-2'}}</td>
+                    <td>{{ settings.camera.calibration.camera_matrix[2][2] | number:'1.2-2'}}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <!-- <ion-input [disabled]="true" [(ngModel)]="settings.camera.calibration.camera_matrix[0]"></ion-input> -->
+          </ion-item>
+          <ion-item *ngIf="settings.camera.calibration.camera_matrix != null && settings.camera.calibration.distortion_coefficients != null">
+            <ion-label> Distortion Coefficients</ion-label>
+            <div class="tableContainer">
+              <table class="camera-matrix-table">
+                <thead>
+                  <tr>
+                    <th>
+                      Value 1
+                    </th>
+                    <th>
+                      Value 2
+                    </th>
+                    <th>
+                      Value 3
+                    </th>
+                    <th>
+                      Value 4
+                    </th>
+                    <th>
+                      Value 5
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td>{{ settings.camera.calibration.distortion_coefficients[0][0] | number:'1.2-2'}}</td>
+                    <td>{{ settings.camera.calibration.distortion_coefficients[0][1] | number:'1.2-2'}}</td>
+                    <td>{{ settings.camera.calibration.distortion_coefficients[0][2] | number:'1.2-2'}}</td>
+                    <td>{{ settings.camera.calibration.distortion_coefficients[0][3] | number:'1.2-2'}}</td>
+                    <td>{{ settings.camera.calibration.distortion_coefficients[0][4] | number:'1.2-2'}}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <!-- <ion-input [disabled]="true" [(ngModel)]="settings.camera.calibration.camera_matrix[0]"></ion-input> -->
+          </ion-item>
+          <ion-item *ngIf="settings.camera.calibration.camera_matrix == null || settings.camera.calibration.distortion_coefficients == null">
+            <ion-label>Calibrazione non ancora effettuata</ion-label>
+            <ion-button (click)="goToImageCalGen()">
+              <ion-icon name="camera"></ion-icon>
+              Update calibration images
+            </ion-button>
+            <ion-button (click)="calibrateCamera()">
+              <ion-icon name="barcode-outline"></ion-icon>
+              Calibrate Camera
+            </ion-button>
+          </ion-item>
+          <ion-item *ngIf="settings.camera.fixed_perspective.homography_matrix == null">
+            <ion-label>Prospettiva fissa non ancora configurata</ion-label>
+            <ion-button (click)="setFixedPerspective()">
+              <ion-icon name="tablet-portrait-outline"></ion-icon>
+              Set Fixed Perspective
+            </ion-button>
+          </ion-item>
+        </ion-list>
     </ion-card-content>
   </ion-card>
 

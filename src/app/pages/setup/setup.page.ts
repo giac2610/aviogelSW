@@ -64,7 +64,7 @@ speedPollingSubscription!: Subscription;
     // Ascolta i cambiamenti nei settaggi della camera e invia al backend
     this.cameraSettingsSubject.pipe(debounceTime(300)).subscribe((cameraSettings) => {
       this.configService.updateCameraSettings(cameraSettings).subscribe({
-        next: (response) => {
+        next: (response) => { 
           console.log('Impostazioni aggiornate in live:', response);
           this.presentToast('Impostazioni camera aggiornate in live', 'success');
         },
@@ -312,6 +312,39 @@ onPresetChange() {
     this.travels[motor as "syringe" | "extruder" | "conveyor"] = value;
   }
 
+  goToImageCalGen(){
+    this.router.navigate(['/blob-simulation']).then(() => {
+      window.location.reload();
+    });
+  }
+
+  calibrateCamera() {
+    this.configService.calibrateCamera().subscribe({
+      next: (response) => {
+        this.presentToast('Calibrazione della camera avviata con successo', 'success');
+        console.log('Risposta dal backend:', response);
+      },
+      error: (error) => {
+        const errorMessage = error.error.detail || error.error.error || error.message;
+        this.presentToast(`Errore durante la calibrazione della camera: ${errorMessage}`, 'danger');
+        console.log('Risposta dal backend:', errorMessage);
+      }
+    });
+  }
+
+  setFixedPerspective(){
+    this.configService.setFixedPerspectiveView().subscribe({
+      next: (response) => {
+        this.presentToast('Vista fissa impostata con successo', 'success');
+        console.log('Risposta dal backend:', response);
+      }
+      , error: (error) => {
+        const errorMessage = error.error.detail || error.error.error || error.message;
+        this.presentToast(`Errore durante l'impostazione della vista fissa: ${errorMessage}`, 'danger');
+      }
+    });
+  }
+
   startSimulation() {
     this.motorsService.simulate().subscribe({
       next: (response) => {
@@ -328,4 +361,6 @@ onPresetChange() {
   goToBlobSimulation() {
     this.router.navigate(['/blob-simulation']);
   }
+
+
 }

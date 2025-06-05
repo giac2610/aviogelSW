@@ -74,7 +74,7 @@ export interface Settings {
     }
     calibration: {
       camera_matrix: number[][],
-      dist_coeffs: number[],
+      distortion_coefficients: number[][],
     },
     calibration_settings: {
       chessboard_cols: number,
