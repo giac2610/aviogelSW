@@ -168,6 +168,7 @@ def load_config_data_from_file(): # Renamed to be explicit about file I/O
     except Exception as e:
         print(f"Error loading {SETUP_JSON_PATH}: {e}")
         return {"camera": {}} # Return a minimal valid structure
+    
 def save_config_data_to_file(new_config_data): # Renamed
     try:
         with open(SETUP_JSON_PATH, 'w') as f:
@@ -456,6 +457,42 @@ def camera_feed(request):
                     yield (b'--frame\r\nContent-Type: image/jpeg\r\n\r\n' + frame_bytes + b'\r\n')
                     time.sleep(1) # Pause on error
     return StreamingHttpResponse(gen_frames(), content_type='multipart/x-mixed-replace; boundary=frame')
+
+@csrf_exempt
+@require_POST
+def reset_camera_calibration(request):
+    try:
+        # Carica la configurazione corrente dal disco
+        current_disk_config = load_config_data_from_file()
+
+        # Ottieni la sezione 'camera' in modo sicuro
+        # Questo garantisce che 'camera' sia un dizionario su cui possiamo operare.
+        if "camera" not in current_disk_config:
+            current_disk_config["camera"] = {}
+        
+        # Resetta i parametri di calibrazione a None (o rimuovi le chiavi)
+        # Impostare a None è una chiara indicazione dello stato "non calibrato".
+        current_disk_config["camera"]["calibration"]["camera_matrix"] = None
+        current_disk_config["camera"]["calibration"]["distortion_coefficients"] = None
+        current_disk_config["camera"]["fixed_perspective"]["homography_matrix"] = None
+        
+        if save_config_data_to_file(current_disk_config): # Passa l'intero oggetto config modificato
+            return JsonResponse({
+                "status": "success",
+                "message": "Camera calibration and fixed perspective reset successfully."
+            })
+        else:
+            # save_config_data_to_file stampa già un errore, quindi qui gestiamo solo la risposta JSON.
+            return JsonResponse({
+                "status": "error",
+                "message": "Failed to save the reset configuration to file."
+            }, status=500)
+
+    except Exception as e:
+        print(f"Error resetting camera calibration: {e}")
+        traceback.print_exc() # Per un log più dettagliato sul server
+        return JsonResponse({"status": "error", "message": str(e)}, status=500)
+
 @csrf_exempt
 @require_GET
 def get_keypoints(request):

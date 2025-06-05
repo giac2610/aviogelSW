@@ -12,6 +12,7 @@ from .views import (
     save_frame_calibration,
     get_world_coordinates,
     calibrate_camera_endpoint,
+    reset_camera_calibration,
 )
 
 urlpatterns = [
@@ -25,6 +26,7 @@ urlpatterns = [
     path('fixed-perspective-stream/', fixed_perspective_stream, name='fixed_perspective_stream'),
     path('set-fixed-perspective/', set_fixed_perspective_view, name='set_fixed_perspective_view'),
     path('initialize-camera/', initialize_camera_endpoint, name='initialize_camera'),
+    path('reset-camera-calibration/', reset_camera_calibration, name='reset_camera_calibration'),
 ]
 
 # Serve i file media solo in sviluppo (DEBUG=True)
