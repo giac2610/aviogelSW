@@ -235,6 +235,9 @@ onPresetChange() {
 
   updateStreamUrl() {
     switch (this.selectedStream) {
+      case 'fixed':
+        this.currentStreamUrl = `${this.normalStreamUrl}?mode=fixed&keyframe=true`; // Modalità fissa con keyframe
+        break
       case 'threshold':
         this.currentStreamUrl = `${this.normalStreamUrl}?mode=threshold&keyframe=true`; // Modalità threshold con keyframe
         break;
