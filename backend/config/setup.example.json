@@ -14,13 +14,12 @@
         "conveyor": {
             "homeDir": 1,
             "stepOneRev": 200.0,
-            "microstep": 8,
-            "pitch": 10.0,
-            "maxSpeed": 250.0,
-            "acceleration": 1000.0,
-            "maxTravel": 100.0,
-            "hertz": 0.0,
-            "stepsPerMm": 160.0
+            "microstep": 1,
+            "pitch": 43.0,
+            "maxSpeed": 150.0,
+            "acceleration": 500.0,
+            "maxTravel": -1.0,
+            "hertz": 697.6744186046511
         },
         "syringe": {
             "homeDir": 1,
@@ -30,8 +29,7 @@
             "maxSpeed": 250.0,
             "acceleration": 800.0,
             "maxTravel": 100.0,
-            "hertz": 0.0,
-            "stepsPerMm": 423.28
+            "hertz": 105820.10582010582
         }
     },
     "camera": {
