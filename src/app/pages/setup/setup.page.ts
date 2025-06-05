@@ -90,8 +90,10 @@ speedPollingSubscription!: Subscription;
         this.cameraOrigin.x = this.settings.camera.origin_x;
         this.cameraOrigin.y = this.settings.camera.origin_y;
       }
-      this.selectedPreset = `${this.settings.camera.picamera_config.main.size[0]}x${this.settings.camera.picamera_config.main.size[1]}@${this.settings.camera.picamera_config.controls.FrameRate}`;
-      this.isLoading = false;
+      if (this.settings.camera.picamera_config && this.settings.camera.picamera_config.main && this.settings.camera.picamera_config.main.size) {
+        this.selectedPreset = `${this.settings.camera.picamera_config.main.size[0]}x${this.settings.camera.picamera_config.main.size[1]}@${this.settings.camera.picamera_config.controls.FrameRate}`;
+        this.isLoading = false;
+      }
 
       // Calcola gli stepsPerMm per ogni motore
       ["syringe", "extruder", "conveyor"].forEach((motor) => {
