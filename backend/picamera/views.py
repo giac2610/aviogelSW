@@ -313,15 +313,14 @@ def update_camera_settings(request):
             return JsonResponse({"status": "error", "message": "Failed to save updated settings."}, status=500)
     except Exception as e:
         return JsonResponse({"status": "error", "message": str(e)}, status=400)
+    
 @csrf_exempt
 def camera_feed(request):
     mode = request.GET.get("mode", "normal")
     
     def gen_frames():
-        # Load config for this stream worker once
         stream_cfg_cam = camera_settings
         
-        # Fixed perspective stream initialization
         H_ref = None
         cam_matrix = None
         dist_coeffs = None
@@ -330,7 +329,15 @@ def camera_feed(request):
         OUT_H = 0
         blob_params_for_stream = stream_cfg_cam
 
+        # >>> INIZIO NUOVE VARIABILI PER BLOB DETECTION A INTERVALLI <<<
+        blob_detection_interval = 5 # Esegui la rilevazione blob ogni 10 frame
+                                     # Puoi renderlo configurabile se vuoi
+        frame_count = 0
+        last_keypoints = [] # Per memorizzare gli ultimi keypoint rilevati (per normal/threshold mode)
+        # >>> FINE NUOVE VARIABILI <<<
+
         if mode == "fixed":
+            # ... (codice esistente per l'inizializzazione del fixed mode) ...
             H_ref = get_fixed_perspective_homography_from_config()
             cam_calib = stream_cfg_cam.get("calibration", None)
             fixed_persp_cfg = stream_cfg_cam.get("fixed_perspective", {})
@@ -341,8 +348,6 @@ def camera_feed(request):
             if not (cam_calib and cam_calib.get("camera_matrix") and cam_calib.get("distortion_coefficients")):
                 error_msg = "Camera calibration missing for fixed view"
                 print(f"camera_feed (fixed mode): {error_msg}")
-                # This error will be handled by the outer loop with a blank frame
-                # and error text.
             else:
                 cam_matrix = np.array(cam_calib["camera_matrix"], dtype=np.float32)
                 dist_coeffs = np.array(cam_calib["distortion_coefficients"], dtype=np.float32)
@@ -356,15 +361,13 @@ def camera_feed(request):
                         raise ValueError("Could not get valid sample frame dimensions for new_camera_matrix in fixed mode.")
                 except Exception as e_stream_setup:
                     print(f"camera_feed (fixed mode) setup failed: {e_stream_setup}")
-                    # Error will be caught in the main loop and displayed on frame.
-        
-        # End of fixed perspective stream initialization
         
         with stream_context():
             while True:
                 try:
-                    frame_orig = get_frame() # release_after=False by default
+                    frame_orig = get_frame()
                     if frame_orig is None or frame_orig.size == 0:
+                        # ... (codice esistente per frame vuoto) ...
                         current_height = stream_cfg_cam.get("capture_height", 480)
                         current_width = stream_cfg_cam.get("capture_width", 640)
                         if mode == "fixed":
@@ -384,16 +387,34 @@ def camera_feed(request):
                     
                     display_frame_feed = frame_orig.copy()
                     
-                    if mode == "normal" or mode == "threshold":
+                    # >>> INIZIO LOGICA BLOB DETECTION A INTERVALLI <<<
+                    if frame_count % blob_detection_interval == 0:
+                        # È il momento di rilevare nuovi blob
                         gray = cv2.cvtColor(frame_orig, cv2.COLOR_BGR2GRAY)
                         _, processed_for_blobs = cv2.threshold(
                             gray, stream_cfg_cam.get("minThreshold", 127),
                             stream_cfg_cam.get("maxThreshold", 255), cv2.THRESH_BINARY
                         )
+                        keypoints_blob = detect_blobs_from_params(processed_for_blobs, blob_params_for_stream)
+                        last_keypoints = keypoints_blob # Aggiorna i keypoint
+                    else:
+                        # Non è il momento di rilevare, usa gli ultimi keypoint noti
+                        keypoints_blob = last_keypoints 
+                    
+                    frame_count += 1
+                    # >>> FINE LOGICA BLOB DETECTION A INTERVALLI <<<
+
+                    if mode == "normal" or mode == "threshold":
                         if mode == "threshold":
+                            # Riprocessa l'immagine per la visualizzazione in threshold mode se non l'hai appena fatto
+                            if frame_count % blob_detection_interval != 1: # Se non era il frame di rilevazione (era frame_count = 0 all'inizio)
+                                gray = cv2.cvtColor(frame_orig, cv2.COLOR_BGR2GRAY)
+                                _, processed_for_blobs = cv2.threshold(
+                                    gray, stream_cfg_cam.get("minThreshold", 127),
+                                    stream_cfg_cam.get("maxThreshold", 255), cv2.THRESH_BINARY
+                                )
                             display_frame_feed = cv2.cvtColor(processed_for_blobs, cv2.COLOR_GRAY2BGR)
                         
-                        keypoints_blob = detect_blobs_from_params(processed_for_blobs, blob_params_for_stream)
                         frame_with_keypoints = cv2.drawKeypoints(
                             display_frame_feed, keypoints_blob, np.array([]), (0, 0, 255), 
                             cv2.DRAW_MATCHES_FLAGS_DRAW_RICH_KEYPOINTS)
@@ -403,24 +424,16 @@ def camera_feed(request):
                         yield (b'--frame\r\nContent-Type: image/jpeg\r\n\r\n' + frame_bytes + b'\r\n')
                     
                     elif mode == "fixed":
-                        output_img = np.zeros((OUT_H, OUT_W, 3), dtype=np.uint8) # Start with a blank output slate
+                        output_img = np.zeros((OUT_H, OUT_W, 3), dtype=np.uint8)
                         
                         if H_ref is not None and cam_matrix is not None and dist_coeffs is not None and new_cam_matrix_stream is not None:
                             undistorted_live = cv2.undistort(frame_orig, cam_matrix, dist_coeffs, None, new_cam_matrix_stream)
                             output_img = cv2.warpPerspective(undistorted_live, H_ref, (OUT_W, OUT_H))
                             
-                            # --- BLOB DETECTION ON UNDISTORTED-NORMALIZED, THEN TRANSFORM TO WARPED ---
-                            gray_for_blobs = cv2.cvtColor(undistorted_live, cv2.COLOR_BGR2GRAY)
-                            _, thresh_for_blobs = cv2.threshold(
-                                gray_for_blobs,
-                                blob_params_for_stream.get("minThreshold", 127),
-                                blob_params_for_stream.get("maxThreshold", 255),
-                                cv2.THRESH_BINARY
-                            )
-                            keypoints_on_undistorted = detect_blobs_from_params(thresh_for_blobs, blob_params_for_stream)
-                            
-                            if keypoints_on_undistorted:
-                                pts_undist = np.array([kp.pt for kp in keypoints_on_undistorted], dtype=np.float32).reshape(-1,1,2)
+                            # >>> INIZIO LOGICA BLOB DETECTION A INTERVALLI (MODO FIXED) <<<
+                            # Qui usiamo sempre i keypoint calcolati nell'ultimo intervallo
+                            if last_keypoints: # Check if last_keypoints is not empty
+                                pts_undist = np.array([kp.pt for kp in last_keypoints], dtype=np.float32).reshape(-1,1,2)
                                 pts_warped = cv2.perspectiveTransform(pts_undist, H_ref)
                                 
                                 if pts_warped is not None:
@@ -432,16 +445,18 @@ def camera_feed(request):
                                             (int(round(x))+10, int(round(y))-10),
                                             cv2.FONT_HERSHEY_SIMPLEX, 0.4, (0,255,0), 1
                                         )
-                        else: # Fixed perspective not ready or H_ref is None
+                            # >>> FINE LOGICA BLOB DETECTION A INTERVALLI (MODO FIXED) <<<
+                        else:
                             cv2.putText(output_img, "Fixed View Not Set", (30,30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255,255,0),1)
                             cv2.putText(output_img, "Set via endpoint", (30,60), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255,255,0),1)
-                        # Encode the output image for streaming
+                        
                         _, buffer_ok = cv2.imencode('.jpg', output_img, [int(cv2.IMWRITE_JPEG_QUALITY), 80])
                         frame_bytes_ok = buffer_ok.tobytes()
                         yield (b'--frame\r\nContent-Type: image/jpeg\r\n\r\n' + frame_bytes_ok + b'\r\n')
                     
-                    # time.sleep(0.03) # Control frame rate
+                    # time.sleep(0.03) # Lascia questo commentato o metti un valore alto (es. 0.05) per ridurre il carico sulla CPU
                 except Exception as e:
+                    # ... (codice esistente per la gestione degli errori) ...
                     print(f"Error in camera_feed loop (mode: {mode}): {e}")
                     traceback.print_exc()
                     
@@ -456,7 +471,7 @@ def camera_feed(request):
                     _, buffer = cv2.imencode('.jpg', error_frame)
                     frame_bytes = buffer.tobytes()
                     yield (b'--frame\r\nContent-Type: image/jpeg\r\n\r\n' + frame_bytes + b'\r\n')
-                    time.sleep(1) # Pause on error
+                    time.sleep(1)
     return StreamingHttpResponse(gen_frames(), content_type='multipart/x-mixed-replace; boundary=frame')
 
 @csrf_exempt
@@ -729,36 +744,39 @@ def set_fixed_perspective_view(request):
 @require_GET
 def fixed_perspective_stream(request):
     def gen_frames():
-        # Use global 'camera_settings' as a snapshot for this stream worker
-        # This avoids repeated file access within the loop.
-        # If settings change, the stream needs to be restarted to see them.
         stream_cfg = camera_settings 
         
-        H_ref = get_fixed_perspective_homography_from_config() # Reads from global config via helper
+        H_ref = get_fixed_perspective_homography_from_config()
         
         cam_calib = stream_cfg.get("calibration", None)
         fixed_persp_cfg = stream_cfg.get("fixed_perspective", {})
-        blob_params_for_stream = stream_cfg # Pass the whole camera_settings for blob detection
+        blob_params_for_stream = stream_cfg
         
         OUT_W = fixed_persp_cfg.get("output_width", 1000)
         OUT_H = fixed_persp_cfg.get("output_height", 800)
         error_template_frame = np.zeros((OUT_H, OUT_W, 3), dtype=np.uint8)
+
+        # >>> INIZIO NUOVE VARIABILI PER BLOB DETECTION A INTERVALLI <<<
+        blob_detection_interval = 5 # Puoi renderlo configurabile
+        frame_count = 0
+        last_keypoints_undistorted = [] # Per memorizzare gli ultimi keypoint rilevati (non ancora warpatati)
+        # >>> FINE NUOVE VARIABILI <<<
+
         if not (cam_calib and cam_calib.get("camera_matrix") and cam_calib.get("distortion_coefficients")):
+            # ... (codice esistente per errore calibrazione) ...
             error_msg = "Camera calibration missing"
             print(f"fixed_perspective_stream: {error_msg}")
             encode_param = [int(cv2.IMWRITE_JPEG_QUALITY), 80]
             while True:
                 err_f = error_template_frame.copy()
                 cv2.putText(err_f, error_msg, (30,30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0,0,255),2)
-                _, buf = cv2.imencode('.jpg', err_f); yield (b'--frame\r\nContent-Type: image/jpeg\r\n\r\n' + buf.tobytes() + b'\r\n', encode_param) 
+                _, buf = cv2.imencode('.jpg', err_f, encode_param); yield (b'--frame\r\nContent-Type: image/jpeg\r\n\r\n' + buf.tobytes() + b'\r\n') 
                 time.sleep(1)
         cam_matrix = np.array(cam_calib["camera_matrix"], dtype=np.float32)
         dist_coeffs = np.array(cam_calib["distortion_coefficients"], dtype=np.float32)
         
         new_cam_matrix_stream = None
         try:
-            # Get a sample frame to determine dimensions for new_camera_matrix
-            # Using get_frame with release_after=True to ensure camera is free if it was the first call
             sample_frame_for_dims = get_frame(release_after=True) 
             if sample_frame_for_dims is not None and sample_frame_for_dims.size > 0:
                 h_str, w_str = sample_frame_for_dims.shape[:2]
@@ -766,6 +784,7 @@ def fixed_perspective_stream(request):
             else:
                  raise ValueError("Could not get valid sample frame dimensions for new_camera_matrix")
         except Exception as e_stream_setup:
+            # ... (codice esistente per errore setup stream) ...
             error_msg = f"Stream setup failed: {e_stream_setup}"
             print(f"fixed_perspective_stream: {error_msg}")
             while True:
@@ -778,61 +797,64 @@ def fixed_perspective_stream(request):
         with stream_context():
             while True:
                 try:
-                    frame_live = get_frame() # release_after=False default
+                    frame_live = get_frame()
                     if frame_live is None or frame_live.size == 0: 
+                        # ... (codice esistente per frame perso) ...
                         err_f_loop = error_template_frame.copy()
                         cv2.putText(err_f_loop, "Frame lost", (30,60), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0,100,255),2)
                         if H_ref is None: cv2.putText(err_f_loop, "Fixed View Not Set", (30,30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255,255,0),1)
                         _, buf_err = cv2.imencode('.jpg', err_f_loop)
-                        yield (b'--frame\r\nContent-Type: image/jpeg\r\n\r\n' + buf_err.tobytes() + b'\r\n')
+                        yield (b'--frame\r\nContent-Type: image/jpeg\r\n\r\n' + buf_err.tobytes() + b'\r\r')
                         # time.sleep(0.1)
                         continue
-                    # Undistort using the new_cam_matrix_stream calculated once for this stream
+
                     undistorted_live = cv2.undistort(frame_live, cam_matrix, dist_coeffs, None, new_cam_matrix_stream)
+                    output_img = error_template_frame.copy()
                     
-                    output_img = error_template_frame.copy() # Start with a blank output slate
                     if H_ref is not None:
                         output_img = cv2.warpPerspective(undistorted_live, H_ref, (OUT_W, OUT_H))
                         
-                        # --- BLOB DETECTION ON UNDISTORTED-NORMALIZED, THEN TRANSFORM TO WARPED ---
-                        # 1. Create binary image for blob detection from undistorted_live
-                        gray_for_blobs = cv2.cvtColor(undistorted_live, cv2.COLOR_BGR2GRAY)
-                        _, thresh_for_blobs = cv2.threshold(
-                            gray_for_blobs,
-                            blob_params_for_stream.get("minThreshold", 127),
-                            blob_params_for_stream.get("maxThreshold", 255),
-                            cv2.THRESH_BINARY
-                        )
-                        keypoints_on_undistorted = detect_blobs_from_params(thresh_for_blobs, blob_params_for_stream)
+                        # >>> INIZIO LOGICA BLOB DETECTION A INTERVALLI (MODO FIXED) <<<
+                        if frame_count % blob_detection_interval == 0:
+                            # È il momento di rilevare nuovi blob sull'immagine undistorta
+                            gray_for_blobs = cv2.cvtColor(undistorted_live, cv2.COLOR_BGR2GRAY)
+                            _, thresh_for_blobs = cv2.threshold(
+                                gray_for_blobs,
+                                blob_params_for_stream.get("minThreshold", 127),
+                                blob_params_for_stream.get("maxThreshold", 255),
+                                cv2.THRESH_BINARY
+                            )
+                            keypoints_on_undistorted = detect_blobs_from_params(thresh_for_blobs, blob_params_for_stream)
+                            last_keypoints_undistorted = keypoints_on_undistorted # Aggiorna i keypoint
                         
-                        if keypoints_on_undistorted:
-                            # Points are relative to 'undistorted_live' which is in the coordinate system
-                            # defined by 'new_cam_matrix_stream'. H_ref transforms from this system to the warped output.
-                            pts_undist = np.array([kp.pt for kp in keypoints_on_undistorted], dtype=np.float32).reshape(-1,1,2)
-                            
-                            # No need for cv2.undistortPoints here as points are already in the new_cam_matrix_stream system.
-                            # We just need to apply the homography H_ref.
-                            # Convert to homogeneous coordinates for perspectiveTransform
+                        # Usa sempre gli ultimi keypoint rilevati per disegnare (sia che siano nuovi o vecchi)
+                        if last_keypoints_undistorted:
+                            pts_undist = np.array([kp.pt for kp in last_keypoints_undistorted], dtype=np.float32).reshape(-1,1,2)
                             pts_warped = cv2.perspectiveTransform(pts_undist, H_ref)
                             
-                            if pts_warped is not None: # perspectiveTransform can return None
+                            if pts_warped is not None:
                                 for i, pt_w in enumerate(pts_warped.reshape(-1,2)):
                                     x, y = pt_w[0], pt_w[1]
-                                    cv2.circle(output_img, (int(round(x)), int(round(y))), 8, (0,0,255), 2) # Red circle
+                                    cv2.circle(output_img, (int(round(x)), int(round(y))), 8, (0,0,255), 2)
                                     cv2.putText(
                                         output_img, f"{x:.1f},{y:.1f}",
                                         (int(round(x))+10, int(round(y))-10),
-                                        cv2.FONT_HERSHEY_SIMPLEX, 0.4, (0,255,0), 1 # Green text
+                                        cv2.FONT_HERSHEY_SIMPLEX, 0.4, (0,255,0), 1
                                     )
-                    else: # H_ref is None
+                        frame_count += 1
+                        # >>> FINE LOGICA BLOB DETECTION A INTERVALLI (MODO FIXED) <<<
+
+                    else:
                         cv2.putText(output_img, "Fixed View Not Set", (30,30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255,255,0),1)
                         cv2.putText(output_img, "Use endpoint to set it", (30,60), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255,255,0),1)
+                    
                     encode_param = [int(cv2.IMWRITE_JPEG_QUALITY), 80]
                     _, buffer_ok = cv2.imencode('.jpg', output_img, encode_param)
                     frame_bytes_ok = buffer_ok.tobytes()
                     yield (b'--frame\r\nContent-Type: image/jpeg\r\n\r\n' + frame_bytes_ok + b'\r\n')
-                    # time.sleep(0.03)
+                    # time.sleep(0.03) # Lascia questo commentato o metti un valore alto (es. 0.05) per ridurre il carico sulla CPU
                 except Exception as e_loop_stream:
+                    # ... (codice esistente per gestione errori) ...
                     print(f"Error in fixed_perspective_stream loop: {e_loop_stream}")
                     traceback.print_exc()
                     err_f_loop = error_template_frame.copy()
@@ -842,7 +864,6 @@ def fixed_perspective_stream(request):
                     yield (b'--frame\r\nContent-Type: image/jpeg\r\n\r\n' + buf_err.tobytes() + b'\r\n')
                     time.sleep(1)
     return StreamingHttpResponse(gen_frames(), content_type='multipart/x-mixed-replace; boundary=frame')
-
 @csrf_exempt
 @require_GET
 def get_world_coordinates(request):
