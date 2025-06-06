@@ -11,6 +11,7 @@ from django.http import StreamingHttpResponse, JsonResponse, HttpResponse
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_POST, require_GET
 import traceback # Added for more detailed error logging if needed
+
 # --- File Configuration ---
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CONFIG_DIR = os.path.join(BASE_DIR, 'config')
@@ -18,6 +19,7 @@ SETUP_JSON_PATH = os.path.join(CONFIG_DIR, 'setup.json')
 EXAMPLE_JSON_PATH = os.path.join(CONFIG_DIR, 'setup.example.json')
 CALIBRATION_MEDIA_DIR = os.path.join(BASE_DIR, 'calibrationMedia')
 os.makedirs(CALIBRATION_MEDIA_DIR, exist_ok=True)
+
 if not os.path.exists(SETUP_JSON_PATH):
     from shutil import copyfile
     os.makedirs(CONFIG_DIR, exist_ok=True)
@@ -30,26 +32,32 @@ if not os.path.exists(SETUP_JSON_PATH):
         with open(SETUP_JSON_PATH, 'w') as f_default:
             json.dump(default_config_content, f_default, indent=4)
         print(f"[INFO] Minimal configuration file created at {SETUP_JSON_PATH} as example was missing.")
+
 # --- Global Configuration Loading ---
-# These globals will be updated by save_config_data
 config = {}
 camera_settings = {}
+
 def _load_global_config_from_file():
     global config, camera_settings
     try:
         with open(SETUP_JSON_PATH, 'r') as f:
             config = json.load(f)
         camera_settings = config.get("camera", {})
+        # Imposta un default per picamera_config.main.size se non esiste
+        camera_settings.setdefault("picamera_config", {}).setdefault("main", {}).setdefault("size", [640, 480])
         print("[INFO] Global configuration loaded successfully.")
     except Exception as e:
         print(f"Critical error loading setup.json at startup: {e}. Falling back to empty config.")
-        config = {"camera": {}} # Ensure config is a dict
-        camera_settings = {}
+        config = {"camera": {"picamera_config": {"main": {"size": [640, 480]}}}} # Ensure config is a dict with defaults
+        camera_settings = config["camera"]
+
 _load_global_config_from_file() # Load it once at startup
+
 # --- Camera Init ---
 camera_instance = None
 camera_lock = threading.Lock()
 active_streams = 0
+
 def _initialize_camera_internally():
     global camera_instance
     if camera_instance is not None:
@@ -60,8 +68,18 @@ def _initialize_camera_internally():
         except Exception as e:
             print(f"[WARN] Error releasing previous camera: {e}")
         camera_instance = None
-    # Use the global camera_settings loaded at startup or after save
+
     cfg_data_for_init = camera_settings
+    
+    # Assicurati che picam_main_size sia una lista di due elementi
+    picam_main_size = cfg_data_for_init.get("picamera_config", {}).get("main", {}).get("size", [640, 480])
+    if not isinstance(picam_main_size, list) or len(picam_main_size) != 2:
+        print(f"[WARN] picamera_config.main.size in setup.json is malformed: {picam_main_size}. Using default [640, 480].")
+        picam_main_size = [640, 480]
+
+    capture_width = picam_main_size[0]
+    capture_height = picam_main_size[1]
+
     if sys.platform == "darwin":
         print("[INFO] Attempting macOS camera initialization...")
         mac_cam = cv2.VideoCapture(cfg_data_for_init.get("mac_camera_index", 0)) # Use configured index or default 0
@@ -72,18 +90,23 @@ def _initialize_camera_internally():
             if not mac_cam.isOpened():
                 print("[ERROR] No webcam available or in use on macOS.")
                 return None
+        
+        # Set capture resolution for macOS camera (if supported)
+        mac_cam.set(cv2.CAP_PROP_FRAME_WIDTH, capture_width)
+        mac_cam.set(cv2.CAP_PROP_FRAME_HEIGHT, capture_height)
+
         camera_instance = mac_cam
-        print("[INFO] macOS camera initialized.")
+        print(f"[INFO] macOS camera initialized ({int(mac_cam.get(cv2.CAP_PROP_FRAME_WIDTH))}x{int(mac_cam.get(cv2.CAP_PROP_FRAME_HEIGHT))}).")
     else:
         print("[INFO] Attempting Picamera2 initialization...")
         try:
             from picamera2 import Picamera2
             picam2 = Picamera2()
-            picam_main_size = cfg_data_for_init.get("picamera_config", {}).get("main", {}).get("size", [640, 480])
-            capture_width = picam_main_size[0]
-            capture_height = picam_main_size[1]
+            
+            # Use 'L8' for grayscale to reduce data if color isn't needed for raw capture.
+            # Change to 'RGB888' if color is always required for the base frame.
             video_config = picam2.create_video_configuration(
-                main={"size": (capture_width, capture_height), "format": "RGB888"}
+                main={"size": (capture_width, capture_height), "format": "RGB888"} # Adjusted based on previous discussion
             )
             picam2.configure(video_config)
             picam2.start()
@@ -96,6 +119,7 @@ def _initialize_camera_internally():
                 except Exception as e_close: print(f"[WARN] Error closing picam2 after failed init: {e_close}")
             return None
     return camera_instance
+
 @csrf_exempt
 @require_POST
 def initialize_camera_endpoint(request):
@@ -106,51 +130,51 @@ def initialize_camera_endpoint(request):
         return JsonResponse({"status": "success", "message": "Camera initialization attempt completed."})
     else:
         return JsonResponse({"status": "error", "message": "Camera initialization failed."}, status=500)
-# Inizializzazione non aggressiva all'avvio, l'endpoint o il primo get_frame la forzeranno se necessario
-# print("[INFO] Attempting to initialize camera at module startup...")
-# _initialize_camera_internally() # Commented out: prefer explicit init or lazy init
+
 def get_frame(release_after=False):
-    global camera_instance # active_streams is handled by stream_context or implicitly for singl e calls
+    global camera_instance
     with camera_lock:
         if camera_instance is None:
             print("get_frame: Camera not initialized. Attempting to initialize.")
             _initialize_camera_internally()
             if camera_instance is None:
                 print("get_frame: Camera unavailable, returning blank frame.")
-                return np.zeros((camera_settings.get("capture_height", 480),
-                                 camera_settings.get("capture_width", 640), 3), dtype=np.uint8)
-        # Determine if release is needed: only if release_after is true AND no active streams
-        # active_streams count is primarily for StreamingHttpResponse. Single calls don't increment it.
-        # So, if release_after is true, it's usually a single-shot call.
+                # Usa le dimensioni configurate o un default ragionevole per il frame vuoto
+                configured_height = camera_settings.get("picamera_config", {}).get("main", {}).get("size", [640, 480])[1]
+                configured_width = camera_settings.get("picamera_config", {}).get("main", {}).get("size", [640, 480])[0]
+                return np.zeros((configured_height, configured_width, 3), dtype=np.uint8)
+        
         should_release_now = release_after and active_streams == 0
         frame = None
         try:
             if sys.platform == "darwin":
                 if not camera_instance.isOpened():
                     print("get_frame (macOS): Camera not open. Re-initializing.")
-                    _initialize_camera_internally() # Try to reopen
+                    _initialize_camera_internally()
                     if camera_instance is None or not camera_instance.isOpened():
                          raise IOError("macOS camera failed to open.")
                 ret, frame = camera_instance.read()
                 if not ret: raise IOError("macOS camera failed to read frame.")
             else: # Picamera2
-                if not hasattr(camera_instance, 'capture_array'): # Basic check if instance is valid
+                if not hasattr(camera_instance, 'capture_array'):
                     print("get_frame (Pi): Picamera2 not ready. Re-initializing.")
-                    _initialize_camera_internally() # Try to re-init
+                    _initialize_camera_internally()
                     if camera_instance is None or not hasattr(camera_instance, 'capture_array'):
                         raise IOError("Picamera2 not ready or failed to initialize.")
                 frame = camera_instance.capture_array()
         except Exception as e:
             print(f"get_frame: Error capturing frame: {e}. Returning blank frame.")
-            # Attempt to release the problematic camera instance before returning blank
             if camera_instance is not None:
                 try:
                     if sys.platform == "darwin": camera_instance.release()
                     else: camera_instance.stop(); camera_instance.close()
                 except Exception as e_rel: print(f"Error releasing camera after capture error: {e_rel}")
                 camera_instance = None
-            return np.zeros((camera_settings.get("capture_height", 480),
-                             camera_settings.get("capture_width", 640), 3), dtype=np.uint8)
+            
+            configured_height = camera_settings.get("picamera_config", {}).get("main", {}).get("size", [640, 480])[1]
+            configured_width = camera_settings.get("picamera_config", {}).get("main", {}).get("size", [640, 480])[0]
+            return np.zeros((configured_height, configured_width, 3), dtype=np.uint8)
+
         if should_release_now:
             try:
                 if sys.platform == "darwin": camera_instance.release()
@@ -160,27 +184,28 @@ def get_frame(release_after=False):
             except Exception as e:
                 print(f"get_frame: Error releasing camera: {e}")
         return frame
+
 # --- Utility ---
-def load_config_data_from_file(): # Renamed to be explicit about file I/O
+def load_config_data_from_file():
     try:
         with open(SETUP_JSON_PATH, 'r') as f:
             return json.load(f)
     except Exception as e:
         print(f"Error loading {SETUP_JSON_PATH}: {e}")
-        return {"camera": {}} # Return a minimal valid structure
+        return {"camera": {}}
     
-def save_config_data_to_file(new_config_data): # Renamed
+def save_config_data_to_file(new_config_data):
     try:
         with open(SETUP_JSON_PATH, 'w') as f:
             json.dump(new_config_data, f, indent=4)
-        # Update global config variables after successful save
         _load_global_config_from_file()
         print(f"Configuration saved to {SETUP_JSON_PATH} and globals reloaded.")
         return True
     except Exception as e:
         print(f"Error saving to {SETUP_JSON_PATH}: {e}")
         return False
-def get_fixed_perspective_homography_from_config(): # Reads from global config
+
+def get_fixed_perspective_homography_from_config():
     H_list = camera_settings.get("fixed_perspective", {}).get("homography_matrix", None)
     if H_list and isinstance(H_list, list):
         try:
@@ -188,45 +213,85 @@ def get_fixed_perspective_homography_from_config(): # Reads from global config
         except Exception as e:
             print(f"Error converting fixed_perspective_homography to numpy array: {e}")
     return None
-def save_fixed_perspective_homography_to_config(H_matrix_ref): # Modifies and saves
-    current_disk_config = load_config_data_from_file() # Load fresh from disk before modifying
+
+def save_fixed_perspective_homography_to_config(H_matrix_ref):
+    current_disk_config = load_config_data_from_file()
     current_disk_config.setdefault("camera", {}).setdefault("fixed_perspective", {})
     if H_matrix_ref is not None:
         current_disk_config["camera"]["fixed_perspective"]["homography_matrix"] = H_matrix_ref.tolist()
     else:
         current_disk_config["camera"]["fixed_perspective"]["homography_matrix"] = None
     return save_config_data_to_file(current_disk_config)
-def detect_blobs_from_params(binary_image, blob_detection_params): # Takes params
+
+# MODIFICATO: detect_blobs_from_params ora accetta anche i fattori di scala
+def detect_blobs_from_params(binary_image, blob_detection_params, scale_x=1.0, scale_y=1.0):
     params = cv2.SimpleBlobDetector_Params()
     params.filterByArea = blob_detection_params.get("areaFilter", True)
-    params.minArea = blob_detection_params.get("minArea", 150)
-    params.maxArea = blob_detection_params.get("maxArea", 5000)
+    
+    # Adattamento dinamico di minArea e maxArea
+    area_scale_factor = (scale_x * scale_y) # Scala bidimensionale per l'area
+    
+    params.minArea = blob_detection_params.get("minArea", 150) * area_scale_factor
+    params.maxArea = blob_detection_params.get("maxArea", 5000) * area_scale_factor
+    
+    # Assicurati che i valori non siano negativi o troppo piccoli se la scala è estrema
+    params.minArea = max(1, params.minArea) 
+    params.maxArea = max(1, params.maxArea) # Puoi mettere un limite superiore sensato se necessario
+
     params.filterByCircularity = blob_detection_params.get("circularityFilter", True)
-    params.minCircularity = blob_detection_params.get("minCircularity", 0.1)
-    params.filterByConvexity = blob_detection_params.get("filterByConvexity", True) # Corrected param name from original
-    params.minConvexity = blob_detection_params.get("minConvexity", 0.87)
+    params.minCircularity = blob_detection_params.get("minCircularity", 0.1) # Non scalato
+    
+    params.filterByConvexity = blob_detection_params.get("filterByConvexity", True)
+    params.minConvexity = blob_detection_params.get("minConvexity", 0.87) # Non scalato
+    
     params.filterByInertia = blob_detection_params.get("inertiaFilter", True)
-    params.minInertiaRatio = blob_detection_params.get("minInertia", 0.01) # Corrected param name from original
+    params.minInertiaRatio = blob_detection_params.get("minInertia", 0.01) # Non scalato
+    
     detector = cv2.SimpleBlobDetector_create(params)
     return detector.detect(binary_image)
-def get_current_frame_and_keypoints_from_config(): # Uses global config
-    # Uses global camera_settings for thresholds and blob params
-    frame = get_frame(release_after=True) # Single acquisition
+
+def get_current_frame_and_keypoints_from_config():
+    frame = get_frame(release_after=True)
     if frame is None or frame.size == 0:
         print("get_current_frame_and_keypoints: Invalid frame received.")
-        return np.zeros((camera_settings.get("capture_height", 480),
-                         camera_settings.get("capture_width", 640), 3), dtype=np.uint8), []
+        configured_height = camera_settings.get("picamera_config", {}).get("main", {}).get("size", [640, 480])[1]
+        configured_width = camera_settings.get("picamera_config", {}).get("main", {}).get("size", [640, 480])[0]
+        return np.zeros((configured_height, configured_width, 3), dtype=np.uint8), []
     
     gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+
+    # >>> Implementazione ridimensionamento per get_current_frame_and_keypoints_from_config <<<
+    processing_width_for_single_shot = 640 # Risoluzione target per il rilevamento blob
+    
+    # Calcola processing_height mantenendo l'aspect ratio
+    original_height, original_width = frame.shape[:2]
+    processing_height_for_single_shot = int(original_height * (processing_width_for_single_shot / original_width))
+
+    scale_x_for_single_shot = original_width / processing_width_for_single_shot
+    scale_y_for_single_shot = original_height / processing_height_for_single_shot
+
+    resized_gray = cv2.resize(gray, (processing_width_for_single_shot, processing_height_for_single_shot), interpolation=cv2.INTER_AREA)
+
     _, thresh = cv2.threshold(
-        gray,
+        resized_gray, # Usa l'immagine ridimensionata
         camera_settings.get("minThreshold", 127),
         camera_settings.get("maxThreshold", 255),
         cv2.THRESH_BINARY
     )
-    # Pass camera_settings directly as it contains blob parameters
-    keypoints = detect_blobs_from_params(thresh, camera_settings)
-    return frame, keypoints
+    
+    keypoints_resized = detect_blobs_from_params(thresh, camera_settings, scale_x_for_single_shot, scale_y_for_single_shot)
+    
+    # Riscala i keypoint all'immagine originale
+    keypoints_original_coords = []
+    for kp in keypoints_resized:
+        new_x = kp.pt[0] * scale_x_for_single_shot
+        new_y = kp.pt[1] * scale_y_for_single_shot
+        new_size = kp.size * ((scale_x_for_single_shot + scale_y_for_single_shot) / 2) # Scala la dimensione
+        keypoints_original_coords.append(cv2.KeyPoint(new_x, new_y, new_size, kp.angle, kp.response, kp.octave, kp.class_id))
+    # >>> Fine implementazione ridimensionamento <<<
+
+    return frame, keypoints_original_coords
+
 def get_board_and_canonical_homography_for_django(undistorted_frame, new_camera_matrix_cv, calibration_cfg_dict):
     cs_cols = calibration_cfg_dict.get("chessboard_cols", 9)
     cs_rows = calibration_cfg_dict.get("chessboard_rows", 7)
@@ -241,36 +306,28 @@ def get_board_and_canonical_homography_for_django(undistorted_frame, new_camera_
     ret, corners = cv2.findChessboardCorners(gray, chessboard_dim_cv, None)
     if not ret: return None, None
     corners2 = cv2.cornerSubPix(gray, corners, (11, 11), (-1, -1), criteria_cv)
-    # Use cv2.solvePnP without flags if not needed, or specify cv2.SOLVEPNP_ITERATIVE
     success, rvec, tvec = cv2.solvePnP(objp_cv, corners2, new_camera_matrix_cv, None, flags=cv2.SOLVEPNP_ITERATIVE)
     if not success: return None, None
-    board_w_obj = (cs_cols) * sq_size # Use full columns for width calculation for perimeter
-    board_h_obj = (cs_rows) * sq_size # Use full rows for height 
     
-    # Define object points for the board perimeter (outer corners of the squares)
-    # These points define the rectangle encompassing the entire grid in 3D object space.
     obj_board_perimeter_pts = np.array([
         [0,0,0], [ (cs_cols-1)*sq_size, 0, 0], 
         [(cs_cols-1)*sq_size, (cs_rows-1)*sq_size, 0], [0, (cs_rows-1)*sq_size, 0]
     ], dtype=np.float32)
     img_board_perimeter_pts, _ = cv2.projectPoints(obj_board_perimeter_pts, rvec, tvec, new_camera_matrix_cv, None)
     img_board_perimeter_pts = img_board_perimeter_pts.reshape(-1, 2)
-    # Destination points for the canonical view should match the object dimensions
-    # Using cs_cols * sq_size implies pixel per mm if sq_size is in mm.
-    # The canonical board size should represent the "real" dimensions.
-    canonical_width = int(round((cs_cols-1) * sq_size)) # Width of the pattern area
-    canonical_height = int(round((cs_rows-1) * sq_size)) # Height of the pattern area
+    
+    canonical_width = int(round((cs_cols-1) * sq_size))
+    canonical_height = int(round((cs_rows-1) * sq_size))
     canonical_dst_pts = np.array([
         [0,0], [canonical_width-1,0], 
         [canonical_width-1,canonical_height-1], [0,canonical_height-1]
     ], dtype=np.float32)
     
     H_canonical = cv2.getPerspectiveTransform(img_board_perimeter_pts, canonical_dst_pts)
-    # The canonical_board_size should be the size of the image you're warping *to*
-    # This should be the size of the pattern area, not the full board width/height from earlier.
     canonical_board_size_tuple = (canonical_width, canonical_height) 
     
     return H_canonical, canonical_board_size_tuple
+
 @contextmanager
 def stream_context():
     global active_streams
@@ -282,22 +339,26 @@ def stream_context():
         active_streams -= 1
         print(f"[STREAM] Stream ended. Active streams: {active_streams}")
         # Optional: Conditional camera release if no streams are active
-        # Consider if get_frame's release_after is sufficient or if explicit release here is desired
-        # with camera_lock:
-        #     if active_streams == 0 and camera_instance is not None:
-        #         print("[STREAM] Last active stream closed. Releasing camera.")
-        #         # Similar release logic as in get_frame
-        #         # This part needs careful thought to avoid conflicts with get_frame's own release logic
-        #         pass
+        # if active_streams == 0 and camera_instance is not None:
+        #     print("[STREAM] Last active stream closed. Considering camera release.")
+        #     with camera_lock:
+        #         if camera_instance is not None:
+        #             try:
+        #                 if sys.platform == "darwin": camera_instance.release()
+        #                 else: camera_instance.stop(); camera_instance.close()
+        #                 camera_instance = None
+        #                 print("[STREAM] Camera released after all streams closed.")
+        #             except Exception as e:
+        #                 print(f"[WARN] Error releasing camera after stream context: {e}")
+
 # --- Django Endpoints ---
 @csrf_exempt
 @require_POST
 def update_camera_settings(request):
     try:
         data = json.loads(request.body)
-        current_disk_config = load_config_data_from_file() # Load fresh for update
+        current_disk_config = load_config_data_from_file()
         
-        # Ensure "camera" key exists
         if "camera" not in current_disk_config:
             current_disk_config["camera"] = {}
         for key, value in data.items():
@@ -307,13 +368,12 @@ def update_camera_settings(request):
                 current_disk_config["camera"][key] = value
         
         if save_config_data_to_file(current_disk_config):
-            # Global 'camera_settings' is updated by save_config_data_to_file via _load_global_config_from_file
             return JsonResponse({"status": "success", "updated_settings": camera_settings})
         else:
             return JsonResponse({"status": "error", "message": "Failed to save updated settings."}, status=500)
     except Exception as e:
         return JsonResponse({"status": "error", "message": str(e)}, status=400)
-    
+
 @csrf_exempt
 def camera_feed(request):
     mode = request.GET.get("mode", "normal")
@@ -329,15 +389,15 @@ def camera_feed(request):
         OUT_H = 0
         blob_params_for_stream = stream_cfg_cam
 
-        # >>> INIZIO NUOVE VARIABILI PER BLOB DETECTION A INTERVALLI <<<
-        blob_detection_interval = 5 # Esegui la rilevazione blob ogni 10 frame
-                                     # Puoi renderlo configurabile se vuoi
+        blob_detection_interval = stream_cfg_cam.get("blob_detection_interval", 5) # Default a 5 frame
         frame_count = 0
-        last_keypoints = [] # Per memorizzare gli ultimi keypoint rilevati (per normal/threshold mode)
-        # >>> FINE NUOVE VARIABILI <<<
+        last_keypoints_for_drawing = [] # Per memorizzare gli ultimi keypoint rilevati (per normal/threshold mode)
 
+        # Dimensioni target per il ridimensionamento dell'immagine per la rilevazione blob
+        # Puoi rendere queste configurabili in setup.json sotto "camera"
+        blob_processing_width = stream_cfg_cam.get("blob_processing_width", 640)
+        
         if mode == "fixed":
-            # ... (codice esistente per l'inizializzazione del fixed mode) ...
             H_ref = get_fixed_perspective_homography_from_config()
             cam_calib = stream_cfg_cam.get("calibration", None)
             fixed_persp_cfg = stream_cfg_cam.get("fixed_perspective", {})
@@ -367,9 +427,8 @@ def camera_feed(request):
                 try:
                     frame_orig = get_frame()
                     if frame_orig is None or frame_orig.size == 0:
-                        # ... (codice esistente per frame vuoto) ...
-                        current_height = stream_cfg_cam.get("capture_height", 480)
-                        current_width = stream_cfg_cam.get("capture_width", 640)
+                        current_height = stream_cfg_cam.get("picamera_config", {}).get("main", {}).get("size", [640, 480])[1]
+                        current_width = stream_cfg_cam.get("picamera_config", {}).get("main", {}).get("size", [640, 480])[0]
                         if mode == "fixed":
                             current_height = OUT_H if OUT_H > 0 else 480
                             current_width = OUT_W if OUT_W > 0 else 640
@@ -382,41 +441,63 @@ def camera_feed(request):
                         _, buffer = cv2.imencode('.jpg', blank_frame, encode_param)
                         frame_bytes = buffer.tobytes()
                         yield (b'--frame\r\nContent-Type: image/jpeg\r\n\r\n' + frame_bytes + b'\r\n')
-                        time.sleep(0.1) # Shorter sleep for responsiveness to camera coming online
+                        time.sleep(0.1)
                         continue
                     
                     display_frame_feed = frame_orig.copy()
                     
-                    # >>> INIZIO LOGICA BLOB DETECTION A INTERVALLI <<<
+                    # LOGICA BLOB DETECTION A INTERVALLI
                     if frame_count % blob_detection_interval == 0:
-                        # È il momento di rilevare nuovi blob
-                        gray = cv2.cvtColor(frame_orig, cv2.COLOR_BGR2GRAY)
+                        original_height, original_width = frame_orig.shape[:2]
+                        # Calcola processing_height mantenendo l'aspect ratio
+                        blob_processing_height = int(original_height * (blob_processing_width / original_width))
+                        
+                        scale_x = original_width / blob_processing_width
+                        scale_y = original_height / blob_processing_height
+
+                        gray_for_blobs = cv2.cvtColor(frame_orig, cv2.COLOR_BGR2GRAY)
+                        resized_gray_for_blobs = cv2.resize(gray_for_blobs, (blob_processing_width, blob_processing_height), interpolation=cv2.INTER_AREA)
+
                         _, processed_for_blobs = cv2.threshold(
-                            gray, stream_cfg_cam.get("minThreshold", 127),
-                            stream_cfg_cam.get("maxThreshold", 255), cv2.THRESH_BINARY
+                            resized_gray_for_blobs,
+                            stream_cfg_cam.get("minThreshold", 127),
+                            stream_cfg_cam.get("maxThreshold", 255),
+                            cv2.THRESH_BINARY
                         )
-                        keypoints_blob = detect_blobs_from_params(processed_for_blobs, blob_params_for_stream)
-                        last_keypoints = keypoints_blob # Aggiorna i keypoint
-                    else:
-                        # Non è il momento di rilevare, usa gli ultimi keypoint noti
-                        keypoints_blob = last_keypoints 
+                        keypoints_resized = detect_blobs_from_params(processed_for_blobs, blob_params_for_stream, scale_x, scale_y)
+                        
+                        # Riscala i keypoint all'immagine originale
+                        last_keypoints_for_drawing = []
+                        for kp in keypoints_resized:
+                            new_x = kp.pt[0] * scale_x
+                            new_y = kp.pt[1] * scale_y
+                            new_size = kp.size * ((scale_x + scale_y) / 2)
+                            last_keypoints_for_drawing.append(cv2.KeyPoint(new_x, new_y, new_size, kp.angle, kp.response, kp.octave, kp.class_id))
                     
                     frame_count += 1
-                    # >>> FINE LOGICA BLOB DETECTION A INTERVALLI <<<
-
+                    
                     if mode == "normal" or mode == "threshold":
                         if mode == "threshold":
-                            # Riprocessa l'immagine per la visualizzazione in threshold mode se non l'hai appena fatto
-                            if frame_count % blob_detection_interval != 1: # Se non era il frame di rilevazione (era frame_count = 0 all'inizio)
+                             # Se non era il frame di rilevazione, rielabora solo per la visualizzazione threshold
+                            if frame_count % blob_detection_interval != 1: # Se il frame_count iniziale era 0, il primo frame rilevato sarà 1
                                 gray = cv2.cvtColor(frame_orig, cv2.COLOR_BGR2GRAY)
-                                _, processed_for_blobs = cv2.threshold(
+                                _, processed_for_blobs_display = cv2.threshold(
                                     gray, stream_cfg_cam.get("minThreshold", 127),
                                     stream_cfg_cam.get("maxThreshold", 255), cv2.THRESH_BINARY
                                 )
-                            display_frame_feed = cv2.cvtColor(processed_for_blobs, cv2.COLOR_GRAY2BGR)
-                        
+                                display_frame_feed = cv2.cvtColor(processed_for_blobs_display, cv2.COLOR_GRAY2BGR)
+                            else: # Se era il frame di rilevazione, processed_for_blobs è già l'immagine ridimensionata in binario
+                                # Per visualizzare la threshold sull'immagine originale, dobbiamo rifare il threshold su frame_orig
+                                gray = cv2.cvtColor(frame_orig, cv2.COLOR_BGR2GRAY)
+                                _, processed_for_blobs_display = cv2.threshold(
+                                    gray, stream_cfg_cam.get("minThreshold", 127),
+                                    stream_cfg_cam.get("maxThreshold", 255), cv2.THRESH_BINARY
+                                )
+                                display_frame_feed = cv2.cvtColor(processed_for_blobs_display, cv2.COLOR_GRAY2BGR)
+
+
                         frame_with_keypoints = cv2.drawKeypoints(
-                            display_frame_feed, keypoints_blob, np.array([]), (0, 0, 255), 
+                            display_frame_feed, last_keypoints_for_drawing, np.array([]), (0, 0, 255), 
                             cv2.DRAW_MATCHES_FLAGS_DRAW_RICH_KEYPOINTS)
                         
                         _, buffer = cv2.imencode('.jpg', frame_with_keypoints, [int(cv2.IMWRITE_JPEG_QUALITY), 80])
@@ -430,38 +511,55 @@ def camera_feed(request):
                             undistorted_live = cv2.undistort(frame_orig, cam_matrix, dist_coeffs, None, new_cam_matrix_stream)
                             output_img = cv2.warpPerspective(undistorted_live, H_ref, (OUT_W, OUT_H))
                             
-                            # >>> INIZIO LOGICA BLOB DETECTION A INTERVALLI (MODO FIXED) <<<
-                            # Qui usiamo sempre i keypoint calcolati nell'ultimo intervallo
-                            if last_keypoints: # Check if last_keypoints is not empty
-                                pts_undist = np.array([kp.pt for kp in last_keypoints], dtype=np.float32).reshape(-1,1,2)
-                                pts_warped = cv2.perspectiveTransform(pts_undist, H_ref)
+                            if last_keypoints_for_drawing:
+                                # Questi keypoint sono già nelle coordinate originali, quindi undistortPoints non serve
+                                # ma devono essere trasformati dal sistema di coordinate undistorted alla fixed perspective
+                                # prima della trasformazione dei punti per la homography
                                 
-                                if pts_warped is not None:
-                                    for i, pt_w in enumerate(pts_warped.reshape(-1,2)):
-                                        x, y = pt_w[0], pt_w[1]
-                                        cv2.circle(output_img, (int(round(x)), int(round(y))), 8, (0,0,255), 2)
-                                        cv2.putText(
-                                            output_img, f"{x:.1f},{y:.1f}",
-                                            (int(round(x))+10, int(round(y))-10),
-                                            cv2.FONT_HERSHEY_SIMPLEX, 0.4, (0,255,0), 1
-                                        )
-                            # >>> FINE LOGICA BLOB DETECTION A INTERVALLI (MODO FIXED) <<<
-                        else:
+                                # Converti i keypoint in un array di punti per perspectiveTransform
+                                pts_undistorted_original_coords = np.array([kp.pt for kp in last_keypoints_for_drawing], dtype=np.float32).reshape(-1,1,2)
+
+                                # Qui, se i keypoint_for_drawing sono già nell'immagine undistorta, allora
+                                # si possono trasformare direttamente con H_ref.
+                                # Tuttavia, il tuo `last_keypoints_for_drawing` è scalato all'originale, non undistorto.
+                                # Quindi dobbiamo undistortPoints questi keypoint come farebbe `get_world_coordinates`
+                                
+                                # Nuovo: UndistortPoints i keypoint `last_keypoints_for_drawing`
+                                # Questi sono i punti originali, dobbiamo sapere come undistortli nella prospettiva della matrice H
+                                # Dobbiamo usare cam_matrix e dist_coeffs e il new_cam_matrix_stream usato per undistorted_live.
+                                # Questo è il passo più critico: i keypoint della rilevazione devono essere nello stesso spazio di undistorted_live
+                                pts_undistorted_remapped_for_display = cv2.undistortPoints(
+                                    pts_undistorted_original_coords, cam_matrix, dist_coeffs, P=new_cam_matrix_stream
+                                )
+
+                                if pts_undistorted_remapped_for_display is not None:
+                                    pts_warped = cv2.perspectiveTransform(pts_undistorted_remapped_for_display, H_ref)
+                                    
+                                    if pts_warped is not None:
+                                        for i, pt_w in enumerate(pts_warped.reshape(-1,2)):
+                                            x, y = pt_w[0], pt_w[1]
+                                            cv2.circle(output_img, (int(round(x)), int(round(y))), 8, (0,0,255), 2)
+                                            cv2.putText(
+                                                output_img, f"{x:.1f},{y:.1f}",
+                                                (int(round(x))+10, int(round(y))-10),
+                                                cv2.FONT_HERSHEY_SIMPLEX, 0.4, (0,255,0), 1
+                                            )
+                        else: # H_ref is None
                             cv2.putText(output_img, "Fixed View Not Set", (30,30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255,255,0),1)
                             cv2.putText(output_img, "Set via endpoint", (30,60), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255,255,0),1)
                         
-                        _, buffer_ok = cv2.imencode('.jpg', output_img, [int(cv2.IMWRITE_JPEG_QUALITY), 80])
+                        encode_param = [int(cv2.IMWRITE_JPEG_QUALITY), 80]
+                        _, buffer_ok = cv2.imencode('.jpg', output_img, encode_param)
                         frame_bytes_ok = buffer_ok.tobytes()
                         yield (b'--frame\r\nContent-Type: image/jpeg\r\n\r\n' + frame_bytes_ok + b'\r\n')
                     
-                    # time.sleep(0.03) # Lascia questo commentato o metti un valore alto (es. 0.05) per ridurre il carico sulla CPU
+                    # time.sleep(0.03) # Rimuovi o aumenta per ridurre il carico sulla CPU
                 except Exception as e:
-                    # ... (codice esistente per la gestione degli errori) ...
                     print(f"Error in camera_feed loop (mode: {mode}): {e}")
                     traceback.print_exc()
                     
-                    current_height = stream_cfg_cam.get("capture_height", 480)
-                    current_width = stream_cfg_cam.get("capture_width", 640)
+                    current_height = stream_cfg_cam.get("picamera_config", {}).get("main", {}).get("size", [640, 480])[1]
+                    current_width = stream_cfg_cam.get("picamera_config", {}).get("main", {}).get("size", [640, 480])[0]
                     if mode == "fixed":
                         current_height = OUT_H if OUT_H > 0 else 480
                         current_width = OUT_W if OUT_W > 0 else 640
@@ -478,27 +576,25 @@ def camera_feed(request):
 @require_POST
 def reset_camera_calibration(request):
     try:
-        # Carica la configurazione corrente dal disco
         current_disk_config = load_config_data_from_file()
 
-        # Ottieni la sezione 'camera' in modo sicuro
-        # Questo garantisce che 'camera' sia un dizionario su cui possiamo operare.
         if "camera" not in current_disk_config:
             current_disk_config["camera"] = {}
         
-        # Resetta i parametri di calibrazione a None (o rimuovi le chiavi)
-        # Impostare a None è una chiara indicazione dello stato "non calibrato".
+        # Ensure 'calibration' and 'fixed_perspective' keys exist as dicts if they don't
+        current_disk_config["camera"].setdefault("calibration", {})
+        current_disk_config["camera"].setdefault("fixed_perspective", {})
+
         current_disk_config["camera"]["calibration"]["camera_matrix"] = None
         current_disk_config["camera"]["calibration"]["distortion_coefficients"] = None
         current_disk_config["camera"]["fixed_perspective"]["homography_matrix"] = None
         
-        if save_config_data_to_file(current_disk_config): # Passa l'intero oggetto config modificato
+        if save_config_data_to_file(current_disk_config):
             return JsonResponse({
                 "status": "success",
                 "message": "Camera calibration and fixed perspective reset successfully."
             })
         else:
-            # save_config_data_to_file stampa già un errore, quindi qui gestiamo solo la risposta JSON.
             return JsonResponse({
                 "status": "error",
                 "message": "Failed to save the reset configuration to file."
@@ -506,43 +602,40 @@ def reset_camera_calibration(request):
 
     except Exception as e:
         print(f"Error resetting camera calibration: {e}")
-        traceback.print_exc() # Per un log più dettagliato sul server
+        traceback.print_exc()
         return JsonResponse({"status": "error", "message": str(e)}, status=500)
 
 @csrf_exempt
 @require_GET
 def get_keypoints(request):
     try:
-        # Uses global config via get_current_frame_and_keypoints_from_config
         _, keypoints_data = get_current_frame_and_keypoints_from_config()
         keypoints_list = [[kp.pt[0], kp.pt[1]] for kp in keypoints_data]
         
         rect_vertices = []
-        # cv2.minAreaRect requires at least 3 points for a non-degenerate rectangle
         if len(keypoints_data) >= 3: 
             pts_rect = np.array(keypoints_list, dtype=np.float32)
             rect = cv2.minAreaRect(pts_rect)
             box = cv2.boxPoints(rect)
             rect_vertices = box.astype(float).tolist()
+        
         parallelepiped_vertices = []
         parallelepiped_ok = False
         if len(keypoints_data) >= 4:
             pts_para = np.array(keypoints_list, dtype=np.float32)
-            # This logic for parallelepiped corners is a common heuristic
             s = pts_para.sum(axis=1)
-            diff = np.diff(pts_para, axis=1) # Difference between y and x
+            diff = np.diff(pts_para, axis=1)
             
             corners = np.zeros((4,2), dtype=np.float32)
-            corners[0] = pts_para[np.argmin(s)]     # Top-left
-            corners[2] = pts_para[np.argmax(s)]     # Bottom-right
-            corners[1] = pts_para[np.argmin(diff)]  # Top-right
-            corners[3] = pts_para[np.argmax(diff)]  # Bottom-left
+            corners[0] = pts_para[np.argmin(s)]
+            corners[2] = pts_para[np.argmax(s)]
+            corners[1] = pts_para[np.argmin(diff)]
+            corners[3] = pts_para[np.argmax(diff)]
             
-            # Basic check if all original points are within the found polygon
-            # This is not a perfect check for convexity or a true parallelepiped.
-            if cv2.pointPolygonTest(corners.reshape(-1,1,2).astype(np.int32), tuple(pts_para[0]), False) >= 0: # Test one point
+            if cv2.pointPolygonTest(corners.reshape(-1,1,2).astype(np.int32), tuple(pts_para[0]), False) >= 0:
                  parallelepiped_vertices = corners.tolist()
-                 parallelepiped_ok = True # Mark as "ok" based on this heuristic
+                 parallelepiped_ok = True
+                 
         return JsonResponse({
             "status": "success", "keypoints": keypoints_list,
             "bounding_box_vertices": rect_vertices,
@@ -551,6 +644,7 @@ def get_keypoints(request):
         })
     except Exception as e:
         return JsonResponse({"status": "error", "message": str(e)}, status=500)
+
 @csrf_exempt
 @require_POST
 def set_camera_origin(request):
@@ -570,11 +664,12 @@ def set_camera_origin(request):
             return JsonResponse({"status": "error", "message": "Failed to save origin."}, status=500)
     except Exception as e:
         return JsonResponse({"status": "error", "message": str(e)}, status=400)
+
 @csrf_exempt
 @require_POST
 def save_frame_calibration(request):
     try:
-        frame_to_save = get_frame(release_after=True) # Single acquisition
+        frame_to_save = get_frame(release_after=True)
         if frame_to_save is None or frame_to_save.size == 0:
             return JsonResponse({"status": "error", "message": "Invalid frame received from camera."}, status=500)
         
@@ -585,13 +680,12 @@ def save_frame_calibration(request):
         return JsonResponse({"status": "success", "filename": filename, "path": filepath})
     except Exception as e:
         return JsonResponse({"status": "error", "message": str(e)}, status=500)
+
 @csrf_exempt
 @require_POST
 def calibrate_camera_endpoint(request):
-    # Uses global 'camera_settings' for calibration parameters
-    # but loads the whole config from disk for modification.
     current_disk_config = load_config_data_from_file()
-    calib_settings = current_disk_config.get("camera", {}).get("calibration_settings", {}) # Use latest from disk
+    calib_settings = current_disk_config.get("camera", {}).get("calibration_settings", {})
     
     cs_cols = calib_settings.get("chessboard_cols", 9)
     cs_rows = calib_settings.get("chessboard_rows", 7)
@@ -618,10 +712,9 @@ def calibrate_camera_endpoint(request):
         
         gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
         if images_processed_count == 0:
-            last_gray_shape = gray.shape[::-1] # (width, height)
+            last_gray_shape = gray.shape[::-1]
         elif last_gray_shape != gray.shape[::-1]:
              print(f"WARNING: Image {image_path} dimensions ({gray.shape[::-1]}) differ from first image ({last_gray_shape}).")
-             # This can affect calibration accuracy.
         
         images_processed_count +=1
         ret_corners, corners = cv2.findChessboardCorners(gray, chessboard_dim_config, None)
@@ -655,13 +748,10 @@ def calibrate_camera_endpoint(request):
             return JsonResponse({"status": "error", "message": "Calibration completed but failed to save configuration."}, status=500)
     else:
         return JsonResponse({"status": "error", "message": "cv2.calibrateCamera failed."}, status=500)
+
 @csrf_exempt
 @require_POST
 def set_fixed_perspective_view(request):
-    # Uses global 'camera_settings' for various parameters but loads full config for save
-    # This function reads calibration data, calibration settings, and fixed_perspective settings
-    # All of these should be available in the global 'camera_settings'
-    
     cam_calib_data = camera_settings.get("calibration", None)
     calib_settings_dict = camera_settings.get("calibration_settings", {})
     fixed_perspective_cfg = camera_settings.get("fixed_perspective", {})
@@ -671,32 +761,31 @@ def set_fixed_perspective_view(request):
     dist_coeffs_cv = np.array(cam_calib_data["distortion_coefficients"], dtype=np.float32)
     FIXED_WIDTH = fixed_perspective_cfg.get("output_width", 1000)
     FIXED_HEIGHT = fixed_perspective_cfg.get("output_height", 800)
-    # No stream_context here as it's a single operation
+    
     try:
-        frame_cap = get_frame(release_after=True) # Single acquisition
+        frame_cap = get_frame(release_after=True)
         if frame_cap is None or frame_cap.size == 0: 
             return JsonResponse({"status": "error", "message": "Could not get frame from camera."}, status=500)
         h_cam_cap, w_cam_cap = frame_cap.shape[:2]
         new_camera_matrix_cv, _ = cv2.getOptimalNewCameraMatrix(camera_matrix_cv, dist_coeffs_cv, (w_cam_cap,h_cam_cap), 1.0, (w_cam_cap,h_cam_cap))
         undistorted_frame_cap = cv2.undistort(frame_cap, camera_matrix_cv, dist_coeffs_cv, None, new_camera_matrix_cv)
+        
         H_canonical, canonical_dims = get_board_and_canonical_homography_for_django(
-            undistorted_frame_cap, new_camera_matrix_cv, calib_settings_dict # calib_settings_dict from global
+            undistorted_frame_cap, new_camera_matrix_cv, calib_settings_dict
         )
-        # Check if H_canonical and canonical_dims are valid for proceeding
+        
         if H_canonical is not None and canonical_dims is not None and canonical_dims[0] > 0 and canonical_dims[1] > 0:
-            # --- SUCCESS CASE: Proceed with homography calculation and saving ---
             cb_w, cb_h = canonical_dims
-            offset_x = max(0, (FIXED_WIDTH - cb_w) / 2.0) # Ensure offset is not negative
+            offset_x = max(0, (FIXED_WIDTH - cb_w) / 2.0)
             offset_y = max(0, (FIXED_HEIGHT - cb_h) / 2.0)
             M_translate = np.array([[1,0,offset_x], [0,1,offset_y], [0,0,1]], dtype=np.float32)
             H_ref = M_translate @ H_canonical
-            if save_fixed_perspective_homography_to_config(H_ref): # This function handles file I/O
+            if save_fixed_perspective_homography_to_config(H_ref):
                 return JsonResponse({
                     "status": "success",
                     "message": "Fixed perspective view established and saved."
                 })
             else:
-                # This is an error during the saving process itself
                 print("[ERROR] set_fixed_perspective_view: Failed to save homography to config file.")
                 return JsonResponse({
                     "status": "error",
@@ -704,26 +793,19 @@ def set_fixed_perspective_view(request):
                     "error_code": "SAVE_HOMOGRAPHY_FAILED"
                 }, status=500)
         else:
-            # --- ERROR CASE: Determine the specific reason for failure ---
-            error_message = "Cannot define fixed view. An unknown error occurred." # Default message
-            error_code = "UNKNOWN_FIXED_VIEW_ERROR" # Default error code
-            status_code = 400 # Default HTTP status
+            error_message = "Cannot define fixed view. An unknown error occurred."
+            error_code = "UNKNOWN_FIXED_VIEW_ERROR"
+            status_code = 400
             if H_canonical is None:
-                # This is the most common failure: chessboard not found.
-                # get_board_and_canonical_homography_for_django returns (None, None) in this case.
                 error_message = "Chessboard pattern not detected in the current camera view. Ensure the full pattern is clearly visible and well-lit."
                 error_code = "CHESSBOARD_NOT_DETECTED"
                 print(f"[ERROR] set_fixed_perspective_view ({error_code}): {error_message}")
             elif canonical_dims is None:
-                # This case should ideally not be reached if H_canonical is not None,
-                # as get_board_and_canonical_homography_for_django should return both or neither.
-                # If it does, it might indicate an internal logic issue in that helper function.
                 error_message = "Internal error: Chessboard detected, but its dimensions could not be determined."
                 error_code = "CANONICAL_DIMS_MISSING_UNEXPECTEDLY"
-                status_code = 500 # Internal server error
+                status_code = 500
                 print(f"[ERROR] set_fixed_perspective_view ({error_code}): {error_message}")
             elif canonical_dims[0] <= 0 or canonical_dims[1] <= 0:
-                # Chessboard was found, H_canonical exists, but the calculated dimensions are invalid (e.g., negative or zero).
                 error_message = (f"Invalid canonical dimensions calculated for the chessboard: {canonical_dims}. "
                                  f"This might indicate an issue with the chessboard configuration (e.g., square size, pattern size in settings) "
                                  f"or a highly distorted detection.")
@@ -733,7 +815,7 @@ def set_fixed_perspective_view(request):
             return JsonResponse({
                 "status": "error",
                 "message": error_message,
-                "error_code": error_code # Adding an error_code can be useful for frontend handling
+                "error_code": error_code
             }, status=status_code)
     except Exception as e:
         print(f"Exception in set_fixed_perspective_view: {e}")
@@ -756,21 +838,21 @@ def fixed_perspective_stream(request):
         OUT_H = fixed_persp_cfg.get("output_height", 800)
         error_template_frame = np.zeros((OUT_H, OUT_W, 3), dtype=np.uint8)
 
-        # >>> INIZIO NUOVE VARIABILI PER BLOB DETECTION A INTERVALLI <<<
-        blob_detection_interval = 5 # Puoi renderlo configurabile
+        blob_detection_interval = stream_cfg.get("blob_detection_interval", 5)
         frame_count = 0
-        last_keypoints_undistorted = [] # Per memorizzare gli ultimi keypoint rilevati (non ancora warpatati)
-        # >>> FINE NUOVE VARIABILI <<<
+        last_keypoints_undistorted_for_drawing = [] # Keypoint nell'immagine undistorta, prima di essere warpatati
+
+        blob_processing_width = stream_cfg.get("blob_processing_width", 640)
 
         if not (cam_calib and cam_calib.get("camera_matrix") and cam_calib.get("distortion_coefficients")):
-            # ... (codice esistente per errore calibrazione) ...
             error_msg = "Camera calibration missing"
             print(f"fixed_perspective_stream: {error_msg}")
             encode_param = [int(cv2.IMWRITE_JPEG_QUALITY), 80]
             while True:
                 err_f = error_template_frame.copy()
                 cv2.putText(err_f, error_msg, (30,30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0,0,255),2)
-                _, buf = cv2.imencode('.jpg', err_f, encode_param); yield (b'--frame\r\nContent-Type: image/jpeg\r\n\r\n' + buf.tobytes() + b'\r\n') 
+                _, buf = cv2.imencode('.jpg', err_f, encode_param)
+                yield (b'--frame\r\nContent-Type: image/jpeg\r\n\r\n' + buf.tobytes() + b'\r\n') 
                 time.sleep(1)
         cam_matrix = np.array(cam_calib["camera_matrix"], dtype=np.float32)
         dist_coeffs = np.array(cam_calib["distortion_coefficients"], dtype=np.float32)
@@ -784,14 +866,14 @@ def fixed_perspective_stream(request):
             else:
                  raise ValueError("Could not get valid sample frame dimensions for new_camera_matrix")
         except Exception as e_stream_setup:
-            # ... (codice esistente per errore setup stream) ...
             error_msg = f"Stream setup failed: {e_stream_setup}"
             print(f"fixed_perspective_stream: {error_msg}")
             while True:
                 err_f = error_template_frame.copy()
                 cv2.putText(err_f, error_msg[:70], (30,30), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0,0,255),2)
                 
-                _, buf = cv2.imencode('.jpg', err_f); yield (b'--frame\r\nContent-Type: image/jpeg\r\n\r\n' + buf.tobytes() + b'\r\n')
+                _, buf = cv2.imencode('.jpg', err_f)
+                yield (b'--frame\r\nContent-Type: image/jpeg\r\n\r\n' + buf.tobytes() + b'\r\n')
                 time.sleep(1)
         
         with stream_context():
@@ -799,12 +881,11 @@ def fixed_perspective_stream(request):
                 try:
                     frame_live = get_frame()
                     if frame_live is None or frame_live.size == 0: 
-                        # ... (codice esistente per frame perso) ...
                         err_f_loop = error_template_frame.copy()
                         cv2.putText(err_f_loop, "Frame lost", (30,60), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0,100,255),2)
                         if H_ref is None: cv2.putText(err_f_loop, "Fixed View Not Set", (30,30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255,255,0),1)
                         _, buf_err = cv2.imencode('.jpg', err_f_loop)
-                        yield (b'--frame\r\nContent-Type: image/jpeg\r\n\r\n' + buf_err.tobytes() + b'\r\r')
+                        yield (b'--frame\r\nContent-Type: image/jpeg\r\n\r\n' + buf_err.tobytes() + b'\r\n')
                         # time.sleep(0.1)
                         continue
 
@@ -814,22 +895,39 @@ def fixed_perspective_stream(request):
                     if H_ref is not None:
                         output_img = cv2.warpPerspective(undistorted_live, H_ref, (OUT_W, OUT_H))
                         
-                        # >>> INIZIO LOGICA BLOB DETECTION A INTERVALLI (MODO FIXED) <<<
+                        # LOGICA BLOB DETECTION A INTERVALLI (MODO FIXED)
                         if frame_count % blob_detection_interval == 0:
-                            # È il momento di rilevare nuovi blob sull'immagine undistorta
+                            original_height_undistorted, original_width_undistorted = undistorted_live.shape[:2]
+                            blob_processing_height = int(original_height_undistorted * (blob_processing_width / original_width_undistorted))
+                            
+                            scale_x = original_width_undistorted / blob_processing_width
+                            scale_y = original_height_undistorted / blob_processing_height
+
                             gray_for_blobs = cv2.cvtColor(undistorted_live, cv2.COLOR_BGR2GRAY)
+                            resized_gray_for_blobs = cv2.resize(gray_for_blobs, (blob_processing_width, blob_processing_height), interpolation=cv2.INTER_AREA)
+
                             _, thresh_for_blobs = cv2.threshold(
-                                gray_for_blobs,
+                                resized_gray_for_blobs,
                                 blob_params_for_stream.get("minThreshold", 127),
                                 blob_params_for_stream.get("maxThreshold", 255),
                                 cv2.THRESH_BINARY
                             )
-                            keypoints_on_undistorted = detect_blobs_from_params(thresh_for_blobs, blob_params_for_stream)
-                            last_keypoints_undistorted = keypoints_on_undistorted # Aggiorna i keypoint
+                            # Passiamo i fattori di scala a detect_blobs_from_params
+                            keypoints_resized = detect_blobs_from_params(thresh_for_blobs, blob_params_for_stream, scale_x, scale_y)
+                            
+                            # Riscala i keypoint alle coordinate dell'immagine undistorta originale
+                            last_keypoints_undistorted_for_drawing = []
+                            for kp in keypoints_resized:
+                                new_x = kp.pt[0] * scale_x
+                                new_y = kp.pt[1] * scale_y
+                                new_size = kp.size * ((scale_x + scale_y) / 2)
+                                last_keypoints_undistorted_for_drawing.append(cv2.KeyPoint(new_x, new_y, new_size, kp.angle, kp.response, kp.octave, kp.class_id))
                         
-                        # Usa sempre gli ultimi keypoint rilevati per disegnare (sia che siano nuovi o vecchi)
-                        if last_keypoints_undistorted:
-                            pts_undist = np.array([kp.pt for kp in last_keypoints_undistorted], dtype=np.float32).reshape(-1,1,2)
+                        # Usa gli ultimi keypoint rilevati (o i nuovi) per disegnare
+                        if last_keypoints_undistorted_for_drawing:
+                            # Questi keypoint sono già nelle coordinate dell'immagine undistorta.
+                            # Quindi non serve undistortPoints su di essi. Basta trasformarli con H_ref.
+                            pts_undist = np.array([kp.pt for kp in last_keypoints_undistorted_for_drawing], dtype=np.float32).reshape(-1,1,2)
                             pts_warped = cv2.perspectiveTransform(pts_undist, H_ref)
                             
                             if pts_warped is not None:
@@ -841,10 +939,10 @@ def fixed_perspective_stream(request):
                                         (int(round(x))+10, int(round(y))-10),
                                         cv2.FONT_HERSHEY_SIMPLEX, 0.4, (0,255,0), 1
                                     )
+                        
                         frame_count += 1
-                        # >>> FINE LOGICA BLOB DETECTION A INTERVALLI (MODO FIXED) <<<
 
-                    else:
+                    else: # H_ref is None
                         cv2.putText(output_img, "Fixed View Not Set", (30,30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255,255,0),1)
                         cv2.putText(output_img, "Use endpoint to set it", (30,60), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255,255,0),1)
                     
@@ -852,9 +950,8 @@ def fixed_perspective_stream(request):
                     _, buffer_ok = cv2.imencode('.jpg', output_img, encode_param)
                     frame_bytes_ok = buffer_ok.tobytes()
                     yield (b'--frame\r\nContent-Type: image/jpeg\r\n\r\n' + frame_bytes_ok + b'\r\n')
-                    # time.sleep(0.03) # Lascia questo commentato o metti un valore alto (es. 0.05) per ridurre il carico sulla CPU
+                    # time.sleep(0.03) # Commentato per massimizzare il framerate, se rallenta decommenta con valore > 0.03
                 except Exception as e_loop_stream:
-                    # ... (codice esistente per gestione errori) ...
                     print(f"Error in fixed_perspective_stream loop: {e_loop_stream}")
                     traceback.print_exc()
                     err_f_loop = error_template_frame.copy()
@@ -864,10 +961,11 @@ def fixed_perspective_stream(request):
                     yield (b'--frame\r\nContent-Type: image/jpeg\r\n\r\n' + buf_err.tobytes() + b'\r\n')
                     time.sleep(1)
     return StreamingHttpResponse(gen_frames(), content_type='multipart/x-mixed-replace; boundary=frame')
+
 @csrf_exempt
 @require_GET
 def get_world_coordinates(request):
-    H_fixed_ref = get_fixed_perspective_homography_from_config() # From global config
+    H_fixed_ref = get_fixed_perspective_homography_from_config()
     if H_fixed_ref is None:
         return JsonResponse({"status": "error", "message": "Fixed perspective homography not available. Please set it first via its endpoint."}, status=400)
     cam_calib_wc = camera_settings.get("calibration", None)
@@ -875,46 +973,40 @@ def get_world_coordinates(request):
         return JsonResponse({"status": "error", "message": "Camera calibration data missing. Please calibrate the camera first."}, status=400)
     cam_matrix_wc = np.array(cam_calib_wc["camera_matrix"], dtype=np.float32)
     dist_coeffs_wc = np.array(cam_calib_wc["distortion_coefficients"], dtype=np.float32)
-    # Gets keypoints detected on the *original possibly distorted* frame
-    frame_for_coords, keypoints_for_coords = get_current_frame_and_keypoints_from_config()
+    
+    # get_current_frame_and_keypoints_from_config ora restituisce keypoint già riscalati all'originale
+    frame_for_coords, keypoints_for_coords_original_coords = get_current_frame_and_keypoints_from_config()
+    
     if frame_for_coords is None or frame_for_coords.size == 0:
          return JsonResponse({"status": "error", "message": "Could not get frame for coordinates calculation."}, status=500)
-    if not keypoints_for_coords:
-        # Se non ci sono keypoint, restituisci una lista vuota di coordinate
+    if not keypoints_for_coords_original_coords:
         return JsonResponse({"status": "success", "coordinates": []})
-    # These are points from the original, possibly distorted image
-    img_pts_distorted = np.array([kp.pt for kp in keypoints_for_coords], dtype=np.float32).reshape(-1,1,2)
+    
+    img_pts_original_coords = np.array([kp.pt for kp in keypoints_for_coords_original_coords], dtype=np.float32).reshape(-1,1,2)
     h_frame_wc, w_frame_wc = frame_for_coords.shape[:2]
-    # This new_cam_matrix_wc should ideally be the same as the one used when H_fixed_ref was calculated
-    # or derived in the exact same way.
+    
     new_cam_matrix_wc, _ = cv2.getOptimalNewCameraMatrix(cam_matrix_wc, dist_coeffs_wc, (w_frame_wc,h_frame_wc), 1.0, (w_frame_wc,h_frame_wc))
-    # Undistort points and map them to the coordinate system of new_cam_matrix_wc
-    img_pts_undistorted_remapped = cv2.undistortPoints(img_pts_distorted, cam_matrix_wc, dist_coeffs_wc, P=new_cam_matrix_wc)
-    if img_pts_undistorted_remapped is None: # Should not happen if inputs are valid
+    
+    img_pts_undistorted_remapped = cv2.undistortPoints(img_pts_original_coords, cam_matrix_wc, dist_coeffs_wc, P=new_cam_matrix_wc)
+    if img_pts_undistorted_remapped is None:
         return JsonResponse({"status": "error", "message": "Point undistortion failed unexpectedly."}, status=500)
+    
     world_coords_top_left_origin = []
-    if img_pts_undistorted_remapped.size > 0: # Check if there are points
-        # cv2.perspectiveTransform expects Nx1x2 array
+    if img_pts_undistorted_remapped.size > 0:
         transformed_pts = cv2.perspectiveTransform(img_pts_undistorted_remapped, H_fixed_ref)
         if transformed_pts is not None:
              world_coords_top_left_origin = transformed_pts.reshape(-1, 2).tolist()
-        else: # Should not happen if H_fixed_ref is valid 3x3
+        else:
             print("[WARN] cv2.perspectiveTransform returned None in get_world_coordinates. This might indicate an issue with H_fixed_ref.")
-            # Restituisce comunque una lista vuota o un errore a seconda della gravità percepita
             return JsonResponse({"status": "error", "message": "Perspective transformation of points failed."}, status=500)
-    # --- TRASFORMAZIONE COORDINATE A ORIGINE BASSO-DESTRA ---
-    # Ottieni le dimensioni del frame di output della prospettiva fissa dalla configurazione globale
-    # Queste dovrebbero corrispondere alle dimensioni usate per generare H_fixed_ref
-    # e per lo stream fixed_perspective_stream.
+    
     fixed_persp_cfg = camera_settings.get("fixed_perspective", {})
-    OUTPUT_WIDTH = fixed_persp_cfg.get("output_width", 1000) # Default se non specificato
-    OUTPUT_HEIGHT = fixed_persp_cfg.get("output_height", 800) # Default se non specificato
+    OUTPUT_WIDTH = fixed_persp_cfg.get("output_width", 1000)
+    OUTPUT_HEIGHT = fixed_persp_cfg.get("output_height", 800)
     world_coords_bottom_right_origin = []
     for x_tl, y_tl in world_coords_top_left_origin:
-        # x_nuovo aumenta verso sinistra dalla nuova origine (basso-destra)
-        # y_nuovo aumenta verso l'alto dalla nuova origine (basso-destra)
         x_br = OUTPUT_WIDTH - x_tl
         y_br = OUTPUT_HEIGHT - y_tl
         world_coords_bottom_right_origin.append([x_br, y_br])
-    # --- FINE TRASFORMAZIONE ---
+        
     return JsonResponse({"status": "success", "coordinates": world_coords_bottom_right_origin})
