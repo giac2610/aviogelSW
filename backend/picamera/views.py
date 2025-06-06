@@ -577,8 +577,8 @@ def calibrate_camera_endpoint(request):
     current_disk_config = load_config_data_from_file()
     calib_settings = current_disk_config.get("camera", {}).get("calibration_settings", {}) # Use latest from disk
     
-    cs_cols = calib_settings.get("chessboard_cols", 7)
-    cs_rows = calib_settings.get("chessboard_rows", 9)
+    cs_cols = calib_settings.get("chessboard_cols", 9)
+    cs_rows = calib_settings.get("chessboard_rows", 7)
     square_size_mm = calib_settings.get("square_size_mm", 15.0)
     chessboard_dim_config = (cs_cols, cs_rows)
     criteria_config = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 30, 0.001)
