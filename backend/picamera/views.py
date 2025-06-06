@@ -439,7 +439,7 @@ def camera_feed(request):
                         frame_bytes_ok = buffer_ok.tobytes()
                         yield (b'--frame\r\nContent-Type: image/jpeg\r\n\r\n' + frame_bytes_ok + b'\r\n')
                     
-                    time.sleep(0.03) # Control frame rate
+                    # time.sleep(0.03) # Control frame rate
                 except Exception as e:
                     print(f"Error in camera_feed loop (mode: {mode}): {e}")
                     traceback.print_exc()
@@ -748,7 +748,8 @@ def fixed_perspective_stream(request):
             while True:
                 err_f = error_template_frame.copy()
                 cv2.putText(err_f, error_msg, (30,30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0,0,255),2)
-                _, buf = cv2.imencode('.jpg', err_f); yield (b'--frame\r\nContent-Type: image/jpeg\r\n\r\n' + buf.tobytes() + b'\r\n'); time.sleep(1)
+                _, buf = cv2.imencode('.jpg', err_f); yield (b'--frame\r\nContent-Type: image/jpeg\r\n\r\n' + buf.tobytes() + b'\r\n') 
+                time.sleep(1)
         cam_matrix = np.array(cam_calib["camera_matrix"], dtype=np.float32)
         dist_coeffs = np.array(cam_calib["distortion_coefficients"], dtype=np.float32)
         
@@ -768,7 +769,8 @@ def fixed_perspective_stream(request):
             while True:
                 err_f = error_template_frame.copy()
                 cv2.putText(err_f, error_msg[:70], (30,30), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0,0,255),2)
-                _, buf = cv2.imencode('.jpg', err_f); yield (b'--frame\r\nContent-Type: image/jpeg\r\n\r\n' + buf.tobytes() + b'\r\n'); time.sleep(1)
+                _, buf = cv2.imencode('.jpg', err_f); yield (b'--frame\r\nContent-Type: image/jpeg\r\n\r\n' + buf.tobytes() + b'\r\n')
+                time.sleep(1)
         
         with stream_context():
             while True:
@@ -780,7 +782,7 @@ def fixed_perspective_stream(request):
                         if H_ref is None: cv2.putText(err_f_loop, "Fixed View Not Set", (30,30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255,255,0),1)
                         _, buf_err = cv2.imencode('.jpg', err_f_loop)
                         yield (b'--frame\r\nContent-Type: image/jpeg\r\n\r\n' + buf_err.tobytes() + b'\r\n')
-                        time.sleep(0.1)
+                        # time.sleep(0.1)
                         continue
                     # Undistort using the new_cam_matrix_stream calculated once for this stream
                     undistorted_live = cv2.undistort(frame_live, cam_matrix, dist_coeffs, None, new_cam_matrix_stream)
@@ -825,7 +827,7 @@ def fixed_perspective_stream(request):
                     _, buffer_ok = cv2.imencode('.jpg', output_img)
                     frame_bytes_ok = buffer_ok.tobytes()
                     yield (b'--frame\r\nContent-Type: image/jpeg\r\n\r\n' + frame_bytes_ok + b'\r\n')
-                    time.sleep(0.03)
+                    # time.sleep(0.03)
                 except Exception as e_loop_stream:
                     print(f"Error in fixed_perspective_stream loop: {e_loop_stream}")
                     traceback.print_exc()
