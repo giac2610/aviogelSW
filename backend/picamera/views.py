@@ -375,7 +375,8 @@ def camera_feed(request):
                         cv2.putText(blank_frame, "No Frame", (10,30), cv2.FONT_HERSHEY_SIMPLEX, 1, (0,0,255),2)
                         if mode == "fixed" and H_ref is None:
                              cv2.putText(blank_frame, "Fixed View Not Set", (10,60), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255,255,0),1)
-                        _, buffer = cv2.imencode('.jpg', blank_frame)
+                        encode_param = [int(cv2.IMWRITE_JPEG_QUALITY), 80]
+                        _, buffer = cv2.imencode('.jpg', blank_frame, encode_param)
                         frame_bytes = buffer.tobytes()
                         yield (b'--frame\r\nContent-Type: image/jpeg\r\n\r\n' + frame_bytes + b'\r\n')
                         time.sleep(0.1) # Shorter sleep for responsiveness to camera coming online
@@ -397,7 +398,7 @@ def camera_feed(request):
                             display_frame_feed, keypoints_blob, np.array([]), (0, 0, 255), 
                             cv2.DRAW_MATCHES_FLAGS_DRAW_RICH_KEYPOINTS)
                         
-                        _, buffer = cv2.imencode('.jpg', frame_with_keypoints)
+                        _, buffer = cv2.imencode('.jpg', frame_with_keypoints, [int(cv2.IMWRITE_JPEG_QUALITY), 80])
                         frame_bytes = buffer.tobytes()
                         yield (b'--frame\r\nContent-Type: image/jpeg\r\n\r\n' + frame_bytes + b'\r\n')
                     
@@ -434,8 +435,8 @@ def camera_feed(request):
                         else: # Fixed perspective not ready or H_ref is None
                             cv2.putText(output_img, "Fixed View Not Set", (30,30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255,255,0),1)
                             cv2.putText(output_img, "Set via endpoint", (30,60), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255,255,0),1)
-
-                        _, buffer_ok = cv2.imencode('.jpg', output_img)
+                        # Encode the output image for streaming
+                        _, buffer_ok = cv2.imencode('.jpg', output_img, [int(cv2.IMWRITE_JPEG_QUALITY), 80])
                         frame_bytes_ok = buffer_ok.tobytes()
                         yield (b'--frame\r\nContent-Type: image/jpeg\r\n\r\n' + frame_bytes_ok + b'\r\n')
                     
@@ -745,10 +746,11 @@ def fixed_perspective_stream(request):
         if not (cam_calib and cam_calib.get("camera_matrix") and cam_calib.get("distortion_coefficients")):
             error_msg = "Camera calibration missing"
             print(f"fixed_perspective_stream: {error_msg}")
+            encode_param = [int(cv2.IMWRITE_JPEG_QUALITY), 80]
             while True:
                 err_f = error_template_frame.copy()
                 cv2.putText(err_f, error_msg, (30,30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0,0,255),2)
-                _, buf = cv2.imencode('.jpg', err_f); yield (b'--frame\r\nContent-Type: image/jpeg\r\n\r\n' + buf.tobytes() + b'\r\n') 
+                _, buf = cv2.imencode('.jpg', err_f); yield (b'--frame\r\nContent-Type: image/jpeg\r\n\r\n' + buf.tobytes() + b'\r\n', encode_param) 
                 time.sleep(1)
         cam_matrix = np.array(cam_calib["camera_matrix"], dtype=np.float32)
         dist_coeffs = np.array(cam_calib["distortion_coefficients"], dtype=np.float32)
@@ -769,6 +771,7 @@ def fixed_perspective_stream(request):
             while True:
                 err_f = error_template_frame.copy()
                 cv2.putText(err_f, error_msg[:70], (30,30), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0,0,255),2)
+                
                 _, buf = cv2.imencode('.jpg', err_f); yield (b'--frame\r\nContent-Type: image/jpeg\r\n\r\n' + buf.tobytes() + b'\r\n')
                 time.sleep(1)
         
@@ -824,7 +827,8 @@ def fixed_perspective_stream(request):
                     else: # H_ref is None
                         cv2.putText(output_img, "Fixed View Not Set", (30,30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255,255,0),1)
                         cv2.putText(output_img, "Use endpoint to set it", (30,60), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255,255,0),1)
-                    _, buffer_ok = cv2.imencode('.jpg', output_img)
+                    encode_param = [int(cv2.IMWRITE_JPEG_QUALITY), 80]
+                    _, buffer_ok = cv2.imencode('.jpg', output_img, encode_param)
                     frame_bytes_ok = buffer_ok.tobytes()
                     yield (b'--frame\r\nContent-Type: image/jpeg\r\n\r\n' + frame_bytes_ok + b'\r\n')
                     # time.sleep(0.03)
