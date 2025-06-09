@@ -373,8 +373,9 @@ def update_camera_settings(request):
             return JsonResponse({"status": "error", "message": "Failed to save updated settings."}, status=500)
     except Exception as e:
         return JsonResponse({"status": "error", "message": str(e)}, status=400)
-
+    
 @csrf_exempt
+@require_GET
 def camera_feed(request):
     mode = request.GET.get("mode", "normal")
     
@@ -471,35 +472,34 @@ def camera_feed(request):
                         for kp in keypoints_resized:
                             new_x = kp.pt[0] * scale_x
                             new_y = kp.pt[1] * scale_y
-                            new_size = kp.size * ((scale_x + scale_y) / 2)
+                            new_size = kp.size * ((scale_x + scale_y) / 2) # Scala la dimensione
                             last_keypoints_for_drawing.append(cv2.KeyPoint(new_x, new_y, new_size, kp.angle, kp.response, kp.octave, kp.class_id))
                     
                     frame_count += 1
                     
                     if mode == "normal" or mode == "threshold":
                         if mode == "threshold":
-                             # Se non era il frame di rilevazione, rielabora solo per la visualizzazione threshold
-                            if frame_count % blob_detection_interval != 1: # Se il frame_count iniziale era 0, il primo frame rilevato sarà 1
-                                gray = cv2.cvtColor(frame_orig, cv2.COLOR_BGR2GRAY)
-                                _, processed_for_blobs_display = cv2.threshold(
-                                    gray, stream_cfg_cam.get("minThreshold", 127),
-                                    stream_cfg_cam.get("maxThreshold", 255), cv2.THRESH_BINARY
-                                )
-                                display_frame_feed = cv2.cvtColor(processed_for_blobs_display, cv2.COLOR_GRAY2BGR)
-                            else: # Se era il frame di rilevazione, processed_for_blobs è già l'immagine ridimensionata in binario
-                                # Per visualizzare la threshold sull'immagine originale, dobbiamo rifare il threshold su frame_orig
-                                gray = cv2.cvtColor(frame_orig, cv2.COLOR_BGR2GRAY)
-                                _, processed_for_blobs_display = cv2.threshold(
-                                    gray, stream_cfg_cam.get("minThreshold", 127),
-                                    stream_cfg_cam.get("maxThreshold", 255), cv2.THRESH_BINARY
-                                )
-                                display_frame_feed = cv2.cvtColor(processed_for_blobs_display, cv2.COLOR_GRAY2BGR)
-
+                             # Per visualizzare la threshold sull'immagine originale, rifacciamo il threshold su frame_orig
+                            gray_display = cv2.cvtColor(frame_orig, cv2.COLOR_BGR2GRAY)
+                            _, processed_for_blobs_display = cv2.threshold(
+                                gray_display, stream_cfg_cam.get("minThreshold", 127),
+                                stream_cfg_cam.get("maxThreshold", 255), cv2.THRESH_BINARY
+                            )
+                            display_frame_feed = cv2.cvtColor(processed_for_blobs_display, cv2.COLOR_GRAY2BGR)
 
                         frame_with_keypoints = cv2.drawKeypoints(
                             display_frame_feed, last_keypoints_for_drawing, np.array([]), (0, 0, 255), 
                             cv2.DRAW_MATCHES_FLAGS_DRAW_RICH_KEYPOINTS)
                         
+                        # NUOVO: Stampa l'area (o dimensione) dei blob
+                        for kp in last_keypoints_for_drawing:
+                            x, y = int(kp.pt[0]), int(kp.pt[1])
+                            estimated_area = np.pi * (kp.size / 2) ** 2
+                            text_to_display = f"D:{kp.size:.1f} A:{estimated_area:.0f}" 
+                            cv2.putText(frame_with_keypoints, text_to_display, 
+                                        (x + 15, y - 5), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 1) # Blu
+                        # FINE NUOVO
+
                         _, buffer = cv2.imencode('.jpg', frame_with_keypoints, [int(cv2.IMWRITE_JPEG_QUALITY), 80])
                         frame_bytes = buffer.tobytes()
                         yield (b'--frame\r\nContent-Type: image/jpeg\r\n\r\n' + frame_bytes + b'\r\n')
@@ -512,24 +512,15 @@ def camera_feed(request):
                             output_img = cv2.warpPerspective(undistorted_live, H_ref, (OUT_W, OUT_H))
                             
                             if last_keypoints_for_drawing:
-                                # Questi keypoint sono già nelle coordinate originali, quindi undistortPoints non serve
-                                # ma devono essere trasformati dal sistema di coordinate undistorted alla fixed perspective
-                                # prima della trasformazione dei punti per la homography
+                                # Questi keypoint sono nelle coordinate originali (distorte).
+                                # Dobbiamo prima undistortarli e poi trasformarli con H_ref.
                                 
-                                # Converti i keypoint in un array di punti per perspectiveTransform
-                                pts_undistorted_original_coords = np.array([kp.pt for kp in last_keypoints_for_drawing], dtype=np.float32).reshape(-1,1,2)
+                                # Converti i keypoint in un array di punti per undistortPoints e perspectiveTransform
+                                pts_original_coords = np.array([kp.pt for kp in last_keypoints_for_drawing], dtype=np.float32).reshape(-1,1,2)
 
-                                # Qui, se i keypoint_for_drawing sono già nell'immagine undistorta, allora
-                                # si possono trasformare direttamente con H_ref.
-                                # Tuttavia, il tuo `last_keypoints_for_drawing` è scalato all'originale, non undistorto.
-                                # Quindi dobbiamo undistortPoints questi keypoint come farebbe `get_world_coordinates`
-                                
-                                # Nuovo: UndistortPoints i keypoint `last_keypoints_for_drawing`
-                                # Questi sono i punti originali, dobbiamo sapere come undistortli nella prospettiva della matrice H
-                                # Dobbiamo usare cam_matrix e dist_coeffs e il new_cam_matrix_stream usato per undistorted_live.
-                                # Questo è il passo più critico: i keypoint della rilevazione devono essere nello stesso spazio di undistorted_live
+                                # UndistortPoints i keypoint nella stessa prospettiva di new_cam_matrix_stream
                                 pts_undistorted_remapped_for_display = cv2.undistortPoints(
-                                    pts_undistorted_original_coords, cam_matrix, dist_coeffs, P=new_cam_matrix_stream
+                                    pts_original_coords, cam_matrix, dist_coeffs, P=new_cam_matrix_stream
                                 )
 
                                 if pts_undistorted_remapped_for_display is not None:
@@ -537,6 +528,7 @@ def camera_feed(request):
                                     
                                     if pts_warped is not None:
                                         for i, pt_w in enumerate(pts_warped.reshape(-1,2)):
+                                            kp_original = last_keypoints_for_drawing[i] # Ottieni il keypoint originale per la sua dimensione
                                             x, y = pt_w[0], pt_w[1]
                                             cv2.circle(output_img, (int(round(x)), int(round(y))), 8, (0,0,255), 2)
                                             cv2.putText(
@@ -544,6 +536,14 @@ def camera_feed(request):
                                                 (int(round(x))+10, int(round(y))-10),
                                                 cv2.FONT_HERSHEY_SIMPLEX, 0.4, (0,255,0), 1
                                             )
+                                            # NUOVO: Stampa l'area (o dimensione) dei blob nel fixed mode
+                                            estimated_area = np.pi * (kp_original.size / 2) ** 2
+                                            text_to_display_fixed = f"D:{kp_original.size:.1f} A:{estimated_area:.0f}"
+                                            cv2.putText(output_img, text_to_display_fixed,
+                                                        (int(round(x)) + 15, int(round(y)) + 5), # Posizione leggermente diversa
+                                                        cv2.FONT_HERSHEY_SIMPLEX, 0.4, (0, 255, 255), 1) # Giallo-verde
+                                            # FINE NUOVO
+
                         else: # H_ref is None
                             cv2.putText(output_img, "Fixed View Not Set", (30,30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255,255,0),1)
                             cv2.putText(output_img, "Set via endpoint", (30,60), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255,255,0),1)
@@ -553,7 +553,7 @@ def camera_feed(request):
                         frame_bytes_ok = buffer_ok.tobytes()
                         yield (b'--frame\r\nContent-Type: image/jpeg\r\n\r\n' + frame_bytes_ok + b'\r\n')
                     
-                    # time.sleep(0.03) # Rimuovi o aumenta per ridurre il carico sulla CPU
+                    # time.sleep(0.03) # Commentato per massimizzare il framerate, se rallenta decommenta con valore > 0.03
                 except Exception as e:
                     print(f"Error in camera_feed loop (mode: {mode}): {e}")
                     traceback.print_exc()
