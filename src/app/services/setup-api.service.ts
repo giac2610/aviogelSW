@@ -178,4 +178,12 @@ export class SetupAPIService {
     const url = `${this.apiUrl}camera/set-fixed-perspective/`;
     return this.http.post(url, {});
   }
+
+  getMotorsRoute(): Observable<any> {
+    const url = `${this.apiUrl}camera/get_route/`;
+    return this.http.get(url);
+  }
+
+
+
 }

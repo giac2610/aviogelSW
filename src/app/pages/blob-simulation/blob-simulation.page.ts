@@ -14,7 +14,8 @@ export class BlobSimulationPage implements OnInit {
   coordinates: [number, number][] = [];
   loading = false;
   error: string | null = null;
-  streamUrl: string;
+  streamUrl: string = 'http://localhost:8000/camera/stream/?mode=fixed&keyframe=true';
+  graphUrl: string = 'http://localhost:8000/camera/plot_graph/';
   homography: number[][] = [
     [1,0,0],
     [0,1,0],
@@ -26,8 +27,8 @@ export class BlobSimulationPage implements OnInit {
   dynamicWarpedStreamUrl: string;
 
   @ViewChild('cameraImg', { static: false }) cameraImgRef!: ElementRef<HTMLImageElement>;
-  imgWidth: number = 300;
-  imgHeight: number = 280;
+  imgWidth: number = 1280/3.5;
+  imgHeight: number = 720/3.5;
 
   constructor(
     private toastController: ToastController,
@@ -134,7 +135,7 @@ export class BlobSimulationPage implements OnInit {
           this.presentToast('Coordinate reali recuperate con successo');
           console.log('Coordinate reali:', res.coordinates);
           this.coordinates = res.coordinates;
-        
+          this.graphUrl = 'http://localhost:8000/camera/plot_graph/?t=' + new Date().getTime();
       },
       error: () => {
         this.presentToast('Errore nel recupero delle coordinate reali', 'danger');
