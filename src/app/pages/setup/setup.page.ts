@@ -12,6 +12,7 @@ import { LedService } from 'src/app/services/led.service';
   styleUrls: ['./setup.page.scss'],
   standalone: false,
 })
+
 export class SetupPage implements OnInit, OnDestroy {
   selectedMotor: string = 'none';
   selectedCameraSettings: string = 'none';
@@ -124,6 +125,7 @@ speedPollingSubscription!: Subscription;
 
   closeCamera(){
     this.selectedCameraSettings = 'none';
+    this.currentStreamUrl = '';
   }
 
 onPresetChange() {
