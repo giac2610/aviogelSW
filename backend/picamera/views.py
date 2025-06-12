@@ -1,6 +1,11 @@
 from contextlib import contextmanager
+from io import BytesIO
 import cv2
 import numpy as np
+import networkx as nx
+import matplotlib
+matplotlib.use('Agg')  # Use 'Agg' backend for non-GUI environments
+import matplotlib.pyplot as plt
 import glob
 import sys
 import json
@@ -350,6 +355,62 @@ def stream_context():
         #                 print("[STREAM] Camera released after all streams closed.")
         #             except Exception as e:
         #                 print(f"[WARN] Error releasing camera after stream context: {e}")
+
+def get_world_coordinates_data():
+    H_fixed_ref = get_fixed_perspective_homography_from_config()
+    if H_fixed_ref is None:
+        return {"status": "error", "message": "Fixed perspective homography not available. Please set it first via its endpoint."}
+    cam_calib_wc = camera_settings.get("calibration", None)
+    if not (cam_calib_wc and cam_calib_wc.get("camera_matrix") and cam_calib_wc.get("distortion_coefficients")):
+        return {"status": "error", "message": "Camera calibration data missing. Please calibrate the camera first."}
+    cam_matrix_wc = np.array(cam_calib_wc["camera_matrix"], dtype=np.float32)
+    dist_coeffs_wc = np.array(cam_calib_wc["distortion_coefficients"], dtype=np.float32)
+    frame_for_coords, keypoints_for_coords_original_coords = get_current_frame_and_keypoints_from_config()
+    if frame_for_coords is None or frame_for_coords.size == 0:
+         return {"status": "error", "message": "Could not get frame for coordinates calculation."}
+    if not keypoints_for_coords_original_coords:
+        return {"status": "success", "coordinates": []}
+    img_pts_original_coords = np.array([kp.pt for kp in keypoints_for_coords_original_coords], dtype=np.float32).reshape(-1,1,2)
+    h_frame_wc, w_frame_wc = frame_for_coords.shape[:2]
+    new_cam_matrix_wc, _ = cv2.getOptimalNewCameraMatrix(cam_matrix_wc, dist_coeffs_wc, (w_frame_wc,h_frame_wc), 1.0, (w_frame_wc,h_frame_wc))
+    img_pts_undistorted_remapped = cv2.undistortPoints(img_pts_original_coords, cam_matrix_wc, dist_coeffs_wc, P=new_cam_matrix_wc)
+    if img_pts_undistorted_remapped is None:
+        return {"status": "error", "message": "Point undistortion failed unexpectedly."}
+    world_coords_top_left_origin = []
+    if img_pts_undistorted_remapped.size > 0:
+        transformed_pts = cv2.perspectiveTransform(img_pts_undistorted_remapped, H_fixed_ref)
+        if transformed_pts is not None:
+             world_coords_top_left_origin = transformed_pts.reshape(-1, 2).tolist()
+        else:
+            return {"status": "error", "message": "Perspective transformation of points failed."}
+    fixed_persp_cfg = camera_settings.get("fixed_perspective", {})
+    OUTPUT_WIDTH = fixed_persp_cfg.get("output_width", 1000)
+    OUTPUT_HEIGHT = fixed_persp_cfg.get("output_height", 800)
+    world_coords_bottom_right_origin = []
+    for x_tl, y_tl in world_coords_top_left_origin:
+        x_br = OUTPUT_WIDTH - x_tl
+        y_br = OUTPUT_HEIGHT - y_tl
+        world_coords_bottom_right_origin.append([x_br, y_br])
+    return {"status": "success", "coordinates": world_coords_bottom_right_origin}
+
+def get_graph_and_tsp_path():
+    response = get_world_coordinates_data()
+    if response.get("status", []) != "success" and response.get("status") != "success":
+        return None, None, response
+    coordinates = response.get("coordinates", [])
+    origin_x = camera_settings.get("origin_x", 0.0)
+    origin_y = camera_settings.get("origin_y", 0.0)
+    origin_coord = [origin_x, origin_y]
+    coordinates_with_origin = [origin_coord] + coordinates
+    nodi = [tuple(coord) for coord in coordinates_with_origin]
+    if len(nodi) < 2:
+        return None, None, {"status": "error", "message": "Nessun punto da plottare."}
+    graph = construct_graph(nodi)
+    source = min(graph.nodes, key=lambda idx: graph.nodes[idx]['pos'][0])
+    hamiltonian_path = nx.algorithms.approximation.traveling_salesman_problem(
+        graph, cycle=False, method=nx.algorithms.approximation.greedy_tsp, source=source
+    )
+    return graph, hamiltonian_path, {"status": "success", "nodi": nodi}
 
 # --- Django Endpoints ---
 @csrf_exempt
@@ -965,48 +1026,71 @@ def fixed_perspective_stream(request):
 @csrf_exempt
 @require_GET
 def get_world_coordinates(request):
-    H_fixed_ref = get_fixed_perspective_homography_from_config()
-    if H_fixed_ref is None:
-        return JsonResponse({"status": "error", "message": "Fixed perspective homography not available. Please set it first via its endpoint."}, status=400)
-    cam_calib_wc = camera_settings.get("calibration", None)
-    if not (cam_calib_wc and cam_calib_wc.get("camera_matrix") and cam_calib_wc.get("distortion_coefficients")):
-        return JsonResponse({"status": "error", "message": "Camera calibration data missing. Please calibrate the camera first."}, status=400)
-    cam_matrix_wc = np.array(cam_calib_wc["camera_matrix"], dtype=np.float32)
-    dist_coeffs_wc = np.array(cam_calib_wc["distortion_coefficients"], dtype=np.float32)
+    data = get_world_coordinates_data()
+    status_code = 200 if data.get("status") == "success" else 400
+    return JsonResponse(data, status=status_code)
+
+@csrf_exempt
+@require_GET
+def compute_route(request):
+    graph, hamiltonian_path, info = get_graph_and_tsp_path()
+    if graph is None or hamiltonian_path is None:
+        return JsonResponse({"status": "error", "message": info.get("message", "Errore generico")}, status=500)
+    nodi = info["nodi"]
+    origin_x = camera_settings.get("origin_x", 0.0)
+    origin_y = camera_settings.get("origin_y", 0.0)
+    motor_commands = []
+    for idx in hamiltonian_path:
+        x, y = nodi[idx]
+        extruder_mm = x - nodi[idx-1][0] if idx > 0 else x - origin_x
+        conveyor_mm = y - nodi[idx-1][1] if idx > 0 else y - origin_y
+        motor_commands.append({"extruder": extruder_mm, "conveyor": conveyor_mm})
+    return JsonResponse({
+        "status": "success",
+        "route": hamiltonian_path,
+        "motor_commands": motor_commands
+    })
+
+@csrf_exempt
+@require_GET
+def plot_graph(request):
+    try:
+        graph, hamiltonian_path, info = get_graph_and_tsp_path()
+        if graph is None or hamiltonian_path is None:
+            return HttpResponse("Errore: " + info.get("message", "Unknown error"), status=500)
+        nodi = info["nodi"]
+        plt.figure(figsize=(8, 6))
+        pos = nx.get_node_attributes(graph, 'pos')
+        if not pos:
+            return HttpResponse("Nessuna posizione nodo trovata.", status=400)
+        # Disegna i nodi
+        nx.draw_networkx_nodes(graph, pos, node_color='skyblue', node_size=500)
+        nx.draw_networkx_labels(graph, pos, font_size=10)
+        # Disegna solo il percorso TSP in rosso
+        tsp_edges = [(hamiltonian_path[i], hamiltonian_path[i+1]) for i in range(len(hamiltonian_path)-1)]
+        nx.draw_networkx_edges(graph, pos, edgelist=tsp_edges, edge_color='red', width=2)
+        plt.title("Percorso TSP (in rosso)")
+        plt.axis('off')
+        buf = BytesIO()
+        plt.savefig(buf, format='png')
+        plt.close()
+        buf.seek(0)
+        return HttpResponse(buf.getvalue(), content_type='image/png')
+    except Exception as e:
+        import traceback
+        print("Errore in plot_graph:", e)
+        traceback.print_exc()
+        return HttpResponse("Errore interno: " + str(e), status=500)
     
-    # get_current_frame_and_keypoints_from_config ora restituisce keypoint già riscalati all'originale
-    frame_for_coords, keypoints_for_coords_original_coords = get_current_frame_and_keypoints_from_config()
-    
-    if frame_for_coords is None or frame_for_coords.size == 0:
-         return JsonResponse({"status": "error", "message": "Could not get frame for coordinates calculation."}, status=500)
-    if not keypoints_for_coords_original_coords:
-        return JsonResponse({"status": "success", "coordinates": []})
-    
-    img_pts_original_coords = np.array([kp.pt for kp in keypoints_for_coords_original_coords], dtype=np.float32).reshape(-1,1,2)
-    h_frame_wc, w_frame_wc = frame_for_coords.shape[:2]
-    
-    new_cam_matrix_wc, _ = cv2.getOptimalNewCameraMatrix(cam_matrix_wc, dist_coeffs_wc, (w_frame_wc,h_frame_wc), 1.0, (w_frame_wc,h_frame_wc))
-    
-    img_pts_undistorted_remapped = cv2.undistortPoints(img_pts_original_coords, cam_matrix_wc, dist_coeffs_wc, P=new_cam_matrix_wc)
-    if img_pts_undistorted_remapped is None:
-        return JsonResponse({"status": "error", "message": "Point undistortion failed unexpectedly."}, status=500)
-    
-    world_coords_top_left_origin = []
-    if img_pts_undistorted_remapped.size > 0:
-        transformed_pts = cv2.perspectiveTransform(img_pts_undistorted_remapped, H_fixed_ref)
-        if transformed_pts is not None:
-             world_coords_top_left_origin = transformed_pts.reshape(-1, 2).tolist()
-        else:
-            print("[WARN] cv2.perspectiveTransform returned None in get_world_coordinates. This might indicate an issue with H_fixed_ref.")
-            return JsonResponse({"status": "error", "message": "Perspective transformation of points failed."}, status=500)
-    
-    fixed_persp_cfg = camera_settings.get("fixed_perspective", {})
-    OUTPUT_WIDTH = fixed_persp_cfg.get("output_width", 1000)
-    OUTPUT_HEIGHT = fixed_persp_cfg.get("output_height", 800)
-    world_coords_bottom_right_origin = []
-    for x_tl, y_tl in world_coords_top_left_origin:
-        x_br = OUTPUT_WIDTH - x_tl
-        y_br = OUTPUT_HEIGHT - y_tl
-        world_coords_bottom_right_origin.append([x_br, y_br])
-        
-    return JsonResponse({"status": "success", "coordinates": world_coords_bottom_right_origin})
+def construct_graph(nodi, velocita_x=2.0, velocita_y=1.0):
+    G = nx.Graph()
+    for i in range(len(nodi)):
+        G.add_node(i, pos=nodi[i])
+    for i in range(len(nodi)):
+        for j in range(i+1, len(nodi)):
+            dx = nodi[i][0] - nodi[j][0]
+            dy = nodi[i][1] - nodi[j][1]
+            # Calcola il tempo minimo considerando le velocità
+            tempo = max(abs(dx)/velocita_x, abs(dy)/velocita_y)
+            G.add_edge(i, j, weight=round(tempo, 4))
+    return G
