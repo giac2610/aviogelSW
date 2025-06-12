@@ -129,7 +129,6 @@ if pi and pi.connected:
 else:
     logging.warning("Connessione a pigpio non riuscita. Il controllo motore non funzionerà.")
 
-
 running_flags = {motor: False for motor in MOTORS.keys()}
 current_speeds = {motor: 0 for motor in MOTORS.keys()}
 
@@ -454,7 +453,6 @@ def execute_wave_chain(all_wave_ids):
         pi.wave_tx_stop() # Tenta di fermare la trasmissione in caso di errore
         raise # Rilancia l'eccezione per essere gestita dal chiamante (start_motor_movement)
 
-
 def compute_frequency(plan, current_step_in_movement):
     """Calcola la frequenza in base alla fase del movimento (accelerazione, velocità costante, decelerazione)."""
     total_steps = plan["steps_total"]
@@ -502,7 +500,6 @@ def compute_frequency(plan, current_step_in_movement):
     else:
         return max_freq
 
-
 def create_wave(pulses):
     """Crea una waveform da una lista di impulsi e restituisce il suo ID."""
     global pi
@@ -538,7 +535,6 @@ def create_wave(pulses):
     except Exception as e_generic: # Altri errori generici
         log_error(f"Errore generico in create_wave: {e_generic}")
         return None
-
 
 def validate_targets(targets):
     """Valida i target forniti."""
