@@ -432,7 +432,8 @@ def get_graph_and_tsp_path():
     if len(nodi) < 2:
         return None, None, {"status": "error", "message": "Nessun punto da plottare."}
     graph = construct_graph(nodi)
-    source = min(graph.nodes, key=lambda idx: graph.nodes[idx]['pos'][0])
+    # source = min(graph.nodes, key=lambda idx: graph.nodes[idx]['pos'][0])
+    source = 0
     hamiltonian_path = nx.algorithms.approximation.traveling_salesman_problem(
         graph, cycle=False, method=nx.algorithms.approximation.greedy_tsp, source=source
     )
