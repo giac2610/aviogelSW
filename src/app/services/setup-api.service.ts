@@ -125,6 +125,11 @@ export class SetupAPIService {
     return this.http.post(url, {});
   }
 
+  deInitializeCamera(): Observable<any> {
+    const url = `${this.apiUrl}camera/deinitialize_camera_endpoint/`;
+    return this.http.post(url, {});
+  }
+
   setCameraOrigin(origin_x: number, origin_y: number): Observable<any> {
     const url = `${this.apiUrl}camera/set-origin/`;
     return this.http.post(url, { origin_x, origin_y });

@@ -124,9 +124,22 @@ speedPollingSubscription!: Subscription;
   }
 
   closeCamera(){
+    console.log('Chiusura della camera');
     this.selectedCameraSettings = 'none';
     this.currentStreamUrl = '';
+    this.configService.deInitializeCamera().subscribe({
+      next: (response) => {
+        console.log('Camera de-inizializzata:', response);
+        this.presentToast('Camera de-inizializzata con successo', 'success');
+      },
+      error: (error) => {
+        console.error('Errore durante la de-inizializzazione della camera:', error);
+        this.presentToast('Errore durante la de-inizializzazione della camera', 'danger');
+      }
+    });
   }
+
+
 
 onPresetChange() {
   const [resolution, fps] = this.selectedPreset.split('@');
