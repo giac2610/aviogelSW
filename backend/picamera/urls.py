@@ -15,6 +15,7 @@ from .views import (
     reset_camera_calibration,
     compute_route,
     plot_graph,
+    deinitialize_camera_endpoint,
 )
 
 urlpatterns = [
@@ -27,8 +28,9 @@ urlpatterns = [
     path('calibrate_camera/', calibrate_camera_endpoint, name='calibrate_camera_view'),
     path('fixed-perspective-stream/', fixed_perspective_stream, name='fixed_perspective_stream'),
     path('set-fixed-perspective/', set_fixed_perspective_view, name='set_fixed_perspective_view'),
-    path('initialize-camera/', initialize_camera_endpoint, name='initialize_camera'),
     path('reset-camera-calibration/', reset_camera_calibration, name='reset_camera_calibration'),
+    path('initialize-camera/', initialize_camera_endpoint, name='initialize_camera'),
+    path('deinitialize_camera_endpoint/', deinitialize_camera_endpoint, name='deinitialize_camera_endpoint'),
     path('get_route/', compute_route, name='compute_route'),
     path('plot_graph/', plot_graph, name='plot_graph'),
 ]

@@ -3,13 +3,12 @@
         "extruder": {
             "homeDir": 0,
             "stepOneRev": 200.0,
-            "microstep": 8,
+            "microstep": 1,
             "pitch": 3.78,
             "maxSpeed": 250.0,
             "acceleration": 800.0,
             "maxTravel": 150.0,
-            "hertz": 0.0,
-            "stepsPerMm": 423.28
+            "hertz": 13227.513227513227
         },
         "conveyor": {
             "homeDir": 1,
@@ -24,12 +23,12 @@
         "syringe": {
             "homeDir": 1,
             "stepOneRev": 200.0,
-            "microstep": 8,
+            "microstep": 1,
             "pitch": 3.78,
             "maxSpeed": 250.0,
             "acceleration": 800.0,
             "maxTravel": 100.0,
-            "hertz": 105820.10582010582
+            "hertz": 13227.513227513227
         }
     },
     "camera": {
@@ -59,8 +58,8 @@
             "distortion_coefficients": null
         },
         "calibration_settings": {
-            "chessboard_cols": 7,
-            "chessboard_rows": 9,
+            "chessboard_cols": 9,
+            "chessboard_rows": 7,
             "square_size_mm": 15.0
         },
         "fixed_perspective": {

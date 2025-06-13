@@ -136,6 +136,32 @@ def initialize_camera_endpoint(request):
     else:
         return JsonResponse({"status": "error", "message": "Camera initialization failed."}, status=500)
 
+@csrf_exempt
+@require_POST
+def deinitialize_camera_endpoint(request):
+    """
+    Endpoint per deinizializzare la camera e rilasciare la risorsa.
+    """
+    global camera_instance
+    with camera_lock:
+        if camera_instance is not None:
+            try:
+                if sys.platform == "darwin":
+                    camera_instance.release()
+                else:
+                    if hasattr(camera_instance, 'stop'):
+                        camera_instance.stop()
+                    if hasattr(camera_instance, 'close'):
+                        camera_instance.close()
+                camera_instance = None
+                print("[INFO] Camera deinitialized and released.")
+                return JsonResponse({"status": "success", "message": "Camera deinitialized and released."})
+            except Exception as e:
+                print(f"[ERROR] Error during camera deinitialization: {e}")
+                return JsonResponse({"status": "error", "message": str(e)}, status=500)
+        else:
+            return JsonResponse({"status": "success", "message": "Camera was already released."})
+        
 def get_frame(release_after=False):
     global camera_instance
     with camera_lock:
@@ -180,7 +206,7 @@ def get_frame(release_after=False):
             configured_width = camera_settings.get("picamera_config", {}).get("main", {}).get("size", [640, 480])[0]
             return np.zeros((configured_height, configured_width, 3), dtype=np.uint8)
 
-        if should_release_now:
+        if should_release_now: 
             try:
                 if sys.platform == "darwin": camera_instance.release()
                 else: camera_instance.stop(); camera_instance.close()
