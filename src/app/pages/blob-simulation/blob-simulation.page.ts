@@ -157,4 +157,20 @@ export class BlobSimulationPage implements OnInit {
       }
     });
   }
+
+  executeRoute(){
+    this.configService.getMotorsRoute().subscribe({
+      next: (res) => {
+        if (res.status === 'success') {
+          this.presentToast('Rotta ottenuta con successo');
+          console.log('percorso:', res.motor_commands);
+        } else {
+          this.presentToast(res.message || 'Errore nell\'esecuzione della rotta', 'danger');
+        }
+      },
+      error: (err) => {
+        this.presentToast('Errore nella richiesta della rotta', 'danger');
+      }
+    });
+  }
 }

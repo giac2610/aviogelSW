@@ -17,9 +17,11 @@
     <ion-card-content>
       <img #cameraImg [src]="streamUrl" [width]="imgWidth" [height]="imgHeight" alt="Camera Stream" />
       <img [src]="graphUrl" alt="Coordinate Plot" [width]="imgWidth" [height]="imgHeight"/>
+
       <ion-button (click)="getRealCoordinates()" expand="full" color="primary">
         Get Coordinate
       </ion-button>
+      <ion-button (click)="executeRoute()">Execute filling</ion-button>
       <ion-list>
         <ion-item *ngFor="let coordinate of coordinates">
           <ion-label>
