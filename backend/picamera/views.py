@@ -1068,10 +1068,13 @@ def compute_route(request):
     origin_x = camera_settings.get("origin_x", 0.0)
     origin_y = camera_settings.get("origin_y", 0.0)
     motor_commands = []
-    for idx in hamiltonian_path:
-        x, y = nodi[idx]
-        extruder_mm = x - nodi[idx-1][0] if idx > 0 else x - origin_x
-        conveyor_mm = y - nodi[idx-1][1] if idx > 0 else y - origin_y
+    for i, idx in enumerate(hamiltonian_path):
+        if i == 0:
+            extruder_mm = nodi[idx][0] - origin_x
+            conveyor_mm = nodi[idx][1] - origin_y
+        else:
+            extruder_mm = nodi[idx][0] - nodi[hamiltonian_path[i-1]][0]
+            conveyor_mm = nodi[idx][1] - nodi[hamiltonian_path[i-1]][1]
         motor_commands.append({"extruder": extruder_mm, "conveyor": conveyor_mm})
 
     # --- Genera il plot come immagine base64 ---
