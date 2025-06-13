@@ -395,18 +395,4 @@ onPresetChange() {
     this.router.navigate(['/blob-simulation']);
   }
 
-
-  getMotorsRoute(){
-    this.configService.getMotorsRoute().subscribe({
-      next: (response) => {
-        this.presentToast('Percorso motore recuperato con successo', 'success');
-        console.log('Percorso motore:', response.route);
-        console.log('Coordinate motore:', response.motor_commands);
-      },
-      error: (error) => {
-        const errorMessage = error.error.detail || error.error.error || error.message;
-        this.presentToast(`Errore durante il recupero del percorso motore: ${errorMessage}`, 'danger');
-      }
-    });
-  }
 }
