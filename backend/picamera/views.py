@@ -6,6 +6,7 @@ import networkx as nx
 import matplotlib
 matplotlib.use('Agg')  # Use 'Agg' backend for non-GUI environments
 import matplotlib.pyplot as plt
+import base64
 import glob
 import sys
 import json
@@ -1072,10 +1073,27 @@ def compute_route(request):
         extruder_mm = x - nodi[idx-1][0] if idx > 0 else x - origin_x
         conveyor_mm = y - nodi[idx-1][1] if idx > 0 else y - origin_y
         motor_commands.append({"extruder": extruder_mm, "conveyor": conveyor_mm})
+
+    # --- Genera il plot come immagine base64 ---
+    plt.figure(figsize=(8, 6))
+    pos = nx.get_node_attributes(graph, 'pos')
+    nx.draw_networkx_nodes(graph, pos, node_color='skyblue', node_size=500)
+    nx.draw_networkx_labels(graph, pos, font_size=10)
+    tsp_edges = [(hamiltonian_path[i], hamiltonian_path[i+1]) for i in range(len(hamiltonian_path)-1)]
+    nx.draw_networkx_edges(graph, pos, edgelist=tsp_edges, edge_color='red', width=2)
+    plt.title("Percorso TSP (in rosso)")
+    plt.axis('off')
+    buf = BytesIO()
+    plt.savefig(buf, format='png')
+    plt.close()
+    buf.seek(0)
+    img_base64 = base64.b64encode(buf.getvalue()).decode('utf-8')
+
     return JsonResponse({
         "status": "success",
         "route": hamiltonian_path,
-        "motor_commands": motor_commands
+        "motor_commands": motor_commands,
+        "plot_graph_base64": img_base64
     })
 
 @csrf_exempt
@@ -1109,7 +1127,7 @@ def plot_graph(request):
         traceback.print_exc()
         return HttpResponse("Errore interno: " + str(e), status=500)
     
-def construct_graph(nodi, velocita_x=2.0, velocita_y=1.0):
+def construct_graph(nodi, velocita_x=4.0, velocita_y=1.0):
     G = nx.Graph()
     for i in range(len(nodi)):
         G.add_node(i, pos=nodi[i])
