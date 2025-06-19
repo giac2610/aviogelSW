@@ -23,7 +23,8 @@ export class BlobSimulationPage implements OnInit {
 
   constructor(
     private toastController: ToastController,
-    private configService: SetupAPIService
+    private configService: SetupAPIService,
+    private motorsControlService: MotorsControlService,
   ) {
     this.streamUrl = this.configService.getNormalStreamUrl();
   }
@@ -65,24 +66,34 @@ export class BlobSimulationPage implements OnInit {
     });
   }
 
-executeRoute(){
-  this.configService.getMotorsRoute().subscribe({
-    next: (res) => {
-      if (res.status === 'success') {
-        this.presentToast('Rotta ottenuta con successo');
-        console.log('percorso:', res.motor_commands);
+  delay(ms: number) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+  }
 
-        // Se la risposta contiene l'immagine base64:
-        if (res.plot_graph_base64) {
-          this.graphUrl = 'data:image/png;base64,' + res.plot_graph_base64;
+  async executeRoute() {
+    this.configService.getMotorsRoute().subscribe({
+      next: async (res) => {
+        if (res.status === 'success') {
+          this.presentToast('Rotta ottenuta con successo');
+          console.log('percorso:', res.motor_commands);
+          for (const command in res.motor_commands) {
+            await this.motorsControlService.moveMotor(command).toPromise().catch(
+              ()=> {this.presentToast('Errore nel movimento del motore', 'danger')
+              }
+            );
+            await this.delay(500); // Attendi 500ms tra i comandi
+          }
+          // Se la risposta contiene l'immagine base64:
+          if (res.plot_graph_base64) {
+            this.graphUrl = 'data:image/png;base64,' + res.plot_graph_base64;
+          }
+        } else {
+          this.presentToast(res.message || 'Errore nell\'esecuzione della rotta', 'danger');
         }
-      } else {
-        this.presentToast(res.message || 'Errore nell\'esecuzione della rotta', 'danger');
+      },
+      error: (_err: any) => {
+        this.presentToast('Errore nella richiesta della rotta', 'danger');
       }
-    },
-    error: (err) => {
-      this.presentToast('Errore nella richiesta della rotta', 'danger');
-    }
-  });
-}
+    });
+  }
 }
