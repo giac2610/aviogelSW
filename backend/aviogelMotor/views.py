@@ -4,6 +4,7 @@ import time
 import threading
 import sys
 import logging
+import queue
 from django.conf import settings
 from unittest.mock import MagicMock
 # Assicurati che il percorso a serializers sia corretto per il tuo progetto Django
@@ -38,6 +39,11 @@ if not os.path.exists(SETTINGS_FILE):
     copyfile(EXAMPLE_JSON_PATH, SETTINGS_FILE)
     print(f"[INFO] File di configurazione creato da setup.example.json in {SETTINGS_FILE}")
 
+motor_command_queue = queue.Queue()
+motor_worker_started = False
+
+    
+
 # Configurazione del logging
 LOG_DIR = os.path.dirname(os.path.abspath(__file__))
 LOG_FILE = os.path.join(LOG_DIR, 'motorLog.log')
@@ -66,6 +72,20 @@ def log_json_response(response):
 def log_error(error_message):
     logging.error(error_message)
 
+def motor_worker():
+    while True:
+        wave_ids = motor_command_queue.get()
+        try:
+            start_motor_movement(wave_ids)
+        except Exception as e:
+            log_error(f"Errore nel thread motor_worker durante l'esecuzione del movimento: {e}")
+        finally:
+            motor_command_queue.task_done()
+            
+
+if not motor_worker_started:
+    threading.Thread(target=motor_worker, daemon=True).start()
+    motor_worker_started = True
 # ------------------------------------------------------------------------------
 # Caricamento configurazione
 # ------------------------------------------------------------------------------
@@ -354,18 +374,14 @@ def start_motor_movement(wave_ids_to_execute):
 
 
 @api_view(['POST'])
-def move_motor_view(request): # Rinominata per chiarezza
-    """
-    API endpoint per muovere i motori.
-    Genera una waveform DMA multicanale e la esegue in un thread.
-    """
+def move_motor_view(request):
     global pi
     if not pi or not pi.connected:
         log_error("move_motor_view: pigpio non connesso.")
-        return JsonResponse({"log": "Errore: pigpio non connesso", "error": "Pigpio connection issue"}, status=503) # Service Unavailable
+        return JsonResponse({"log": "Errore: pigpio non connesso", "error": "Pigpio connection issue"}, status=503)
 
     try:
-        reload_motor_config() # Ricarica config ad ogni movimento, valuta se necessario o se può essere fatto meno frequentemente
+        reload_motor_config()
         data = json.loads(request.body)
         logging.debug(f"Richiesta ricevuta: {data}")
         targets = data.get("targets", {})
@@ -375,19 +391,15 @@ def move_motor_view(request): # Rinominata per chiarezza
             log_json_response(response)
             return response
 
-        validate_targets(targets) # Solleva ValueError se non validi
-        manage_motor_pins(targets) # Imposta pin EN
+        validate_targets(targets)
+        manage_motor_pins(targets)
+        pi.wave_tx_stop()
+        ensure_pigpio_connection()
 
-        pi.wave_tx_stop() # Ferma qualsiasi trasmissione di waveform in corso
-        ensure_pigpio_connection() # Verifica e tenta riconnessione se persa
-
-        wave_ids = generate_waveform(targets) # Genera tutti gli ID di waveform necessari
-
+        wave_ids = generate_waveform(targets)
         if wave_ids:
-            # Avvia l'esecuzione delle waveform in un thread separato
-            thread = threading.Thread(target=start_motor_movement, args=(wave_ids,), daemon=True)
-            thread.start()
-            response = JsonResponse({"log": "Movimento avviato", "status": "success", "wave_ids_count": len(wave_ids)})
+            motor_command_queue.put(wave_ids)  # In coda la richiesta
+            response = JsonResponse({"log": "Movimento messo in coda", "status": "queued", "wave_ids_count": len(wave_ids)})
             log_json_response(response)
             return response
         else:
@@ -395,15 +407,14 @@ def move_motor_view(request): # Rinominata per chiarezza
             log_json_response(response)
             return response
 
-    except ValueError as ve: # Errori di validazione o calcolo parametri
+    except ValueError as ve:
         log_error(f"Errore di valore durante il movimento del motore: {str(ve)}")
         return JsonResponse({"log": "Errore nei dati forniti", "error": str(ve)}, status=400)
-    except ConnectionError as ce: # Errore di connessione pigpio gestito
+    except ConnectionError as ce:
         return JsonResponse({"log": "Errore di connessione pigpio", "error": str(ce)}, status=503)
     except Exception as e:
         log_error(f"Errore generico durante il movimento del motore: {str(e)}")
         return handle_exception(e)
-
 
 def execute_wave_chain(all_wave_ids):
     """
