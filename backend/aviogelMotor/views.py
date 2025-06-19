@@ -113,7 +113,7 @@ threading.Thread(target=motor_worker, daemon=True, name="MotorWorker").start()
 # ==============================================================================
 # Core Logic: Generazione ed Esecuzione Waveform (LOGICA DI STREAMING FINALE)
 # ==============================================================================
-MAX_PULSES_PER_WAVE = 4096 # Un buffer di buone dimensioni
+MAX_PULSES_PER_WAVE = 4096
 
 def compute_motor_params(motor_id):
     conf = motor_configs.get(motor_id, {}); steps_per_rev = float(conf.get("stepOneRev", 200.0)); microsteps = int(conf.get("microstep", 8))
@@ -157,15 +157,9 @@ def stop_all_motors():
     except Exception as e: logging.error(f"Errore durante lo stop dei motori: {e}")
 
 def execute_movement(targets):
-    """
-    [FUNZIONE RIFATTA]
-    Orchestra l'esecuzione usando `wave_send_once` per ogni blocco di impulsi,
-    evitando così l'esaurimento della memoria di pigpio.
-    """
     pi_instance = get_pigpio_instance()
     if not pi_instance or not pi_instance.connected: raise ConnectionError("pigpio non connesso.")
     
-    # --- FASE 1: Generazione timeline completa ---
     master_timeline = []; active_motor_pins_en = 0
     for motor_id, distance_mm in targets.items():
         if motor_id not in MOTORS or distance_mm == 0: continue
@@ -181,16 +175,17 @@ def execute_movement(targets):
     master_timeline.sort(key=lambda e: e['time_us'])
     logging.info("Ordinamento completato. Inizio esecuzione a flusso con `wave_send_once`...")
 
-    # --- FASE 2: Esecuzione a flusso ---
     try:
         pi_instance.wave_clear()
         
-        # Abilita motori
-        pi_instance.write(active_motor_pins_en, 0) # Abilita direttamente
-        time.sleep(0.005) # Pausa per stabilizzazione
+        # --- CORREZIONE QUI: Abilita i motori usando una waveform dedicata ---
+        pi_instance.wave_add_generic([pigpio.pulse(0, active_motor_pins_en, 200)])
+        enable_wave_id = pi_instance.wave_create()
+        pi_instance.wave_send_once(enable_wave_id)
+        while pi_instance.wave_tx_busy(): time.sleep(0.001)
+        pi_instance.wave_delete(enable_wave_id)
 
-        wave_pulses = []; last_time_us = 0
-        chunk_count = 1
+        wave_pulses = []; last_time_us = 0; chunk_count = 1
 
         for time_us, events_at_time in groupby(master_timeline, key=lambda e: e['time_us']):
             delay_us = time_us - last_time_us
@@ -202,7 +197,6 @@ def execute_movement(targets):
             wave_pulses.append(pigpio.pulse(on_mask, off_mask, 0))
             last_time_us = time_us
 
-            # Se il buffer di impulsi è pieno, crea, invia, attendi e cancella la waveform
             if len(wave_pulses) >= MAX_PULSES_PER_WAVE:
                 logging.debug(f"Invio chunk #{chunk_count} con {len(wave_pulses)} impulsi...")
                 pi_instance.wave_add_generic(wave_pulses)
@@ -210,10 +204,8 @@ def execute_movement(targets):
                 pi_instance.wave_send_once(wave_id)
                 while pi_instance.wave_tx_busy(): time.sleep(0.001)
                 pi_instance.wave_delete(wave_id)
-                wave_pulses = []
-                chunk_count += 1
+                wave_pulses = []; chunk_count += 1
         
-        # Invia l'ultimo blocco di impulsi rimasto
         if wave_pulses:
             logging.debug(f"Invio chunk finale #{chunk_count} con {len(wave_pulses)} impulsi...")
             pi_instance.wave_add_generic(wave_pulses)
@@ -223,9 +215,17 @@ def execute_movement(targets):
             pi_instance.wave_delete(wave_id)
 
     finally:
-        # Assicura che i motori siano disabilitati alla fine o in caso di errore
-        pi_instance.write(active_motor_pins_en, 1) # Disabilita
-        logging.info("Esecuzione a flusso terminata. Motori disabilitati.")
+        # --- CORREZIONE QUI: Disabilita i motori usando una waveform dedicata ---
+        logging.info("Esecuzione a flusso terminata. Disabilitazione motori...")
+        pi_instance.wave_add_generic([pigpio.pulse(active_motor_pins_en, 0, 100)])
+        disable_wave_id = pi_instance.wave_create()
+        try:
+            pi_instance.wave_send_once(disable_wave_id)
+            while pi_instance.wave_tx_busy(): time.sleep(0.001)
+            pi_instance.wave_delete(disable_wave_id)
+        except Exception as wave_err:
+             logging.error(f"Errore durante l'invio della waveform di disabilitazione: {wave_err}")
+        logging.info("Motori disabilitati.")
 
 
 def handle_exception(e):
