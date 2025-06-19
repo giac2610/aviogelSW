@@ -110,6 +110,7 @@ export class BlobSimulationPage implements OnInit {
                 this.presentToast(`Errore nella richiesta del comando ${command}: ${err.message}`, 'danger');
               }
             });
+            await this.delay(2000); // Attendi 1 secondo tra i comandi
           }
           // Se la risposta contiene l'immagine base64:
           if (res.plot_graph_base64) {
