@@ -151,7 +151,7 @@ threading.Thread(target=motor_worker, daemon=True, name="MotorWorker").start()
 # ==============================================================================
 # Core Logic: Generazione ed Esecuzione Waveform (NUOVA LOGICA EVENT-BASED)
 # ==============================================================================
-MAX_PULSES_PER_WAVE = 8192 # Limite più generoso
+MAX_PULSES_PER_WAVE = 2048 # Limite più generoso
 MAX_WAVE_CHAIN_SIZE = 250
 
 def compute_motor_params(motor_id):
