@@ -42,8 +42,6 @@ if not os.path.exists(SETTINGS_FILE):
 motor_command_queue = queue.Queue()
 motor_worker_started = False
 
-    
-
 # Configurazione del logging
 LOG_DIR = os.path.dirname(os.path.abspath(__file__))
 LOG_FILE = os.path.join(LOG_DIR, 'motorLog.log')
@@ -76,7 +74,7 @@ def motor_worker():
     while True:
         wave_ids_dict = motor_command_queue.get()
         try:
-            start_motor_movement_independent(wave_ids_dict)
+            start_motor_movement(wave_ids_dict)
         except Exception as e:
             log_error(f"Errore nel thread motor_worker durante l'esecuzione del movimento: {e}")
         finally:
@@ -370,76 +368,6 @@ def start_motor_movement(wave_ids_to_execute):
         # Ma dipende dalla logica dell'applicazione (se i motori devono rimanere "holding")
         pass
 
-def generate_waveform_independent(motor_targets):
-    """
-    Genera una waveform separata per ogni motore, ognuna con la propria velocità.
-    Ritorna un dizionario {motor_id: wave_id}.
-    """
-    global pi
-    if not pi or not pi.connected:
-        log_error("generate_waveform_independent: pigpio non connesso.")
-        raise ConnectionError("pigpio non connesso.")
-
-    wave_ids = {}
-    pi.wave_clear()  # <-- Chiamalo UNA SOLA VOLTA prima del ciclo!
-
-    for motor_id, distance in motor_targets.items():
-        if motor_id not in MOTORS:
-            log_error(f"Motore {motor_id} non trovato in MOTORS.")
-            raise ValueError(f"Motore non valido: {motor_id}")
-
-        params = compute_motor_params(motor_id)
-        steps_to_make = int(abs(distance) * params["steps_per_mm"])
-        direction = 1 if distance >= 0 else 0
-        motor_pins = MOTORS[motor_id]
-
-        pi.write(motor_pins["DIR"], direction)
-        pi.write(motor_pins["EN"], 0)  # Abilita motore
-
-        pulses = []
-        for step in range(steps_to_make):
-            freq = compute_frequency({
-                "steps_total": steps_to_make,
-                "accel_steps": min(params["accel_steps"], steps_to_make // 2 if steps_to_make > 1 else 0),
-                "decel_steps": min(params["decel_steps"], steps_to_make // 2 if steps_to_make > 1 else 0),
-                "max_freq": params["max_freq"]
-            }, step)
-            pulse_duration_us = int(1000000 / freq)
-            on_time_us = 5
-            off_time_us = max(1, pulse_duration_us - on_time_us)
-            pulses.append(pigpio.pulse(1 << motor_pins["STEP"], 0, on_time_us))
-            pulses.append(pigpio.pulse(0, 1 << motor_pins["STEP"], off_time_us))
-
-        wave_id = create_wave(pulses)
-        if wave_id is not None:
-            wave_ids[motor_id] = wave_id
-        else:
-            log_error(f"Waveform non creata per motore {motor_id}")
-
-    return wave_ids
-
-def start_motor_movement_independent(wave_ids_dict):
-    """
-    Avvia tutte le waveform dei motori in parallelo.
-    """
-    global pi
-    if not pi or not pi.connected:
-        log_error("start_motor_movement_independent: pigpio non connesso.")
-        return
-
-    try:
-        # Avvia tutte le waveform contemporaneamente
-        for motor_id, wave_id in wave_ids_dict.items():
-            pin = MOTORS[motor_id]["STEP"]
-            pi.wave_send_once(wave_id)  # Avvia la waveform su tutti i pin
-
-        # Attendi che tutti i motori abbiano finito
-        while any(pi.wave_tx_busy() for _ in wave_ids_dict):
-            time.sleep(0.001)
-        logging.info("Movimento parallelo completato.")
-    except Exception as e:
-        log_error(f"Errore in start_motor_movement_independent: {e}")
-        
 @api_view(['POST'])
 def move_motor_view(request):
     global pi
@@ -462,7 +390,7 @@ def move_motor_view(request):
         manage_motor_pins(targets)
         ensure_pigpio_connection()
 
-        wave_ids_dict = generate_waveform_independent(targets)
+        wave_ids_dict = generate_waveform(targets)
         if wave_ids_dict:
             motor_command_queue.put(wave_ids_dict)
             response = JsonResponse({"log": "Movimento messo in coda", "status": "queued", "wave_ids_count": len(wave_ids_dict)})
