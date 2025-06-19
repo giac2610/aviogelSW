@@ -429,7 +429,15 @@ def get_graph_and_tsp_path():
     origin_y = camera_settings.get("origin_y", 0.0)
     origin_coord = [origin_x, origin_y]
     coordinates_with_origin = [origin_coord] + coordinates
-    nodi = [tuple(coord) for coord in coordinates_with_origin]
+    
+    # filtro per evitare punti fuori dalla zona di interesse
+    filtered_coords = []
+    for coord in coordinates_with_origin:
+        x_rel = coord[0] - origin_x
+        if 0 <= x_rel <= 270:
+            filtered_coords.append(coord)
+    nodi = [tuple(coord) for coord in filtered_coords]
+    
     if len(nodi) < 2:
         return None, None, {"status": "error", "message": "Nessun punto da plottare."}
     graph = construct_graph(nodi)
