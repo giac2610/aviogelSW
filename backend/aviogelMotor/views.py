@@ -811,7 +811,7 @@ def execute_route_view(request):
             
             # Aggiungi syringe: -1 hardcoded
             step = dict(step)  # Copia per non modificare la route originale
-            step["syringe"] = -1
+            step["syringe"] = -10
 
             validate_targets(step)
             manage_motor_pins(step)
