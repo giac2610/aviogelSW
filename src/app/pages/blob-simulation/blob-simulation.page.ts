@@ -70,19 +70,46 @@ export class BlobSimulationPage implements OnInit {
   return new Promise(resolve => setTimeout(resolve, ms));
   }
 
-  async executeRoute() {
+  viewRoute() {
+    this.configService.getMotorsRoute().subscribe({
+      next: (res) => {
+        if (res.status === 'success') {
+          this.presentToast('Rotta ottenuta con successo');
+          console.log('percorso:', res.motor_commands);
+          // Se la risposta contiene l'immagine base64:
+          if (res.plot_graph_base64) {
+            this.graphUrl = 'data:image/png;base64,' + res.plot_graph_base64;
+          }
+        } else {
+          this.presentToast(res.message || 'Errore nell\'esecuzione della rotta', 'danger');
+        }
+      },
+      error: (_err: any) => {
+        this.presentToast('Errore nella richiesta della rotta', 'danger');
+      }
+    });
+  }
+
+  executeRoute() {
     this.configService.getMotorsRoute().subscribe({
       next: async (res) => {
         if (res.status === 'success') {
           this.presentToast('Rotta ottenuta con successo');
-          console.log('percorso:', res.motor_commands);
+          // console.log('percorso:', res.motor_commands);
           for (const command in res.motor_commands) {
             const request = {"targets": res.motor_commands[command]};
-            await this.motorsControlService.moveMotor(request).toPromise().catch(
-              ()=> {this.presentToast('Errore nel movimento del motore', 'danger')
+            this.motorsControlService.moveMotor(request).subscribe({
+              next: (moveRes) => {
+                if (moveRes.status === 'success') {
+                  console.log(`Comando ${command} inserito in coda con successo`);
+                } else {
+                  this.presentToast(`Errore nell'esecuzione del comando ${command}: ${moveRes.message}`, 'danger');
+                }
+              }, 
+              error: (err) => {
+                this.presentToast(`Errore nella richiesta del comando ${command}: ${err.message}`, 'danger');
               }
-            );
-            // await this.delay(1500); // Attendi 500ms tra i comandi
+            });
           }
           // Se la risposta contiene l'immagine base64:
           if (res.plot_graph_base64) {
