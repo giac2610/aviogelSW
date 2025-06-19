@@ -111,10 +111,9 @@ def motor_worker():
 threading.Thread(target=motor_worker, daemon=True, name="MotorWorker").start()
 
 # ==============================================================================
-# Core Logic: Generazione ed Esecuzione Waveform (NUOVA LOGICA INTEGRATA)
+# Core Logic: Generazione ed Esecuzione Waveform (LOGICA DI STREAMING FINALE)
 # ==============================================================================
-MAX_PULSES_PER_WAVE = 2048
-MAX_WAVE_CHAIN_SIZE = 200 # Ridotto per sicurezza
+MAX_PULSES_PER_WAVE = 4096 # Un buffer di buone dimensioni
 
 def compute_motor_params(motor_id):
     conf = motor_configs.get(motor_id, {}); steps_per_rev = float(conf.get("stepOneRev", 200.0)); microsteps = int(conf.get("microstep", 8))
@@ -159,14 +158,14 @@ def stop_all_motors():
 
 def execute_movement(targets):
     """
-    [FUNZIONE PRINCIPALE MODIFICATA]
-    Orchestra l'intero processo di generazione, esecuzione e pulizia
-    delle waveform in modo integrato per evitare di esaurire le risorse.
+    [FUNZIONE RIFATTA]
+    Orchestra l'esecuzione usando `wave_send_once` per ogni blocco di impulsi,
+    evitando così l'esaurimento della memoria di pigpio.
     """
     pi_instance = get_pigpio_instance()
     if not pi_instance or not pi_instance.connected: raise ConnectionError("pigpio non connesso.")
     
-    # --- FASE 1: Generazione timeline completa (in memoria Python) ---
+    # --- FASE 1: Generazione timeline completa ---
     master_timeline = []; active_motor_pins_en = 0
     for motor_id, distance_mm in targets.items():
         if motor_id not in MOTORS or distance_mm == 0: continue
@@ -176,25 +175,22 @@ def execute_movement(targets):
         master_timeline.extend(_generate_motor_event_timeline(motor_id, distance_mm))
     
     if not master_timeline:
-        logging.warning("Nessun movimento richiesto, nessuna azione eseguita."); return
+        logging.warning("Nessun movimento richiesto."); return
 
     logging.info(f"Timeline master creata con {len(master_timeline)} eventi. Ordinamento...")
     master_timeline.sort(key=lambda e: e['time_us'])
-    logging.info("Ordinamento completato. Inizio esecuzione a flusso...")
+    logging.info("Ordinamento completato. Inizio esecuzione a flusso con `wave_send_once`...")
 
-    # --- FASE 2: Esecuzione a flusso (Crea -> Esegui -> Cancella) ---
+    # --- FASE 2: Esecuzione a flusso ---
     try:
         pi_instance.wave_clear()
         
         # Abilita motori
-        pi_instance.wave_add_generic([pigpio.pulse(0, active_motor_pins_en, 200)])
-        enable_wave_id = pi_instance.wave_create()
-        pi_instance.wave_send_once(enable_wave_id)
-        while pi_instance.wave_tx_busy(): time.sleep(0.001)
-        pi_instance.wave_delete(enable_wave_id)
+        pi_instance.write(active_motor_pins_en, 0) # Abilita direttamente
+        time.sleep(0.005) # Pausa per stabilizzazione
 
-        # Loop principale di creazione ed esecuzione
-        wave_pulses = []; wave_ids_chunk = []; last_time_us = 0
+        wave_pulses = []; last_time_us = 0
+        chunk_count = 1
 
         for time_us, events_at_time in groupby(master_timeline, key=lambda e: e['time_us']):
             delay_us = time_us - last_time_us
@@ -206,42 +202,31 @@ def execute_movement(targets):
             wave_pulses.append(pigpio.pulse(on_mask, off_mask, 0))
             last_time_us = time_us
 
-            # Se il buffer di impulsi è pieno, crea una wave e aggiungila al chunk corrente
+            # Se il buffer di impulsi è pieno, crea, invia, attendi e cancella la waveform
             if len(wave_pulses) >= MAX_PULSES_PER_WAVE:
+                logging.debug(f"Invio chunk #{chunk_count} con {len(wave_pulses)} impulsi...")
                 pi_instance.wave_add_generic(wave_pulses)
-                wave_ids_chunk.append(pi_instance.wave_create())
+                wave_id = pi_instance.wave_create()
+                pi_instance.wave_send_once(wave_id)
+                while pi_instance.wave_tx_busy(): time.sleep(0.001)
+                pi_instance.wave_delete(wave_id)
                 wave_pulses = []
-
-            # Se il chunk di wave ID è pieno, eseguilo e cancellalo
-            if len(wave_ids_chunk) >= MAX_WAVE_CHAIN_SIZE:
-                logging.debug(f"Esecuzione chunk di {len(wave_ids_chunk)} wave IDs...")
-                pi_instance.wave_chain(wave_ids_chunk)
-                while pi_instance.wave_tx_busy(): time.sleep(0.005)
-                for wave_id in wave_ids_chunk: pi_instance.wave_delete(wave_id)
-                wave_ids_chunk = []
+                chunk_count += 1
         
-        # Processa gli ultimi impulsi e chunk rimasti
+        # Invia l'ultimo blocco di impulsi rimasto
         if wave_pulses:
+            logging.debug(f"Invio chunk finale #{chunk_count} con {len(wave_pulses)} impulsi...")
             pi_instance.wave_add_generic(wave_pulses)
-            wave_ids_chunk.append(pi_instance.wave_create())
-        
-        if wave_ids_chunk:
-            logging.debug(f"Esecuzione chunk finale di {len(wave_ids_chunk)} wave IDs...")
-            pi_instance.wave_chain(wave_ids_chunk)
-            while pi_instance.wave_tx_busy(): time.sleep(0.005)
-            for wave_id in wave_ids_chunk: pi_instance.wave_delete(wave_id)
-            
-        # Disabilita motori
-        pi_instance.wave_add_generic([pigpio.pulse(active_motor_pins_en, 0, 100)])
-        disable_wave_id = pi_instance.wave_create()
-        pi_instance.wave_send_once(disable_wave_id)
-        while pi_instance.wave_tx_busy(): time.sleep(0.001)
-        pi_instance.wave_delete(disable_wave_id)
+            wave_id = pi_instance.wave_create()
+            pi_instance.wave_send_once(wave_id)
+            while pi_instance.wave_tx_busy(): time.sleep(0.001)
+            pi_instance.wave_delete(wave_id)
 
-    except Exception as e:
-        logging.error(f"Errore critico durante esecuzione movimento: {e}", exc_info=True)
-        stop_all_motors()
-        raise # Rilancia l'eccezione per essere gestita a livello di API
+    finally:
+        # Assicura che i motori siano disabilitati alla fine o in caso di errore
+        pi_instance.write(active_motor_pins_en, 1) # Disabilita
+        logging.info("Esecuzione a flusso terminata. Motori disabilitati.")
+
 
 def handle_exception(e):
     import traceback; error_details = traceback.format_exc(); logging.error(f"Errore interno: {error_details}")
@@ -319,7 +304,6 @@ def start_simulation_view(request):
 @api_view(['POST'])
 def execute_route_view(request):
     try:
-        # Validazione e logica originale mantenuta
         data = json.loads(request.body); route = data.get("route", [])
         if not isinstance(route, list) or not route: return JsonResponse({"log": "Percorso non valido", "error": "Input non valido"}, status=400)
         logging.info(f"Inizio esecuzione rotta con {len(route)} passi.")
@@ -328,10 +312,8 @@ def execute_route_view(request):
                 logging.info(f"Salto primo movimento nullo: {step}"); continue
             step_to_execute = dict(step); step_to_execute["syringe"] = -10
             logging.info(f"Esecuzione passo rotta {idx+1}: {step_to_execute}")
-            # La chiamata a execute_movement ora usa la nuova logica a flusso
             execute_movement(step_to_execute)
         logging.info("Rotta completata.")
         return JsonResponse({"log": "Rotta eseguita con successo", "status": "success"})
     except Exception as e:
-        # L'eccezione viene ora gestita e rilanciata da execute_movement
         return handle_exception(e)
