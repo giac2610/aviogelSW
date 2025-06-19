@@ -348,6 +348,28 @@ def generate_waveform(motor_targets):
     logging.info(f"Generati {len(generated_wave_ids)} ID di waveform.")
     return generated_wave_ids
 
+def start_motor_movement(wave_ids_to_execute):
+    """
+    Avvia il movimento dei motori eseguendo la wave_chain generata.
+    Questa funzione è pensata per essere eseguita in un thread.
+    """
+    if not wave_ids_to_execute:
+        logging.warning("start_motor_movement: Nessuna waveform ID fornita per l'esecuzione.")
+        return # Non sollevare eccezioni in un thread senza un gestore specifico se possibile
+
+    try:
+        logging.debug(f"start_motor_movement: Esecuzione della wave_chain con {len(wave_ids_to_execute)} wave_ids.")
+        execute_wave_chain(wave_ids_to_execute)
+        logging.info("Movimento completato (tutti i chunk della wave_chain inviati).")
+    except Exception as e:
+        # Logga l'eccezione che potrebbe verificarsi in execute_wave_chain
+        log_error(f"Errore in start_motor_movement (thread): {e}")
+        # Qui potresti voler segnalare lo stato di errore globalmente se necessario
+    finally:
+        # Qui si potrebbero disabilitare i motori (pi.write(motor["EN"], 1)) se desiderato dopo ogni movimento
+        # Ma dipende dalla logica dell'applicazione (se i motori devono rimanere "holding")
+        pass
+
 def generate_waveform_independent(motor_targets):
     """
     Genera una waveform separata per ogni motore, ognuna con la propria velocità.
@@ -359,6 +381,8 @@ def generate_waveform_independent(motor_targets):
         raise ConnectionError("pigpio non connesso.")
 
     wave_ids = {}
+    pi.wave_clear()  # <-- Chiamalo UNA SOLA VOLTA prima del ciclo!
+
     for motor_id, distance in motor_targets.items():
         if motor_id not in MOTORS:
             log_error(f"Motore {motor_id} non trovato in MOTORS.")
@@ -386,7 +410,6 @@ def generate_waveform_independent(motor_targets):
             pulses.append(pigpio.pulse(1 << motor_pins["STEP"], 0, on_time_us))
             pulses.append(pigpio.pulse(0, 1 << motor_pins["STEP"], off_time_us))
 
-        pi.wave_clear()
         wave_id = create_wave(pulses)
         if wave_id is not None:
             wave_ids[motor_id] = wave_id
@@ -394,28 +417,6 @@ def generate_waveform_independent(motor_targets):
             log_error(f"Waveform non creata per motore {motor_id}")
 
     return wave_ids
-
-def start_motor_movement(wave_ids_to_execute):
-    """
-    Avvia il movimento dei motori eseguendo la wave_chain generata.
-    Questa funzione è pensata per essere eseguita in un thread.
-    """
-    if not wave_ids_to_execute:
-        logging.warning("start_motor_movement: Nessuna waveform ID fornita per l'esecuzione.")
-        return # Non sollevare eccezioni in un thread senza un gestore specifico se possibile
-
-    try:
-        logging.debug(f"start_motor_movement: Esecuzione della wave_chain con {len(wave_ids_to_execute)} wave_ids.")
-        execute_wave_chain(wave_ids_to_execute)
-        logging.info("Movimento completato (tutti i chunk della wave_chain inviati).")
-    except Exception as e:
-        # Logga l'eccezione che potrebbe verificarsi in execute_wave_chain
-        log_error(f"Errore in start_motor_movement (thread): {e}")
-        # Qui potresti voler segnalare lo stato di errore globalmente se necessario
-    finally:
-        # Qui si potrebbero disabilitare i motori (pi.write(motor["EN"], 1)) se desiderato dopo ogni movimento
-        # Ma dipende dalla logica dell'applicazione (se i motori devono rimanere "holding")
-        pass
 
 def start_motor_movement_independent(wave_ids_dict):
     """
