@@ -791,3 +791,48 @@ def start_simulation_view(request):
     except Exception as e:
         log_error(f"Errore durante la simulazione: {str(e)}")
         return handle_exception(e)
+
+@api_view(['POST'])
+def execute_route_view(request):
+    """
+    Riceve una lista di targets e li esegue in sequenza come una rotta.
+    Esempio body:
+    {
+        "route": [
+            {"extruder": 50, "conveyor": 400},
+            {"extruder": 50, "conveyor": 0},
+            {"extruder": -50, "conveyor": 0}
+        ]
+    }
+    """
+    global pi
+    if not pi or not pi.connected:
+        log_error("execute_route_view: pigpio non connesso.")
+        return JsonResponse({"log": "Errore: pigpio non connesso", "error": "Pigpio connection issue"}, status=503)
+
+    try:
+        data = json.loads(request.body)
+        route = data.get("route", [])
+        if not isinstance(route, list) or not route:
+            return JsonResponse({"log": "Nessun percorso fornito", "error": "Input non valido"}, status=400)
+
+        for idx, step in enumerate(route):
+            validate_targets(step)
+            manage_motor_pins(step)
+            ensure_pigpio_connection()
+            wave_ids = generate_waveform(step)
+            if wave_ids:
+                execute_wave_chain(wave_ids)
+            else:
+                log_error(f"Errore nella generazione della waveform per il passo {idx}: {step}")
+                return JsonResponse({"log": f"Errore nella generazione della waveform per il passo {idx}", "error": "Waveform non generata"}, status=500)
+
+        return JsonResponse({"log": "Rotta eseguita con successo", "status": "success"})
+    except ValueError as ve:
+        log_error(f"Errore di valore durante l'esecuzione della rotta: {str(ve)}")
+        return JsonResponse({"log": "Errore nei dati forniti", "error": str(ve)}, status=400)
+    except ConnectionError as ce:
+        return JsonResponse({"log": "Errore di connessione pigpio", "error": str(ce)}, status=503)
+    except Exception as e:
+        log_error(f"Errore generico durante l'esecuzione della rotta: {str(e)}")
+        return handle_exception(e)
