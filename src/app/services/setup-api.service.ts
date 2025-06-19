@@ -121,7 +121,7 @@ export class SetupAPIService {
   }
 
   executeRoute(route: any[]): Observable<any> {
-    const url = `${this.apiUrl}motors/execute-route/`;
+    const url = `${this.apiUrl}motors/execute_route/`;
     return this.http.post(url, { route });
   }
 
