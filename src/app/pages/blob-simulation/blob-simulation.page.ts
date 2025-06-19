@@ -77,11 +77,12 @@ export class BlobSimulationPage implements OnInit {
           this.presentToast('Rotta ottenuta con successo');
           console.log('percorso:', res.motor_commands);
           for (const command in res.motor_commands) {
-            await this.motorsControlService.moveMotor(command).toPromise().catch(
+            const request = {"targets": res.motor_commands[command]};
+            await this.motorsControlService.moveMotor(request).toPromise().catch(
               ()=> {this.presentToast('Errore nel movimento del motore', 'danger')
               }
             );
-            await this.delay(500); // Attendi 500ms tra i comandi
+            await this.delay(1500); // Attendi 500ms tra i comandi
           }
           // Se la risposta contiene l'immagine base64:
           if (res.plot_graph_base64) {
