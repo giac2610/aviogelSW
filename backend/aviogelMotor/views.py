@@ -46,7 +46,6 @@ logging.basicConfig(
 # --- Gestione File di Configurazione ---
 def initialize_config_file():
     if not os.path.exists(SETTINGS_FILE):
-        # ... (codice identico a prima)
         logging.warning(f"File di configurazione '{SETTINGS_FILE}' non trovato.")
         if not os.path.exists(EXAMPLE_JSON_PATH):
             error_msg = f"File di esempio '{EXAMPLE_JSON_PATH}' mancante. Impossibile creare la configurazione."
@@ -65,7 +64,6 @@ initialize_config_file()
 
 # --- Placeholder per il Serializer di Django ---
 class SettingsSerializer:
-    # ... (codice identico a prima)
     def __init__(self, data=None, partial=False): self.initial_data = data; self._validated_data = data or {}; self.errors = {}
     def is_valid(self, raise_exception=False): return True
     @property
@@ -74,7 +72,6 @@ class SettingsSerializer:
 # --- Gestione della Connessione a pigpio ---
 pi = None
 def get_pigpio_instance():
-    # ... (codice identico a prima)
     global pi
     if pi and pi.connected: return pi
     logging.warning("Connessione a pigpio non attiva. Tentativo di (ri)connessione...")
@@ -99,7 +96,6 @@ MOTORS = {
 current_speeds = {motor: 0 for motor in MOTORS.keys()}
 
 def _initialize_gpio_pins():
-    # ... (codice identico a prima)
     pi_instance = get_pigpio_instance()
     if not pi_instance or not getattr(pi_instance, 'connected', False): return
     for motor_name, pins in MOTORS.items():
@@ -115,7 +111,6 @@ def _initialize_gpio_pins():
 # --- Caricamento e Gestione Configurazione Motori ---
 motor_configs = {}
 def load_motor_config():
-    # ... (codice identico a prima)
     global motor_configs
     try:
         with open(SETTINGS_FILE, "r") as f:
@@ -125,7 +120,6 @@ def load_motor_config():
     return motor_configs
 
 def write_settings(data):
-    # ... (codice identico a prima)
     try:
         with open(SETTINGS_FILE, 'w') as f: json.dump(data, f, indent=4); logging.info(f"Configurazione salvata in '{SETTINGS_FILE}'.")
     except Exception as e:
@@ -138,7 +132,6 @@ get_pigpio_instance()
 # --- Logica del Worker per Movimenti Asincroni ---
 motor_command_queue = queue.Queue()
 def motor_worker():
-    # ... (codice identico a prima)
     logging.info("Motor worker avviato.")
     while True:
         try:
@@ -149,13 +142,12 @@ def motor_worker():
 threading.Thread(target=motor_worker, daemon=True, name="MotorWorker").start()
 
 # ==============================================================================
-# Core Logic: Generazione ed Esecuzione Waveform (NUOVA LOGICA EVENT-BASED)
+# Core Logic: Generazione ed Esecuzione Waveform (EVENT-BASED)
 # ==============================================================================
-MAX_PULSES_PER_WAVE = 2048 # Limite più generoso
+MAX_PULSES_PER_WAVE = 2048
 MAX_WAVE_CHAIN_SIZE = 250
 
 def compute_motor_params(motor_id):
-    # ... (codice identico a prima)
     conf = motor_configs.get(motor_id, {})
     steps_per_rev = float(conf.get("stepOneRev", 200.0)); microsteps = int(conf.get("microstep", 8))
     pitch = float(conf.get("pitch", 5.0)); max_speed_mms = float(conf.get("maxSpeed", 250.0))
@@ -167,7 +159,6 @@ def compute_motor_params(motor_id):
     return {"steps_per_mm": steps_per_mm, "max_freq": max_freq_hz, "accel_steps": max(1, accel_steps)}
 
 def compute_step_frequency(current_step, total_steps, accel_steps, max_freq):
-    # ... (codice identico a prima)
     decel_start_step = total_steps - accel_steps
     if current_step < accel_steps: return max(1.0, (current_step + 1) / accel_steps * max_freq)
     elif current_step >= decel_start_step:
@@ -176,125 +167,98 @@ def compute_step_frequency(current_step, total_steps, accel_steps, max_freq):
     else: return max_freq
 
 def _generate_motor_event_timeline(motor_id, distance_mm):
-    """
-    [NUOVA FUNZIONE HELPER]
-    Calcola la timeline di eventi (timestamp, pin, stato) per un singolo motore.
-    """
     params = compute_motor_params(motor_id)
     step_pin = MOTORS[motor_id]["STEP"]
     total_steps = int(abs(distance_mm) * params["steps_per_mm"])
-    if total_steps == 0:
-        return []
-
+    if total_steps == 0: return []
     accel_steps = min(params["accel_steps"], total_steps // 2)
-    
-    timeline = []
-    current_time_us = 0.0
-
+    timeline = []; current_time_us = 0.0
     for step in range(total_steps):
         freq = compute_step_frequency(step, total_steps, accel_steps, params["max_freq"])
         half_period_us = 500_000.0 / freq
-
-        # Evento di salita (ON)
         timeline.append({'time_us': current_time_us, 'pin': step_pin, 'state': 1})
         current_time_us += half_period_us
-        # Evento di discesa (OFF)
         timeline.append({'time_us': current_time_us, 'pin': step_pin, 'state': 0})
         current_time_us += half_period_us
-
     return timeline
 
 def generate_movement_waveforms(targets):
-    """
-    [LOGICA COMPLETAMENTE RISCRITTA]
-    Genera una waveform event-based fondendo le timeline di eventi di tutti i motori.
-    """
     pi_instance = get_pigpio_instance()
-    if not pi_instance or not pi_instance.connected:
-        raise ConnectionError("pigpio non connesso.")
-
-    master_timeline = []
-    active_motor_pins_en = 0
-
+    if not pi_instance or not pi_instance.connected: raise ConnectionError("pigpio non connesso.")
+    master_timeline = []; active_motor_pins_en = 0
     for motor_id, distance_mm in targets.items():
-        if motor_id not in MOTORS or distance_mm == 0:
-            continue
-        
+        if motor_id not in MOTORS or distance_mm == 0: continue
         pi_instance.write(MOTORS[motor_id]["DIR"], 1 if distance_mm >= 0 else 0)
         active_motor_pins_en |= (1 << MOTORS[motor_id]["EN"])
-        
         logging.info(f"Generazione timeline per {motor_id} ({distance_mm}mm)...")
         motor_timeline = _generate_motor_event_timeline(motor_id, distance_mm)
         master_timeline.extend(motor_timeline)
-
-    if not master_timeline:
-        return []
-
+    if not master_timeline: return []
     logging.info(f"Timeline master creata con {len(master_timeline)} eventi. Ordinamento...")
     master_timeline.sort(key=lambda e: e['time_us'])
     logging.info("Ordinamento completato. Generazione waveform da eventi...")
-
     pi_instance.wave_clear()
-    
-    # 1. Waveform per abilitare i motori
     pi_instance.wave_add_generic([pigpio.pulse(0, active_motor_pins_en, 100)])
     enable_wave_id = pi_instance.wave_create()
-
-    # 2. Waveform di movimento principale
-    movement_wave_ids = []
-    wave_pulses = []
-    last_time_us = 0
-    
-    # Raggruppa eventi che accadono allo stesso istante per creare un singolo impulso
+    movement_wave_ids = []; wave_pulses = []; last_time_us = 0
     for time_us, events_at_time in groupby(master_timeline, key=lambda e: e['time_us']):
         delay_us = time_us - last_time_us
-        if delay_us > 0:
-            wave_pulses.append(pigpio.pulse(0, 0, int(round(delay_us))))
-
-        on_mask = 0
-        off_mask = 0
+        if delay_us > 0: wave_pulses.append(pigpio.pulse(0, 0, int(round(delay_us))))
+        on_mask = 0; off_mask = 0
         for event in events_at_time:
-            if event['state'] == 1:
-                on_mask |= (1 << event['pin'])
-            else:
-                off_mask |= (1 << event['pin'])
-        
-        wave_pulses.append(pigpio.pulse(on_mask, off_mask, 0)) # Applica i cambiamenti istantaneamente
+            if event['state'] == 1: on_mask |= (1 << event['pin'])
+            else: off_mask |= (1 << event['pin'])
+        wave_pulses.append(pigpio.pulse(on_mask, off_mask, 0))
         last_time_us = time_us
-
         if len(wave_pulses) >= MAX_PULSES_PER_WAVE:
             pi_instance.wave_add_generic(wave_pulses)
             movement_wave_ids.append(pi_instance.wave_create())
             wave_pulses = []
-    
-    # Aggiungi l'ultimo blocco di impulsi se presente
     if wave_pulses:
         pi_instance.wave_add_generic(wave_pulses)
         movement_wave_ids.append(pi_instance.wave_create())
-
-    # 3. Waveform per disabilitare i motori
     pi_instance.wave_add_generic([pigpio.pulse(active_motor_pins_en, 0, 100)])
     disable_wave_id = pi_instance.wave_create()
-    
     final_chain = [enable_wave_id] + movement_wave_ids + [disable_wave_id]
     logging.info(f"Generazione waveform completata. Catena di {len(final_chain)} wave ID creata.")
     return final_chain
 
 
-# --- Funzioni di Esecuzione e Gestione (Identiche a prima) ---
+# --- Funzioni di Esecuzione e Gestione ---
 def execute_wave_chain(wave_ids):
-    # ... (codice identico a prima)
+    """
+    [FUNZIONE MODIFICATA]
+    Esegue una catena di waveform, spezzandola in chunk e, FONDAMENTALE,
+    cancellando le wave usate per liberare risorse (Control Blocks).
+    """
     pi_instance = get_pigpio_instance()
-    if not pi_instance or not pi_instance.connected: raise ConnectionError("pigpio non connesso.")
-    if not wave_ids: return
+    if not pi_instance or not pi_instance.connected:
+        raise ConnectionError("pigpio non connesso.")
+    if not wave_ids:
+        return
+
     offset = 0
     while offset < len(wave_ids):
-        chunk = wave_ids[offset : offset + MAX_WAVE_CHAIN_SIZE]; offset += len(chunk)
+        chunk = wave_ids[offset : offset + MAX_WAVE_CHAIN_SIZE]
+        offset += len(chunk)
+
         pi_instance.wave_chain(chunk)
-        while pi_instance.wave_tx_busy(): time.sleep(0.01)
+
+        while pi_instance.wave_tx_busy():
+            time.sleep(0.005)
+
+        # --- PASSO CRUCIALE AGGIUNTO ---
+        logging.debug(f"Chunk completato. Cancellazione di {len(chunk)} wave ID usati...")
+        for wave_id in chunk:
+            try:
+                pi_instance.wave_delete(wave_id)
+            except Exception as e:
+                logging.warning(f"Impossibile cancellare wave_id {wave_id}: {e}")
+
+    logging.info("Esecuzione completa di tutta la catena e pulizia delle risorse.")
+
 
 def stop_all_motors():
-    # ... (codice identico a prima)
     pi_instance = get_pigpio_instance()
     if not pi_instance or not pi_instance.connected: return
     try:
@@ -305,7 +269,6 @@ def stop_all_motors():
         logging.error(f"Errore durante lo stop dei motori: {e}")
 
 def execute_movement(targets):
-    # ... (codice identico a prima)
     try:
         if not isinstance(targets, dict): raise ValueError("I target devono essere un dizionario.")
         for motor_id, distance in targets.items():
@@ -318,7 +281,6 @@ def execute_movement(targets):
         stop_all_motors(); raise
 
 def handle_exception(e):
-    # ... (codice identico a prima)
     import traceback; error_details = traceback.format_exc(); logging.error(f"Errore interno: {error_details}")
     error_type = type(e).__name__; error_message = str(e)
     return JsonResponse({"log": f"Errore interno: {error_type}", "error": error_message}, status=500)
@@ -357,18 +319,28 @@ def stop_motor_view(request):
 @api_view(['POST'])
 def save_motor_config_view(request):
     try:
-        with open(SETTINGS_FILE, 'r') as f:
-            try: full_config = json.load(f)
-            except json.JSONDecodeError: full_config = {}
-        if 'motors' not in full_config: full_config['motors'] = {}
+        # Carica l'intera configurazione attuale per preservare altre chiavi (es. 'camera')
+        try:
+            with open(SETTINGS_FILE, 'r') as f: full_config = json.load(f)
+        except (FileNotFoundError, json.JSONDecodeError):
+            full_config = {} # Se il file non esiste o è vuoto, inizia da zero
+
+        # Assicura che la chiave 'motors' esista
+        if 'motors' not in full_config:
+            full_config['motors'] = {}
+
         new_data = json.loads(request.body)
-        serializer = SettingsSerializer(data=new_data)
+        serializer = SettingsSerializer(data=new_data) # Usa il serializer come prima
         if serializer.is_valid():
+            # Aggiorna solo la sezione 'motors' con i dati validati
             full_config['motors'].update(serializer.validated_data)
-            write_settings(full_config)
-            load_motor_config()
+            
+            write_settings(full_config) # Salva l'intera struttura aggiornata
+            load_motor_config() # Ricarica per consistenza
+            
             return JsonResponse({"log": "Configurazione motori salvata", "success": True, "settings": full_config})
-        else: return JsonResponse({"log": "Errore di validazione", "errors": serializer.errors}, status=400)
+        else:
+            return JsonResponse({"log": "Errore di validazione", "errors": serializer.errors}, status=400)
     except Exception as e: return handle_exception(e)
 
 @csrf_exempt
