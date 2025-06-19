@@ -82,7 +82,7 @@ export class BlobSimulationPage implements OnInit {
               ()=> {this.presentToast('Errore nel movimento del motore', 'danger')
               }
             );
-            await this.delay(1500); // Attendi 500ms tra i comandi
+            // await this.delay(1500); // Attendi 500ms tra i comandi
           }
           // Se la risposta contiene l'immagine base64:
           if (res.plot_graph_base64) {
