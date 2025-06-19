@@ -100,6 +100,7 @@ export class BlobSimulationPage implements OnInit {
               next: (moveRes) => {
                 if (moveRes.status === 'success') {
                   console.log(`Comandi inserito in coda con successo`);
+                  this.graphUrl = 'http://localhost:8000/camera/plot_graph/?t=' + new Date().getTime();
                 } else {
                   this.presentToast(`Errore nell'esecuzione: ${moveRes.message}`, 'danger');
                 }
