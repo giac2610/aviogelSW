@@ -808,6 +808,11 @@ def execute_route_view(request):
             if idx == 0 and all((isinstance(v, (int, float)) and v == 0) for v in step.values()):
                 logging.info(f"Salto il primo movimento perché tutti i target sono zero: {step}")
                 continue
+            
+            # Aggiungi syringe: -1 hardcoded
+            step = dict(step)  # Copia per non modificare la route originale
+            step["syringe"] = -1
+
             validate_targets(step)
             manage_motor_pins(step)
             ensure_pigpio_connection()
