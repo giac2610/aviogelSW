@@ -243,15 +243,15 @@ MAX_WAVE_CHAIN_SIZE = 250   # Numero massimo di ID di waveform in una singola ch
 def generate_waveform(motor_targets):
     """
     Genera una lista di ID di waveform DMA multicanale per muovere i motori.
-    NON esegue il movimento.
+    L'EN viene gestito direttamente nella waveform: attivato all'inizio e disattivato subito dopo il movimento.
     """
     global pi
     if not pi or not pi.connected:
         log_error("generate_waveform: pigpio non connesso.")
         raise ConnectionError("pigpio non connesso.")
 
-    wave_accumulator = [] # Accumula impulsi (on/off) per la waveform corrente
-    generated_wave_ids = [] # Lista di ID delle waveform create
+    wave_accumulator = []
+    generated_wave_ids = []
 
     # Prepara i piani di impulsi per ogni motore
     pulse_plans = {}
@@ -266,56 +266,54 @@ def generate_waveform(motor_targets):
         direction = 1 if distance >= 0 else 0
         motor_pins = MOTORS[motor_id]
 
+        # DIR viene impostato subito (fuori dalla waveform)
         pi.write(motor_pins["DIR"], direction)
-        pi.write(motor_pins["EN"], 0) # Abilita motore
 
         pulse_plans[motor_id] = {
             "pin": motor_pins["STEP"],
+            "en_pin": motor_pins["EN"],
             "steps_total": steps_to_make,
             "max_freq": params["max_freq"],
-            "accel_steps": min(params["accel_steps"], steps_to_make // 2 if steps_to_make > 1 else 0), # Evita accel_steps > steps_total/2
+            "accel_steps": min(params["accel_steps"], steps_to_make // 2 if steps_to_make > 1 else 0),
             "decel_steps": min(params["decel_steps"], steps_to_make // 2 if steps_to_make > 1 else 0),
             "steps_done": 0,
+            "en_enabled": False,
+            "en_disabled": False,
         }
-        # Correzione per accel/decel steps se steps_total è molto piccolo
         if steps_to_make <= 1:
             pulse_plans[motor_id]["accel_steps"] = 0
             pulse_plans[motor_id]["decel_steps"] = 0
 
         logging.debug(f"Piano di impulsi per motore {motor_id}: {pulse_plans[motor_id]}")
 
-    # Pulisce le waveform definite precedentemente in pigpio
-    pi.wave_clear() 
+    pi.wave_clear()
     logging.debug("Waveform precedenti cancellate da pigpio.")
 
-    # Genera gli impulsi e le waveform
+    # Impulsi per abilitare EN all'inizio (tutti i motori che devono muoversi)
+    for plan in pulse_plans.values():
+        if plan["steps_total"] > 0:
+            wave_accumulator.append(pigpio.pulse(0, 1 << plan["en_pin"], 0))  # EN LOW (abilita motore)
+            plan["en_enabled"] = True
+
     active_motors = True
     while active_motors:
         on_pulses_this_tick = []
         off_pulses_this_tick = []
-        active_motors = False # Resetta flag, verrà impostato a True se qualche motore ha ancora passi da fare
+        active_motors = False
 
         for motor_id, plan in pulse_plans.items():
             if plan["steps_done"] < plan["steps_total"]:
-                active_motors = True # Almeno un motore è ancora in movimento
+                active_motors = True
                 current_step_in_movement = plan["steps_done"]
-                
-                # Passa il piano intero a compute_frequency
-                freq = compute_frequency(plan, current_step_in_movement) 
-                
+                freq = compute_frequency(plan, current_step_in_movement)
                 if freq <= 0:
                     logging.error(f"Frequenza non valida ({freq} Hz) per motore {motor_id} allo step {current_step_in_movement}.")
-                    # Potrebbe essere meglio gestire questo errore in modo più robusto, es. usando una freq minima
                     raise ValueError(f"Frequenza non valida per motore {motor_id}: {freq}")
-                
-                # delay_us è la durata totale dell'impulso (ON+OFF), quindi 1/freq
-                # L'impulso ON è breve (es. 5us), il resto è OFF.
-                pulse_duration_us = int(1000000 / freq) # Durata totale di un ciclo di step in microsecondi
-                on_time_us = 5 # Breve impulso ON
-
-                if pulse_duration_us <= on_time_us: # Frequenza troppo alta, l'impulso ON consumerebbe tutto il tempo
-                    off_time_us = 1 # Minimo off time
-                    on_time_us = max(1, pulse_duration_us - off_time_us) # Aggiusta on_time se necessario
+                pulse_duration_us = int(1000000 / freq)
+                on_time_us = 5
+                if pulse_duration_us <= on_time_us:
+                    off_time_us = 1
+                    on_time_us = max(1, pulse_duration_us - off_time_us)
                     logging.warning(f"Alta frequenza per {motor_id}: pulse_duration_us ({pulse_duration_us}) <= on_time_us. Aggiustato on_time a {on_time_us}.")
                 else:
                     off_time_us = pulse_duration_us - on_time_us
@@ -323,25 +321,25 @@ def generate_waveform(motor_targets):
                 on_pulses_this_tick.append(pigpio.pulse(1 << plan["pin"], 0, on_time_us))
                 off_pulses_this_tick.append(pigpio.pulse(0, 1 << plan["pin"], off_time_us))
                 plan["steps_done"] += 1
-        
-        if on_pulses_this_tick: # Se sono stati generati impulsi in questo tick
+
+            # Se il motore ha appena finito i passi, aggiungi impulso per disabilitare EN
+            if plan["steps_done"] == plan["steps_total"] and not plan["en_disabled"] and plan["en_enabled"]:
+                # EN HIGH (disabilita motore)
+                wave_accumulator.append(pigpio.pulse(1 << plan["en_pin"], 0, 0))
+                plan["en_disabled"] = True
+
+        if on_pulses_this_tick:
             wave_accumulator.extend(on_pulses_this_tick)
             wave_accumulator.extend(off_pulses_this_tick)
 
-        # Se l'accumulatore ha abbastanza impulsi per una waveform o se tutti i motori hanno finito
         if len(wave_accumulator) >= MAX_PULSES_PER_WAVE or (not active_motors and wave_accumulator):
-            created_wave_id = create_wave(wave_accumulator) # Crea la waveform con gli impulsi accumulati
-            if created_wave_id is not None: # create_wave potrebbe restituire None in caso di errore grave
-                 generated_wave_ids.append(created_wave_id)
-            wave_accumulator = [] # Resetta l'accumulatore
-
-            # Non c'è più il break per MAX_WAVE_CHAIN_SIZE qui, si accumulano tutti gli ID.
-            # La gestione di MAX_WAVE_CHAIN_SIZE è demandata a execute_wave_chain.
+            created_wave_id = create_wave(wave_accumulator)
+            if created_wave_id is not None:
+                generated_wave_ids.append(created_wave_id)
+            wave_accumulator = []
 
     if not generated_wave_ids and any(p["steps_total"] > 0 for p in pulse_plans.values()):
         logging.warning("Nessun wave_id generato nonostante ci fossero motori con target di step > 0.")
-        # Questo potrebbe indicare un problema logico o che MAX_PULSES_PER_WAVE è troppo grande
-        # rispetto al numero totale di impulsi per movimenti molto brevi.
 
     logging.info(f"Generati {len(generated_wave_ids)} ID di waveform.")
     return generated_wave_ids
@@ -794,17 +792,6 @@ def start_simulation_view(request):
 
 @api_view(['POST'])
 def execute_route_view(request):
-    """
-    Riceve una lista di targets e li esegue in sequenza come una rotta.
-    Esempio body:
-    {
-        "route": [
-            {"extruder": 50, "conveyor": 400},
-            {"extruder": 50, "conveyor": 0},
-            {"extruder": -50, "conveyor": 0}
-        ]
-    }
-    """
     global pi
     if not pi or not pi.connected:
         log_error("execute_route_view: pigpio non connesso.")
