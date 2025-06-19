@@ -817,6 +817,10 @@ def execute_route_view(request):
             return JsonResponse({"log": "Nessun percorso fornito", "error": "Input non valido"}, status=400)
 
         for idx, step in enumerate(route):
+            # Salta il primo movimento se tutti i valori sono zero
+            if idx == 0 and all((isinstance(v, (int, float)) and v == 0) for v in step.values()):
+                logging.info(f"Salto il primo movimento perché tutti i target sono zero: {step}")
+                continue
             validate_targets(step)
             manage_motor_pins(step)
             ensure_pigpio_connection()
