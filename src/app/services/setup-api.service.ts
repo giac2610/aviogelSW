@@ -120,6 +120,11 @@ export class SetupAPIService {
     return this.http.post(url, { targets: { ...targets } });
   }
 
+  executeRoute(route: any[]): Observable<any> {
+    const url = `${this.apiUrl}motors/execute-route/`;
+    return this.http.post(url, { route });
+  }
+
   initializeCamera(): Observable<any> {
     const url = `${this.apiUrl}camera/initialize-camera/`;
     return this.http.post(url, {});

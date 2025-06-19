@@ -96,22 +96,18 @@ export class BlobSimulationPage implements OnInit {
         if (res.status === 'success') {
           this.presentToast('Rotta ottenuta con successo');
           // console.log('percorso:', res.motor_commands);
-          for (const command in res.motor_commands) {
-            const request = {"targets": res.motor_commands[command]};
-            this.motorsControlService.moveMotor(request).subscribe({
+            this.configService.executeRoute(res.motor_commands).subscribe({
               next: (moveRes) => {
                 if (moveRes.status === 'success') {
-                  console.log(`Comando ${command} inserito in coda con successo`);
+                  console.log(`Comandi inserito in coda con successo`);
                 } else {
-                  this.presentToast(`Errore nell'esecuzione del comando ${command}: ${moveRes.message}`, 'danger');
+                  this.presentToast(`Errore nell'esecuzione: ${moveRes.message}`, 'danger');
                 }
               }, 
               error: (err) => {
-                this.presentToast(`Errore nella richiesta del comando ${command}: ${err.message}`, 'danger');
+                this.presentToast(`Errore nella richiesta: ${err.message}`, 'danger');
               }
             });
-            await this.delay(2000); // Attendi 1 secondo tra i comandi
-          }
           // Se la risposta contiene l'immagine base64:
           if (res.plot_graph_base64) {
             this.graphUrl = 'data:image/png;base64,' + res.plot_graph_base64;
