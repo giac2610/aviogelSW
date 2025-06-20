@@ -48,8 +48,9 @@ MOTORS = {
     "conveyor": {"STEP": 12, "DIR": 5, "EN": 7}
 }
 
-# --- Parametri di Movimento Professionale ---
-S_CURVE_ACCEL_STEPS = 400
+# --- PARAMETRO PER ACCELERAZIONE LINEARE ---
+# Definisce su quanti passi avviene la rampa di accelerazione/decelerazione.
+LINEAR_ACCEL_STEPS = 400
 
 # ==============================================================================
 # ARCHITETTURA REFACTORING: Classi per la Gestione del Movimento
@@ -66,35 +67,40 @@ class MotorConfig:
     max_freq_hz: float
 
 class MotionPlanner:
-    """Il cervello del sistema. Pianifica movimenti coordinati con profilo S-Curve."""
+    """Il cervello del sistema. Pianifica movimenti coordinati."""
     def __init__(self, motor_configs: dict[str, MotorConfig]):
         self.motor_configs = motor_configs
         logging.info(f"MotionPlanner inizializzato con motori: {list(motor_configs.keys())}")
 
-    def _generate_s_curve_profile(self, total_steps: int, max_freq_hz: float) -> list[float]:
-        """Genera i timestamp per ogni passo usando un profilo S-Curve (ottimizzato con NumPy)."""
+    def _generate_trapezoidal_profile(self, total_steps: int, max_freq_hz: float) -> list[float]:
+        """
+        Genera i timestamp per ogni passo usando un profilo Trapezoidale (accelerazione lineare).
+        Ottimizzato con NumPy.
+        """
         if total_steps == 0:
             return []
 
-        i = np.arange(total_steps, dtype=np.float64)
-        accel_steps = min(S_CURVE_ACCEL_STEPS, total_steps // 2)
+        accel_steps = min(LINEAR_ACCEL_STEPS, total_steps // 2)
         decel_start_step = total_steps - accel_steps
+
+        i = np.arange(total_steps, dtype=np.float64)
         freq = np.full(total_steps, max_freq_hz, dtype=np.float64)
 
+        # Fase di accelerazione lineare
         if accel_steps > 0:
             accel_mask = i < accel_steps
-            completion = i[accel_mask] / accel_steps
-            factor = 0.5 * (1 - np.cos(completion * np.pi))
-            freq[accel_mask] = np.maximum(1.0, max_freq_hz * factor)
+            freq[accel_mask] = max_freq_hz * (i[accel_mask] + 1) / accel_steps
 
+        # Fase di decelerazione lineare
         if decel_start_step < total_steps:
             decel_mask = i >= decel_start_step
             steps_into_decel = i[decel_mask] - decel_start_step
-            completion = steps_into_decel / accel_steps
-            factor = 0.5 * (1 - np.cos((1 - completion) * np.pi))
-            freq[decel_mask] = np.maximum(1.0, max_freq_hz * factor)
+            remaining_steps = accel_steps - steps_into_decel
+            freq[decel_mask] = max_freq_hz * remaining_steps / accel_steps
         
-        periods_us = 1_000_000.0 / np.maximum(1.0, freq)
+        np.maximum(freq, 1.0, out=freq) # Assicura che la frequenza non sia mai zero
+
+        periods_us = 1_000_000.0 / freq
         timestamps_us = np.cumsum(periods_us)
         
         return timestamps_us.tolist()
@@ -124,7 +130,8 @@ class MotionPlanner:
             return [], set(), {}
 
         logging.info(f"Pianificazione movimento. Asse Master: '{master_id}' ({master_steps} passi).")
-        master_profile_ts = self._generate_s_curve_profile(master_steps, move_data[master_id]["config"].max_freq_hz)
+        # --- MODIFICA: Chiamata alla nuova funzione di profilo lineare ---
+        master_profile_ts = self._generate_trapezoidal_profile(master_steps, move_data[master_id]["config"].max_freq_hz)
 
         dir_on_mask = 0
         dir_off_mask = 0
@@ -150,7 +157,6 @@ class MotionPlanner:
             current_time_us = master_profile_ts[i]
             total_period_us = current_time_us - last_time_us
 
-            # --- LOGICA CORRETTA PER PREVENIRE LA PERDITA DI PASSI ---
             if total_period_us >= 2:
                 on_width_us = 2
                 off_width_us = int(round(total_period_us - on_width_us))
@@ -206,7 +212,6 @@ class MotorController:
 
         created_wave_ids = []
         try:
-            # Abilita i motori (la direzione è già gestita dalla timeline)
             for motor_name in active_motors:
                 config = self.motor_configs[motor_name]
                 self.pi.write(config.en_pin, 0)
@@ -305,9 +310,8 @@ def handle_exception(e):
     logging.error(f"Errore interno API: {error_details}")
     return JsonResponse({"log": f"Errore interno: {type(e).__name__}", "error": str(e)}, status=500)
 
-
 # ==============================================================================
-# AVVIO DEL THREAD WORKER (Corretto e reinserito)
+# AVVIO DEL THREAD WORKER
 # ==============================================================================
 if os.environ.get('RUN_MAIN') == 'true':
     logging.info("Processo principale di Django rilevato. Avvio del MotorWorker...")
@@ -315,9 +319,8 @@ if os.environ.get('RUN_MAIN') == 'true':
 else:
     logging.info("Processo di reload rilevato. Il MotorWorker non verrà avviato qui.")
 
-
 # ==============================================================================
-# API VIEWS (Interfaccia esterna preservata, logica interna adattata)
+# API VIEWS (Interfaccia esterna preservata)
 # ==============================================================================
 
 @api_view(['POST'])
