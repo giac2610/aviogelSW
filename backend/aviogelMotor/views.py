@@ -7,8 +7,9 @@ import threading
 import sys
 import logging
 import queue
+import math
 from shutil import copyfile
-from itertools import groupby
+from dataclasses import dataclass
 
 from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
@@ -20,16 +21,15 @@ if not IS_RPI:
     from unittest.mock import MagicMock
     sys.modules["pigpio"] = MagicMock()
     logging.warning(f"Piattaforma non-Raspberry Pi rilevata ({sys.platform}). 'pigpio' simulato.")
-import pigpio  # type: ignore
+import pigpio #type: ignore
 
-# --- Configurazione Percorsi, Logging, etc. ---
+# --- Configurazione e Logging ---
 try:
     CURRENT_SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 except NameError:
     CURRENT_SCRIPT_DIR = os.getcwd()
 CONFIG_DIR = os.path.join(CURRENT_SCRIPT_DIR, '../config')
 SETTINGS_FILE = os.path.join(CONFIG_DIR, 'setup.json')
-EXAMPLE_JSON_PATH = os.path.join(CONFIG_DIR, 'setup.example.json')
 LOG_FILE = os.path.join(CURRENT_SCRIPT_DIR, 'motorLog.log')
 
 logging.basicConfig(
@@ -38,336 +38,331 @@ logging.basicConfig(
     handlers=[logging.FileHandler(LOG_FILE), logging.StreamHandler()]
 )
 
-def initialize_config_file():
-    if not os.path.exists(SETTINGS_FILE):
-        logging.warning(f"'{SETTINGS_FILE}' non trovato.")
-        if not os.path.exists(EXAMPLE_JSON_PATH):
-            raise FileNotFoundError(f"'{EXAMPLE_JSON_PATH}' mancante.")
-        os.makedirs(CONFIG_DIR, exist_ok=True)
-        copyfile(EXAMPLE_JSON_PATH, SETTINGS_FILE)
-        logging.info(f"Config creata da esempio in '{SETTINGS_FILE}'")
-initialize_config_file()
+# --- MAPPATURA HARDWARE FONDAMENTALE (Correzione) ---
+# Questa mappatura è critica e definisce i collegamenti fisici.
+MOTORS = {
+    "extruder": {"STEP": 13, "DIR": 6, "EN": 3},
+    "syringe": {"STEP": 18, "DIR": 27, "EN": 8},
+    "conveyor": {"STEP": 12, "DIR": 5, "EN": 7}
+}
 
-class SettingsSerializer:
-    def __init__(self, data=None, partial=False): self.initial_data = data; self._validated_data = data or {}; self.errors = {}
-    def is_valid(self, raise_exception=False): return True
-    @property
-    def validated_data(self): return self._validated_data
+# --- Parametri di Movimento Professionale ---
+# Numero di passi per completare la fase di "jerk control".
+# Un valore più alto produce una curva più dolce ma un'accelerazione più lenta.
+S_CURVE_ACCEL_STEPS = 400
 
-pi = None
-def get_pigpio_instance():
-    global pi
-    if pi and pi.connected: return pi
-    logging.warning("pigpio non connesso. Tentativo di (ri)connessione...")
-    if pi:
-        try: pi.stop()
-        except: pass
-    try:
-        if IS_RPI:
-            pi = pigpio.pi()
-            if pi.connected: logging.info("Connessione a pigpio stabilita."); _initialize_gpio_pins(); return pi
-        else:
-            pi = pigpio.pi(); logging.info("Utilizzo di istanza pigpio simulata."); return pi
-    except Exception as e:
-        logging.error(f"Fallimento init pigpio: {e}"); pi = None; return None
+# ==============================================================================
+# ARCHITETTURA REFACTORING: Classi per la Gestione del Movimento
+# ==============================================================================
 
-MOTORS = {"extruder": {"STEP": 13, "DIR": 6, "EN": 3}, "syringe": {"STEP": 18, "DIR": 27, "EN": 8}, "conveyor": {"STEP": 12, "DIR": 5, "EN": 7}}
-current_speeds = {motor: 0 for motor in MOTORS.keys()}
+@dataclass
+class MotorConfig:
+    """Struttura dati per contenere la configurazione completa di un singolo motore."""
+    name: str
+    step_pin: int
+    dir_pin: int
+    en_pin: int
+    steps_per_mm: float
+    max_freq_hz: float
 
-def _initialize_gpio_pins():
-    pi_instance = get_pigpio_instance()
-    if not pi_instance or not getattr(pi_instance, 'connected', False): return
-    for motor_name, pins in MOTORS.items():
+class MotionPlanner:
+    """Il cervello del sistema. Pianifica movimenti coordinati con profilo S-Curve."""
+    def __init__(self, motor_configs: dict[str, MotorConfig]):
+        self.motor_configs = motor_configs
+        logging.info(f"MotionPlanner inizializzato con motori: {list(motor_configs.keys())}")
+
+    def _generate_s_curve_profile(self, total_steps: int, max_freq_hz: float) -> list[float]:
+        """Genera i timestamp per ogni passo usando un profilo S-Curve."""
+        if total_steps == 0:
+            return []
+            
+        timestamps_us = [0.0] * total_steps
+        current_time_us = 0.0
+        accel_steps = min(S_CURVE_ACCEL_STEPS, total_steps // 2)
+        decel_start_step = total_steps - accel_steps
+
+        for i in range(total_steps):
+            freq = 1.0
+            if i < accel_steps:
+                completion = i / accel_steps
+                factor = 0.5 * (1 - math.cos(completion * math.pi))
+                freq = max(1.0, max_freq_hz * factor)
+            elif i >= decel_start_step:
+                steps_into_decel = i - decel_start_step
+                completion = steps_into_decel / accel_steps
+                factor = 0.5 * (1 - math.cos((1 - completion) * math.pi))
+                freq = max(1.0, max_freq_hz * factor)
+            else:
+                freq = max_freq_hz
+
+            period_us = 1_000_000.0 / freq
+            current_time_us += period_us
+            timestamps_us[i] = current_time_us
+            
+        return timestamps_us
+
+    def plan_move(self, targets: dict[str, float]) -> tuple[list, set, dict]:
+        """Pianifica un movimento coordinato (interpolazione lineare)."""
+        if not targets:
+            return [], set(), {}
+
+        move_data = {}
+        for motor_id, distance in targets.items():
+            if distance == 0 or motor_id not in self.motor_configs:
+                continue
+            config = self.motor_configs[motor_id]
+            move_data[motor_id] = {
+                "steps": int(abs(distance) * config.steps_per_mm),
+                "dir": 1 if distance >= 0 else 0,
+                "config": config
+            }
+        
+        if not move_data:
+            return [], set(), {}
+
+        master_id = max(move_data, key=lambda k: move_data[k]["steps"])
+        master_steps = move_data[master_id]["steps"]
+        if master_steps == 0:
+            return [], set(), {}
+
+        logging.info(f"Pianificazione movimento. Asse Master: '{master_id}' ({master_steps} passi).")
+        master_profile_ts = self._generate_s_curve_profile(master_steps, move_data[master_id]["config"].max_freq_hz)
+
+        final_pulses = []
+        bresenham_errors = {mid: -master_steps / 2 for mid in move_data if mid != master_id}
+        
+        last_time_us = 0.0
+        for i in range(master_steps):
+            on_mask = 1 << move_data[master_id]["config"].step_pin
+            for slave_id in bresenham_errors:
+                bresenham_errors[slave_id] += move_data[slave_id]["steps"]
+                if bresenham_errors[slave_id] > 0:
+                    on_mask |= 1 << move_data[slave_id]["config"].step_pin
+                    bresenham_errors[slave_id] -= master_steps
+            
+            current_time_us = master_profile_ts[i]
+            total_period_us = current_time_us - last_time_us
+            pulse_width_us = int(round(total_period_us / 2))
+            
+            if pulse_width_us > 0:
+                final_pulses.append(pigpio.pulse(on_mask, 0, pulse_width_us))
+                final_pulses.append(pigpio.pulse(0, on_mask, pulse_width_us))
+            
+            last_time_us = current_time_us
+
+        active_motors = {m["config"].name for m in move_data.values()}
+        directions = {mid: m["dir"] for mid, m in move_data.items()}
+        return final_pulses, active_motors, directions
+
+class MotorController:
+    """Gestisce l'interazione diretta con pigpio e l'hardware."""
+    def __init__(self, motor_configs: dict[str, MotorConfig]):
+        self.pi = self._get_pigpio_instance()
+        self.motor_configs = motor_configs
+        self._initialize_gpio_pins()
+        self.MAX_PULSES_PER_WAVE = 4096
+
+    def _get_pigpio_instance(self):
+        logging.info("Tentativo di connessione a pigpio...")
         try:
-            pi_instance.set_mode(pins["STEP"], pigpio.OUTPUT); pi_instance.set_mode(pins["DIR"], pigpio.OUTPUT)
-            pi_instance.set_mode(pins["EN"], pigpio.OUTPUT); pi_instance.write(pins["EN"], 1)
-        except Exception as e: logging.error(f"Errore config pin per '{motor_name}': {e}")
+            if IS_RPI:
+                pi = pigpio.pi()
+                if pi.connected:
+                    logging.info("Connessione a pigpio stabilita.")
+                    return pi
+            else:
+                logging.info("Utilizzo di istanza pigpio simulata.")
+                return pigpio.pi()
+        except Exception as e:
+            logging.error(f"Fallimento init pigpio: {e}")
+            return None
+        return None
 
-motor_configs = {}
-def load_motor_config():
-    global motor_configs
+    def _initialize_gpio_pins(self):
+        if not self.pi or not self.pi.connected: return
+        for config in self.motor_configs.values():
+            self.pi.set_mode(config.step_pin, pigpio.OUTPUT)
+            self.pi.set_mode(config.dir_pin, pigpio.OUTPUT)
+            self.pi.set_mode(config.en_pin, pigpio.OUTPUT)
+            self.pi.write(config.en_pin, 1) # Disabilita di default
+
+    def execute_timeline(self, timeline: list, active_motors: set, directions: dict):
+        if not self.pi or not self.pi.connected:
+            raise ConnectionError("Esecuzione fallita: pigpio non connesso.")
+        if not timeline:
+            logging.warning("Timeline vuota, nessun movimento da eseguire.")
+            return
+
+        created_wave_ids = []
+        try:
+            for motor_name in active_motors:
+                config = self.motor_configs[motor_name]
+                self.pi.write(config.dir_pin, directions[motor_name])
+                self.pi.write(config.en_pin, 0)
+            time.sleep(0.01)
+
+            wave_chain_data = []
+            for i in range(0, len(timeline), self.MAX_PULSES_PER_WAVE):
+                chunk = timeline[i:i + self.MAX_PULSES_PER_WAVE]
+                self.pi.wave_add_generic(chunk)
+                wave_id = self.pi.wave_create()
+                if wave_id < 0:
+                    raise pigpio.error(f"Errore creazione waveform (codice {wave_id})")
+                created_wave_ids.append(wave_id)
+                wave_chain_data.extend([255, 0, wave_id])
+            
+            wave_chain_data.extend([255, 2, 0, 0])
+
+            logging.info(f"Esecuzione catena di {len(created_wave_ids)} waveforms...")
+            self.pi.wave_chain(wave_chain_data)
+            while self.pi.wave_tx_busy():
+                time.sleep(0.05)
+            logging.info("Esecuzione catena waveform completata.")
+
+        finally:
+            if self.pi and self.pi.connected:
+                self.pi.wave_tx_stop()
+                for wave_id in created_wave_ids:
+                    try: self.pi.wave_delete(wave_id)
+                    except pigpio.error: pass
+                for config in self.motor_configs.values():
+                    self.pi.write(config.en_pin, 1)
+                logging.info(f"Pulizia post-movimento completata (cancellate {len(created_wave_ids)} waveforms).")
+
+# ==============================================================================
+# Inizializzazione del Sistema
+# ==============================================================================
+def load_system_config() -> dict[str, MotorConfig]:
+    """Carica la configurazione dal file JSON e la trasforma in oggetti MotorConfig."""
+    configs = {}
     try:
         with open(SETTINGS_FILE, "r") as f:
-            full_config = json.load(f)
-            motor_configs = full_config.get("motors", {})
-            logging.debug("Configurazione motori caricata/ricaricata.")
-    except (FileNotFoundError, json.JSONDecodeError) as e:
-        logging.error(f"Errore caricamento '{SETTINGS_FILE}': {e}."); motor_configs = {}
-    return motor_configs
+            full_config = json.load(f).get("motors", {})
+            for name, params in full_config.items():
+                if name not in MOTORS: continue
+                
+                steps_per_rev = float(params.get("stepOneRev", 200.0))
+                microsteps = int(params.get("microstep", 8))
+                pitch = float(params.get("pitch", 5.0))
+                if pitch == 0: raise ValueError(f"'pitch' per '{name}' non può essere zero.")
+                max_speed_mms = float(params.get("maxSpeed", 250.0))
+                
+                steps_per_mm = (steps_per_rev * microsteps) / pitch
+                max_freq_hz = max_speed_mms * steps_per_mm
 
-def write_settings(data):
-    with open(SETTINGS_FILE, 'w') as f: json.dump(data, f, indent=4)
-    logging.info(f"Configurazione salvata in '{SETTINGS_FILE}'.")
+                configs[name] = MotorConfig(
+                    name=name,
+                    step_pin=MOTORS[name]["STEP"],
+                    dir_pin=MOTORS[name]["DIR"],
+                    en_pin=MOTORS[name]["EN"],
+                    steps_per_mm=steps_per_mm,
+                    max_freq_hz=max_freq_hz
+                )
+            logging.info("Configurazione motori caricata e parsata.")
+    except Exception as e:
+        logging.error(f"Errore caricamento configurazione: {e}")
+    return configs
 
-load_motor_config(); get_pigpio_instance()
+# Istanze globali dei controller di sistema
+MOTOR_CONFIGS = load_system_config()
+MOTION_PLANNER = MotionPlanner(MOTOR_CONFIGS)
+MOTOR_CONTROLLER = MotorController(MOTOR_CONFIGS)
 
 motor_command_queue = queue.Queue()
 
-# ==============================================================================
-# Motor Worker CORRETTO con gestione finally per task_done()
-# ==============================================================================
 def motor_worker():
-    logging.info("Motor worker avviato.")
+    """Worker thread che orchestra la pianificazione e l'esecuzione dei movimenti."""
+    logging.info("Motor worker avviato con architettura professionale.")
     while True:
         targets = motor_command_queue.get()
         try:
-            logging.info(f"Worker: nuovo comando {targets}")
-            execute_movement(targets)
-            logging.info(f"Worker: comando {targets} completato.")
+            logging.info(f"Worker: ricevuto comando {targets}")
+            timeline, active_motors, directions = MOTION_PLANNER.plan_move(targets)
+            MOTOR_CONTROLLER.execute_timeline(timeline, active_motors, directions)
+            logging.info(f"Worker: comando {targets} completato con successo.")
         except Exception as e:
-            # L'errore viene comunque loggato
-            logging.error(f"Errore durante l'esecuzione del comando {targets} nel motor_worker: {e}", exc_info=True)
+            logging.error(f"Errore critico nel motor_worker su comando {targets}: {e}", exc_info=True)
         finally:
-            # Assicuriamoci che la coda venga notificata in ogni caso, anche in caso di errore
             motor_command_queue.task_done()
 
 threading.Thread(target=motor_worker, daemon=True, name="MotorWorker").start()
 
-# ==============================================================================
-# Core Logic: Generazione ed Esecuzione Waveform
-# ==============================================================================
-MAX_PULSES_PER_WAVE = 4096
-
-def compute_motor_params(motor_id):
-    conf = motor_configs.get(motor_id, {}); steps_per_rev = float(conf.get("stepOneRev", 200.0)); microsteps = int(conf.get("microstep", 8))
-    pitch = float(conf.get("pitch", 5.0)); max_speed_mms = float(conf.get("maxSpeed", 250.0)); acceleration_mms2 = float(conf.get("acceleration", 800.0))
-    if pitch == 0: raise ValueError(f"'pitch' per '{motor_id}' non può essere zero.")
-    steps_per_mm = (steps_per_rev * microsteps) / pitch; max_freq_hz = max_speed_mms * steps_per_mm
-    accel_steps_s2 = acceleration_mms2 * steps_per_mm
-    accel_steps = int((max_freq_hz ** 2) / (2 * accel_steps_s2)) if accel_steps_s2 > 0 else 0
-    return {"steps_per_mm": steps_per_mm, "max_freq": max_freq_hz, "accel_steps": max(1, accel_steps)}
-
-def compute_step_frequency(current_step, total_steps, accel_steps, max_freq):
-    decel_start_step = total_steps - accel_steps
-    if current_step < accel_steps: return max(1.0, (current_step + 1) / accel_steps * max_freq)
-    elif current_step >= decel_start_step:
-        steps_into_decel = current_step - decel_start_step; remaining_steps = accel_steps - steps_into_decel
-        return max(1.0, remaining_steps / accel_steps * max_freq)
-    else: return max_freq
-
-def _generate_motor_event_timeline(motor_id, distance_mm):
-    params = compute_motor_params(motor_id); step_pin = MOTORS[motor_id]["STEP"]
-    total_steps = int(abs(distance_mm) * params["steps_per_mm"])
-    if total_steps == 0: return []
-    accel_steps = min(params["accel_steps"], total_steps // 2); timeline = []; current_time_us = 0.0
-    for step in range(total_steps):
-        freq = compute_step_frequency(step, total_steps, accel_steps, params["max_freq"])
-        half_period_us = 500_000.0 / freq
-        timeline.append({'time_us': current_time_us, 'pin': step_pin, 'state': 1})
-        current_time_us += half_period_us
-        timeline.append({'time_us': current_time_us, 'pin': step_pin, 'state': 0})
-        current_time_us += half_period_us
-    return timeline
-
-def stop_all_motors():
-    pi_instance = get_pigpio_instance()
-    if not pi_instance or not pi_instance.connected: return
-    try:
-        pi_instance.wave_tx_stop()
-        pi_instance.wave_clear()
-        for pins in MOTORS.values():
-            pi_instance.write(pins["EN"], 1)
-        logging.info("Tutti i motori sono stati fermati e disabilitati.")
-    except Exception as e:
-        logging.error(f"Errore durante lo stop dei motori: {e}")
-
-# ==============================================================================
-# Funzione execute_movement con pulizia (finally) CORRETTA
-# ==============================================================================
-def execute_movement(targets):
-    pi_instance = get_pigpio_instance()
-    if not pi_instance or not pi_instance.connected:
-        raise ConnectionError("pigpio non connesso.")
-
-    master_timeline = []
-    active_motor_pins_en_mask = 0
-    for motor_id, distance_mm in targets.items():
-        # Rimuoviamo la logica 'syringe' hardcoded qui, per coerenza con i log
-        if motor_id not in MOTORS or distance_mm == 0:
-            continue
-        pi_instance.write(MOTORS[motor_id]["DIR"], 1 if distance_mm >= 0 else 0)
-        active_motor_pins_en_mask |= (1 << MOTORS[motor_id]["EN"])
-        logging.info(f"Generazione timeline per {motor_id} ({distance_mm}mm)...")
-        master_timeline.extend(_generate_motor_event_timeline(motor_id, distance_mm))
-    
-    if not master_timeline:
-        logging.warning("Nessun movimento richiesto."); return
-
-    logging.info(f"Timeline master creata con {len(master_timeline)} eventi. Ordinamento...")
-    master_timeline.sort(key=lambda e: e['time_us'])
-    logging.info("Ordinamento completato. Inizio esecuzione a flusso con `wave_chain`...")
-
-    # --- NUOVA LOGICA: Teniamo traccia degli ID delle waveform create ---
-    created_wave_ids = []
-    
-    try:
-        # Abilita i motori necessari
-        for motor_id, pins in MOTORS.items():
-            if (1 << pins["EN"]) & active_motor_pins_en_mask:
-                 pi_instance.write(pins["EN"], 0)
-        time.sleep(0.01)
-
-        wave_pulses = []
-        wave_chain_data = []
-
-        last_time_us = 0
-        for time_us, events_at_time in groupby(master_timeline, key=lambda e: e['time_us']):
-            delay_us = time_us - last_time_us
-            if delay_us > 0:
-                wave_pulses.append(pigpio.pulse(0, 0, int(round(delay_us))))
-            
-            on_mask, off_mask = 0, 0
-            for event in events_at_time:
-                if event['state'] == 1: on_mask |= (1 << event['pin'])
-                else: off_mask |= (1 << event['pin'])
-            wave_pulses.append(pigpio.pulse(on_mask, off_mask, 0))
-            last_time_us = time_us
-
-            if len(wave_pulses) >= MAX_PULSES_PER_WAVE:
-                pi_instance.wave_add_generic(wave_pulses)
-                wave_id = pi_instance.wave_create()
-                created_wave_ids.append(wave_id)  # Salva l'ID creato
-                wave_chain_data.extend([255, 0, wave_id])
-                wave_pulses = []
-
-        if wave_pulses:
-            pi_instance.wave_add_generic(wave_pulses)
-            wave_id = pi_instance.wave_create()
-            created_wave_ids.append(wave_id)  # Salva l'ID creato
-            wave_chain_data.extend([255, 0, wave_id])
-
-        wave_chain_data.extend([255, 2, 0, 0])
-
-        if wave_chain_data:
-            logging.info(f"Invio della catena di {len(created_wave_ids)} waveform...")
-            pi_instance.wave_chain(wave_chain_data)
-            while pi_instance.wave_tx_busy():
-                time.sleep(0.05)
-            logging.info("Esecuzione catena waveform completata.")
-
-    finally:
-        # --- NUOVA LOGICA DI PULIZIA ---
-        try:
-            # 1. Ferma qualsiasi trasmissione
-            pi_instance.wave_tx_stop()
-        except Exception as e:
-            logging.error(f"Errore durante pi.wave_tx_stop(): {e}")
-
-        # 2. Cancella esplicitamente ogni waveform che abbiamo creato
-        for wave_id in created_wave_ids:
-            try:
-                pi_instance.wave_delete(wave_id)
-            except Exception as e:
-                logging.error(f"Errore durante la cancellazione della wave_id {wave_id}: {e}")
-        
-        # 3. Disabilita i motori
-        for pins in MOTORS.values():
-            try:
-                if pi_instance.connected:
-                    pi_instance.write(pins["EN"], 1)
-            except Exception as e:
-                logging.error(f"Errore disabilitazione pin EN {pins['EN']}: {e}")
-        
-        logging.info(f"Pulizia post-movimento completata (cancellate {len(created_wave_ids)} waveforms).")
-        
 def handle_exception(e):
-    import traceback; error_details = traceback.format_exc(); logging.error(f"Errore interno: {error_details}")
-    error_type = type(e).__name__; error_message = str(e)
-    return JsonResponse({"log": f"Errore interno: {error_type}", "error": error_message}, status=500)
+    import traceback
+    error_details = traceback.format_exc()
+    logging.error(f"Errore interno API: {error_details}")
+    return JsonResponse({"log": f"Errore interno: {type(e).__name__}", "error": str(e)}, status=500)
 
 # ==============================================================================
-# API VIEWS (Originali)
+# API VIEWS (Interfaccia esterna, logica di business delegata)
 # ==============================================================================
-@api_view(['POST'])
-def update_config_view(request):
-    try: load_motor_config(); return JsonResponse({"log": "Configurazione aggiornata", "status": "success"}, status=200)
-    except Exception as e: logging.error(f"Errore aggiornamento config: {str(e)}"); return JsonResponse({"log": "Errore aggiornamento configurazione", "error": str(e)}, status=500)
 
 @api_view(['POST'])
 def move_motor_view(request):
     try:
-        data = json.loads(request.body); targets = data.get("targets")
-        if not targets: return JsonResponse({"log": "Nessun target fornito", "error": "Input non valido"}, status=400)
+        data = json.loads(request.body)
+        targets = data.get("targets")
+        if not targets or not isinstance(targets, dict):
+            return JsonResponse({"log": "Input non valido", "error": "targets deve essere un dizionario"}, status=400)
         motor_command_queue.put(targets)
         return JsonResponse({"log": "Movimento messo in coda", "status": "queued"})
-    except Exception as e: return handle_exception(e)
+    except Exception as e:
+        return handle_exception(e)
+
+@api_view(['POST'])
+def execute_route_view(request):
+    try:
+        data = json.loads(request.body)
+        route = data.get("route", [])
+        if not isinstance(route, list):
+            return JsonResponse({"log": "Percorso non valido", "error": "Input non valido"}, status=400)
+        
+        logging.info(f"Accodamento rotta con {len(route)} passi.")
+        for step in route:
+            if isinstance(step, dict):
+                motor_command_queue.put(step)
+        
+        return JsonResponse({"log": f"Rotta con {len(route)} passi accodata con successo.", "status": "queued"})
+    except Exception as e:
+        return handle_exception(e)
 
 @api_view(['POST'])
 def stop_motor_view(request):
     try:
         logging.info("Richiesta di STOP motori ricevuta.")
         while not motor_command_queue.empty():
-            try: motor_command_queue.get_nowait()
-            except queue.Empty: continue
-        stop_all_motors()
-        # Svuotare la coda e chiamare task_done per ogni elemento rimosso
-        # per sbloccare qualsiasi `queue.join()` in attesa.
-        while not motor_command_queue.empty():
             try:
                 motor_command_queue.get_nowait()
                 motor_command_queue.task_done()
             except queue.Empty:
                 continue
-        return JsonResponse({"log": "Motori fermati e coda pulita con successo", "status": "success"})
-    except Exception as e: return handle_exception(e)
+        
+        if MOTOR_CONTROLLER.pi and MOTOR_CONTROLLER.pi.connected:
+            MOTOR_CONTROLLER.pi.wave_tx_stop()
+
+        logging.info("Movimento fermato e coda di comandi pulita.")
+        return JsonResponse({"log": "Comando di stop inviato.", "status": "success"})
+    except Exception as e:
+        return handle_exception(e)
 
 @api_view(['POST'])
 def save_motor_config_view(request):
     try:
-        try:
-            with open(SETTINGS_FILE, 'r') as f: full_config = json.load(f)
-        except (FileNotFoundError, json.JSONDecodeError): full_config = {}
-        if 'motors' not in full_config: full_config['motors'] = {}
-        new_data = json.loads(request.body)
-        serializer = SettingsSerializer(data=new_data)
-        if serializer.is_valid():
-            full_config['motors'].update(serializer.validated_data)
-            write_settings(full_config) 
-            load_motor_config()
-            return JsonResponse({"log": "Configurazione motori salvata", "success": True, "settings": full_config})
-        else: return JsonResponse({"log": "Errore di validazione", "errors": serializer.errors}, status=400)
-    except Exception as e: return handle_exception(e)
+        with open(SETTINGS_FILE, 'r') as f:
+            full_config = json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError):
+        full_config = {}
+    
+    new_data = json.loads(request.body)
+    full_config.setdefault('motors', {}).update(new_data)
+
+    with open(SETTINGS_FILE, 'w') as f:
+        json.dump(full_config, f, indent=4)
+    logging.info(f"Configurazione salvata. RIAVVIARE IL SERVIZIO per applicare le modifiche.")
+    
+    return JsonResponse({"log": "Configurazione motori salvata. È richiesto un riavvio per applicare.", "success": True})
 
 @csrf_exempt
 @api_view(['GET'])
 def get_motor_speeds_view(request):
-    global current_speeds
-    try:
-        speeds_snapshot = {motor: current_speeds.get(motor, 0) for motor in MOTORS.keys()}
-        return JsonResponse({"log": "Velocità motori (stato placeholder)", "speeds": speeds_snapshot})
-    except Exception as e: return handle_exception(e)
-
-@api_view(['POST'])
-def start_simulation_view(request):
-    try:
-        simulation_steps = []; extruder_direction = 1
-        for _ in range(5):
-            for _ in range(3): simulation_steps.append({"syringe": 5}); simulation_steps.append({"extruder": 50 * extruder_direction})
-            extruder_direction *= -1; simulation_steps.append({"conveyor": 50})
-        logging.info("Avvio simulazione predefinita...")
-        for i, step in enumerate(simulation_steps):
-            logging.info(f"Accodamento passo simulazione {i+1}: {step}"); motor_command_queue.put(step)
-        
-        motor_command_queue.join()
-        logging.info("Simulazione completata.")
-        return JsonResponse({"log": "Simulazione completata con successo", "status": "success"})
-    except Exception as e: return handle_exception(e)
-
-@api_view(['POST'])
-def execute_route_view(request):
-    try:
-        data = json.loads(request.body); route = data.get("route", [])
-        if not isinstance(route, list) or not route: return JsonResponse({"log": "Percorso non valido", "error": "Input non valido"}, status=400)
-        logging.info(f"Inizio esecuzione rotta con {len(route)} passi.")
-        for idx, step in enumerate(route):
-            if idx == 0 and all((isinstance(v, (int, float)) and v == 0) for v in step.values()):
-                logging.info(f"Salto primo movimento nullo: {step}"); continue
-            step_to_execute = dict(step)
-            logging.info(f"Accodamento passo rotta {idx+1}: {step_to_execute}")
-            motor_command_queue.put(step_to_execute)
-
-        motor_command_queue.join()
-        logging.info("Rotta completata.")
-        return JsonResponse({"log": "Rotta eseguita con successo", "status": "success"})
-    except Exception as e:
-        return handle_exception(e)
+    return JsonResponse({"log": "API di velocità non implementata nella nuova architettura", "speeds": {}})
