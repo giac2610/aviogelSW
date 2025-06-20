@@ -4,7 +4,7 @@
 import numpy as np
 
 import json
-import os
+import os # Assicurati che questo import sia presente
 import time
 import threading
 import sys
@@ -24,7 +24,7 @@ if not IS_RPI:
     from unittest.mock import MagicMock
     sys.modules["pigpio"] = MagicMock()
     logging.warning(f"Piattaforma non-Raspberry Pi rilevata ({sys.platform}). 'pigpio' simulato.")
-import pigpio
+import pigpio #type: ignore
 
 # --- Configurazione e Logging ---
 try:
@@ -129,7 +129,6 @@ class MotionPlanner:
         logging.info(f"Pianificazione movimento. Asse Master: '{master_id}' ({master_steps} passi).")
         master_profile_ts = self._generate_s_curve_profile(master_steps, move_data[master_id]["config"].max_freq_hz)
 
-        # --- Setup della Direzione nella Waveform ---
         dir_on_mask = 0
         dir_off_mask = 0
         for motor_id, move in move_data.items():
@@ -138,10 +137,9 @@ class MotionPlanner:
             else:
                 dir_off_mask |= (1 << move["config"].dir_pin)
         
-        setup_pulse = pigpio.pulse(dir_on_mask, dir_off_mask, 20) # 20us setup time
+        setup_pulse = pigpio.pulse(dir_on_mask, dir_off_mask, 20)
         final_pulses = [setup_pulse]
         
-        # --- Logica di Bresenham per i passi ---
         bresenham_errors = {mid: -master_steps / 2 for mid in move_data if mid != master_id}
         last_time_us = 0.0
         for i in range(master_steps):
@@ -206,7 +204,6 @@ class MotorController:
 
         created_wave_ids = []
         try:
-            # Abilita i motori (la direzione è già gestita dalla timeline)
             for motor_name in active_motors:
                 config = self.motor_configs[motor_name]
                 self.pi.write(config.en_pin, 0)
@@ -297,13 +294,27 @@ def motor_worker():
             logging.error(f"Errore critico nel motor_worker su comando {targets}: {e}", exc_info=True)
         finally:
             motor_command_queue.task_done()
-            time.sleep(0.1) # Pausa per stabilità pigpio
+            time.sleep(0.1)
 
 def handle_exception(e):
     import traceback
     error_details = traceback.format_exc()
     logging.error(f"Errore interno API: {error_details}")
     return JsonResponse({"log": f"Errore interno: {type(e).__name__}", "error": str(e)}, status=500)
+
+
+# ==============================================================================
+# AVVIO DEL THREAD WORKER (Corretto e reinserito)
+# ==============================================================================
+# Questo blocco assicura che il thread del worker parta solo nel processo principale
+# dell'applicazione Django, e non nel processo "watcher" del reloader,
+# risolvendo il problema del worker "fantasma" in ambiente di sviluppo.
+if os.environ.get('RUN_MAIN') == 'true':
+    logging.info("Processo principale di Django rilevato. Avvio del MotorWorker...")
+    threading.Thread(target=motor_worker, daemon=True, name="MotorWorker").start()
+else:
+    logging.info("Processo di reload rilevato. Il MotorWorker non verrà avviato qui.")
+
 
 # ==============================================================================
 # API VIEWS (Interfaccia esterna preservata, logica interna adattata)
