@@ -182,6 +182,7 @@ def execute_movement(targets):
     master_timeline = []
     active_motor_pins_en_mask = 0
     for motor_id, distance_mm in targets.items():
+        # Rimuoviamo la logica 'syringe' hardcoded qui, per coerenza con i log
         if motor_id not in MOTORS or distance_mm == 0:
             continue
         pi_instance.write(MOTORS[motor_id]["DIR"], 1 if distance_mm >= 0 else 0)
@@ -196,12 +197,14 @@ def execute_movement(targets):
     master_timeline.sort(key=lambda e: e['time_us'])
     logging.info("Ordinamento completato. Inizio esecuzione a flusso con `wave_chain`...")
 
+    # --- NUOVA LOGICA: Teniamo traccia degli ID delle waveform create ---
+    created_wave_ids = []
+    
     try:
-        # Abilita i motori necessari impostando i loro pin EN a 0 (LOW)
+        # Abilita i motori necessari
         for motor_id, pins in MOTORS.items():
             if (1 << pins["EN"]) & active_motor_pins_en_mask:
                  pi_instance.write(pins["EN"], 0)
-        
         time.sleep(0.01)
 
         wave_pulses = []
@@ -213,53 +216,51 @@ def execute_movement(targets):
             if delay_us > 0:
                 wave_pulses.append(pigpio.pulse(0, 0, int(round(delay_us))))
             
-            on_mask = 0
-            off_mask = 0
+            on_mask, off_mask = 0, 0
             for event in events_at_time:
-                if event['state'] == 1:
-                    on_mask |= (1 << event['pin'])
-                else:
-                    off_mask |= (1 << event['pin'])
+                if event['state'] == 1: on_mask |= (1 << event['pin'])
+                else: off_mask |= (1 << event['pin'])
             wave_pulses.append(pigpio.pulse(on_mask, off_mask, 0))
             last_time_us = time_us
 
             if len(wave_pulses) >= MAX_PULSES_PER_WAVE:
                 pi_instance.wave_add_generic(wave_pulses)
                 wave_id = pi_instance.wave_create()
+                created_wave_ids.append(wave_id)  # Salva l'ID creato
                 wave_chain_data.extend([255, 0, wave_id])
                 wave_pulses = []
 
         if wave_pulses:
             pi_instance.wave_add_generic(wave_pulses)
             wave_id = pi_instance.wave_create()
+            created_wave_ids.append(wave_id)  # Salva l'ID creato
             wave_chain_data.extend([255, 0, wave_id])
 
         wave_chain_data.extend([255, 2, 0, 0])
 
         if wave_chain_data:
-            logging.info(f"Invio della catena di {len(wave_chain_data) // 3} waveform...")
+            logging.info(f"Invio della catena di {len(created_wave_ids)} waveform...")
             pi_instance.wave_chain(wave_chain_data)
-
             while pi_instance.wave_tx_busy():
                 time.sleep(0.05)
-            
             logging.info("Esecuzione catena waveform completata.")
 
     finally:
-        # Sequenza di pulizia robusta
+        # --- NUOVA LOGICA DI PULIZIA ---
         try:
-            # 1. Ferma qualsiasi trasmissione di waveform in corso
+            # 1. Ferma qualsiasi trasmissione
             pi_instance.wave_tx_stop()
         except Exception as e:
             logging.error(f"Errore durante pi.wave_tx_stop(): {e}")
 
-        try:
-            # 2. Pulisci tutte le waveform dalla memoria di pigpio
-            pi_instance.wave_clear()
-        except Exception as e:
-            logging.error(f"Errore durante pi.wave_clear(): {e}")
-            
-        # 3. Disabilita tutti i motori (impostando EN a 1 HIGH)
+        # 2. Cancella esplicitamente ogni waveform che abbiamo creato
+        for wave_id in created_wave_ids:
+            try:
+                pi_instance.wave_delete(wave_id)
+            except Exception as e:
+                logging.error(f"Errore durante la cancellazione della wave_id {wave_id}: {e}")
+        
+        # 3. Disabilita i motori
         for pins in MOTORS.values():
             try:
                 if pi_instance.connected:
@@ -267,9 +268,8 @@ def execute_movement(targets):
             except Exception as e:
                 logging.error(f"Errore disabilitazione pin EN {pins['EN']}: {e}")
         
-        logging.info("Pulizia post-movimento completata (stop, clear, motori disabilitati).")
-
-
+        logging.info(f"Pulizia post-movimento completata (cancellate {len(created_wave_ids)} waveforms).")
+        
 def handle_exception(e):
     import traceback; error_details = traceback.format_exc(); logging.error(f"Errore interno: {error_details}")
     error_type = type(e).__name__; error_message = str(e)
