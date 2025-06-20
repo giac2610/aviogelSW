@@ -4,7 +4,7 @@
 import numpy as np
 
 import json
-import os # Assicurati che questo import sia presente
+import os
 import time
 import threading
 import sys
@@ -72,10 +72,7 @@ class MotionPlanner:
         logging.info(f"MotionPlanner inizializzato con motori: {list(motor_configs.keys())}")
 
     def _generate_s_curve_profile(self, total_steps: int, max_freq_hz: float) -> list[float]:
-        """
-        Genera i timestamp per ogni passo usando un profilo S-Curve.
-        *** VERSIONE OTTIMIZZATA CON NUMPY ***
-        """
+        """Genera i timestamp per ogni passo usando un profilo S-Curve (ottimizzato con NumPy)."""
         if total_steps == 0:
             return []
 
@@ -103,7 +100,7 @@ class MotionPlanner:
         return timestamps_us.tolist()
 
     def plan_move(self, targets: dict[str, float]) -> tuple[list, set, dict]:
-        """Pianifica un movimento coordinato, includendo il setup della direzione nella timeline."""
+        """Pianifica un movimento coordinato, con logica di generazione impulsi corretta per prevenire la perdita di passi."""
         if not targets:
             return [], set(), {}
 
@@ -152,12 +149,17 @@ class MotionPlanner:
             
             current_time_us = master_profile_ts[i]
             total_period_us = current_time_us - last_time_us
-            pulse_width_us = int(round(total_period_us / 2))
-            
-            if pulse_width_us > 0:
-                final_pulses.append(pigpio.pulse(on_mask, 0, pulse_width_us))
-                final_pulses.append(pigpio.pulse(0, on_mask, pulse_width_us))
-            
+
+            # --- LOGICA CORRETTA PER PREVENIRE LA PERDITA DI PASSI ---
+            if total_period_us >= 2:
+                on_width_us = 2
+                off_width_us = int(round(total_period_us - on_width_us))
+                final_pulses.append(pigpio.pulse(on_mask, 0, on_width_us))
+                final_pulses.append(pigpio.pulse(0, on_mask, off_width_us))
+            elif total_period_us > 0:
+                final_pulses.append(pigpio.pulse(on_mask, 0, 1))
+                final_pulses.append(pigpio.pulse(0, on_mask, 0))
+
             last_time_us = current_time_us
 
         active_motors = {m["config"].name for m in move_data.values()}
@@ -204,6 +206,7 @@ class MotorController:
 
         created_wave_ids = []
         try:
+            # Abilita i motori (la direzione è già gestita dalla timeline)
             for motor_name in active_motors:
                 config = self.motor_configs[motor_name]
                 self.pi.write(config.en_pin, 0)
@@ -306,9 +309,6 @@ def handle_exception(e):
 # ==============================================================================
 # AVVIO DEL THREAD WORKER (Corretto e reinserito)
 # ==============================================================================
-# Questo blocco assicura che il thread del worker parta solo nel processo principale
-# dell'applicazione Django, e non nel processo "watcher" del reloader,
-# risolvendo il problema del worker "fantasma" in ambiente di sviluppo.
 if os.environ.get('RUN_MAIN') == 'true':
     logging.info("Processo principale di Django rilevato. Avvio del MotorWorker...")
     threading.Thread(target=motor_worker, daemon=True, name="MotorWorker").start()
