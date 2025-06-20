@@ -38,8 +38,7 @@ logging.basicConfig(
     handlers=[logging.FileHandler(LOG_FILE), logging.StreamHandler()]
 )
 
-# --- MAPPATURA HARDWARE FONDAMENTALE (Correzione) ---
-# Questa mappatura è critica e definisce i collegamenti fisici.
+# --- MAPPATURA HARDWARE FONDAMENTALE ---
 MOTORS = {
     "extruder": {"STEP": 13, "DIR": 6, "EN": 3},
     "syringe": {"STEP": 18, "DIR": 27, "EN": 8},
@@ -47,8 +46,6 @@ MOTORS = {
 }
 
 # --- Parametri di Movimento Professionale ---
-# Numero di passi per completare la fase di "jerk control".
-# Un valore più alto produce una curva più dolce ma un'accelerazione più lenta.
 S_CURVE_ACCEL_STEPS = 400
 
 # ==============================================================================
@@ -269,6 +266,7 @@ MOTION_PLANNER = MotionPlanner(MOTOR_CONFIGS)
 MOTOR_CONTROLLER = MotorController(MOTOR_CONFIGS)
 
 motor_command_queue = queue.Queue()
+SYSTEM_CONFIG_LOCK = threading.Lock() # Lock per l'hot-reload
 
 def motor_worker():
     """Worker thread che orchestra la pianificazione e l'esecuzione dei movimenti."""
@@ -276,9 +274,10 @@ def motor_worker():
     while True:
         targets = motor_command_queue.get()
         try:
-            logging.info(f"Worker: ricevuto comando {targets}")
-            timeline, active_motors, directions = MOTION_PLANNER.plan_move(targets)
-            MOTOR_CONTROLLER.execute_timeline(timeline, active_motors, directions)
+            with SYSTEM_CONFIG_LOCK:
+                logging.info(f"Worker: ricevuto comando {targets}")
+                timeline, active_motors, directions = MOTION_PLANNER.plan_move(targets)
+                MOTOR_CONTROLLER.execute_timeline(timeline, active_motors, directions)
             logging.info(f"Worker: comando {targets} completato con successo.")
         except Exception as e:
             logging.error(f"Errore critico nel motor_worker su comando {targets}: {e}", exc_info=True)
@@ -294,7 +293,7 @@ def handle_exception(e):
     return JsonResponse({"log": f"Errore interno: {type(e).__name__}", "error": str(e)}, status=500)
 
 # ==============================================================================
-# API VIEWS (Interfaccia esterna, logica di business delegata)
+# API VIEWS (Interfaccia esterna preservata, logica interna adattata)
 # ==============================================================================
 
 @api_view(['POST'])
@@ -345,6 +344,62 @@ def stop_motor_view(request):
     except Exception as e:
         return handle_exception(e)
 
+# --- API REINSERITA PER COMPATIBILITÀ ---
+@api_view(['POST'])
+def update_config_view(request):
+    """
+    Ricarica a caldo la configurazione dei motori dal file JSON.
+    """
+    global MOTOR_CONFIGS, MOTION_PLANNER, MOTOR_CONTROLLER
+    
+    logging.warning("Inizio procedura di Hot-Reload della configurazione di sistema.")
+    with SYSTEM_CONFIG_LOCK:
+        try:
+            if MOTOR_CONTROLLER.pi and MOTOR_CONTROLLER.pi.connected:
+                MOTOR_CONTROLLER.pi.wave_tx_stop()
+            logging.info("Movimento corrente interrotto per aggiornamento configurazione.")
+
+            new_configs = load_system_config()
+            if not new_configs:
+                raise ValueError("Caricamento nuova configurazione fallito o file vuoto.")
+
+            MOTOR_CONFIGS = new_configs
+            MOTOR_CONTROLLER = MotorController(MOTOR_CONFIGS)
+            MOTION_PLANNER = MotionPlanner(MOTOR_CONFIGS)
+            
+            logging.info("Hot-Reload completato. Il sistema ora usa la nuova configurazione.")
+            return JsonResponse({"log": "Configurazione aggiornata e ricaricata con successo", "status": "success"})
+        except Exception as e:
+            logging.error(f"Fallimento durante la procedura di Hot-Reload: {e}", exc_info=True)
+            return JsonResponse({"log": "Errore critico durante l'hot-reload.", "error": str(e)}, status=500)
+
+# --- API REINSERITA PER COMPATIBILITÀ ---
+@api_view(['POST'])
+def start_simulation_view(request):
+    """Esegue una sequenza di movimenti predefinita e bloccante."""
+    try:
+        simulation_steps = []
+        extruder_direction = 1
+        for _ in range(5):
+            for _ in range(3):
+                simulation_steps.append({"syringe": 5})
+                simulation_steps.append({"extruder": 50 * extruder_direction})
+            extruder_direction *= -1
+            simulation_steps.append({"conveyor": 50})
+        
+        logging.info("Avvio simulazione predefinita...")
+        for i, step in enumerate(simulation_steps):
+            logging.info(f"Accodamento passo simulazione {i+1}: {step}")
+            motor_command_queue.put(step)
+        
+        # Attende che la coda si svuoti, rendendo la chiamata bloccante
+        motor_command_queue.join()
+        
+        logging.info("Simulazione completata.")
+        return JsonResponse({"log": "Simulazione completata con successo", "status": "success"})
+    except Exception as e:
+        return handle_exception(e)
+
 @api_view(['POST'])
 def save_motor_config_view(request):
     try:
@@ -358,11 +413,13 @@ def save_motor_config_view(request):
 
     with open(SETTINGS_FILE, 'w') as f:
         json.dump(full_config, f, indent=4)
-    logging.info(f"Configurazione salvata. RIAVVIARE IL SERVIZIO per applicare le modifiche.")
     
-    return JsonResponse({"log": "Configurazione motori salvata. È richiesto un riavvio per applicare.", "success": True})
+    msg = "Configurazione motori salvata. Chiamare /motors/update_config/ per applicare le modifiche a caldo."
+    logging.info(msg)
+    return JsonResponse({"log": msg, "success": True})
 
 @csrf_exempt
 @api_view(['GET'])
 def get_motor_speeds_view(request):
+    # Questa view rimane un placeholder, poiché la velocità istantanea è complessa da calcolare.
     return JsonResponse({"log": "API di velocità non implementata nella nuova architettura", "speeds": {}})
