@@ -1,5 +1,8 @@
 # -*- coding: utf-8 -*-
 
+# Requisito: numpy. Eseguire 'pip install numpy'
+import numpy as np
+
 import json
 import os
 import time
@@ -21,7 +24,7 @@ if not IS_RPI:
     from unittest.mock import MagicMock
     sys.modules["pigpio"] = MagicMock()
     logging.warning(f"Piattaforma non-Raspberry Pi rilevata ({sys.platform}). 'pigpio' simulato.")
-import pigpio #type: ignore
+import pigpio
 
 # --- Configurazione e Logging ---
 try:
@@ -69,37 +72,38 @@ class MotionPlanner:
         logging.info(f"MotionPlanner inizializzato con motori: {list(motor_configs.keys())}")
 
     def _generate_s_curve_profile(self, total_steps: int, max_freq_hz: float) -> list[float]:
-        """Genera i timestamp per ogni passo usando un profilo S-Curve."""
+        """
+        Genera i timestamp per ogni passo usando un profilo S-Curve.
+        *** VERSIONE OTTIMIZZATA CON NUMPY ***
+        """
         if total_steps == 0:
             return []
-            
-        timestamps_us = [0.0] * total_steps
-        current_time_us = 0.0
+
+        i = np.arange(total_steps, dtype=np.float64)
         accel_steps = min(S_CURVE_ACCEL_STEPS, total_steps // 2)
         decel_start_step = total_steps - accel_steps
+        freq = np.full(total_steps, max_freq_hz, dtype=np.float64)
 
-        for i in range(total_steps):
-            freq = 1.0
-            if i < accel_steps:
-                completion = i / accel_steps
-                factor = 0.5 * (1 - math.cos(completion * math.pi))
-                freq = max(1.0, max_freq_hz * factor)
-            elif i >= decel_start_step:
-                steps_into_decel = i - decel_start_step
-                completion = steps_into_decel / accel_steps
-                factor = 0.5 * (1 - math.cos((1 - completion) * math.pi))
-                freq = max(1.0, max_freq_hz * factor)
-            else:
-                freq = max_freq_hz
+        if accel_steps > 0:
+            accel_mask = i < accel_steps
+            completion = i[accel_mask] / accel_steps
+            factor = 0.5 * (1 - np.cos(completion * np.pi))
+            freq[accel_mask] = np.maximum(1.0, max_freq_hz * factor)
 
-            period_us = 1_000_000.0 / freq
-            current_time_us += period_us
-            timestamps_us[i] = current_time_us
-            
-        return timestamps_us
+        if decel_start_step < total_steps:
+            decel_mask = i >= decel_start_step
+            steps_into_decel = i[decel_mask] - decel_start_step
+            completion = steps_into_decel / accel_steps
+            factor = 0.5 * (1 - np.cos((1 - completion) * np.pi))
+            freq[decel_mask] = np.maximum(1.0, max_freq_hz * factor)
+        
+        periods_us = 1_000_000.0 / np.maximum(1.0, freq)
+        timestamps_us = np.cumsum(periods_us)
+        
+        return timestamps_us.tolist()
 
     def plan_move(self, targets: dict[str, float]) -> tuple[list, set, dict]:
-        """Pianifica un movimento coordinato (interpolazione lineare)."""
+        """Pianifica un movimento coordinato, includendo il setup della direzione nella timeline."""
         if not targets:
             return [], set(), {}
 
@@ -125,9 +129,20 @@ class MotionPlanner:
         logging.info(f"Pianificazione movimento. Asse Master: '{master_id}' ({master_steps} passi).")
         master_profile_ts = self._generate_s_curve_profile(master_steps, move_data[master_id]["config"].max_freq_hz)
 
-        final_pulses = []
-        bresenham_errors = {mid: -master_steps / 2 for mid in move_data if mid != master_id}
+        # --- Setup della Direzione nella Waveform ---
+        dir_on_mask = 0
+        dir_off_mask = 0
+        for motor_id, move in move_data.items():
+            if move["dir"] == 1:
+                dir_on_mask |= (1 << move["config"].dir_pin)
+            else:
+                dir_off_mask |= (1 << move["config"].dir_pin)
         
+        setup_pulse = pigpio.pulse(dir_on_mask, dir_off_mask, 20) # 20us setup time
+        final_pulses = [setup_pulse]
+        
+        # --- Logica di Bresenham per i passi ---
+        bresenham_errors = {mid: -master_steps / 2 for mid in move_data if mid != master_id}
         last_time_us = 0.0
         for i in range(master_steps):
             on_mask = 1 << move_data[master_id]["config"].step_pin
@@ -172,7 +187,6 @@ class MotorController:
                 return pigpio.pi()
         except Exception as e:
             logging.error(f"Fallimento init pigpio: {e}")
-            return None
         return None
 
     def _initialize_gpio_pins(self):
@@ -181,7 +195,7 @@ class MotorController:
             self.pi.set_mode(config.step_pin, pigpio.OUTPUT)
             self.pi.set_mode(config.dir_pin, pigpio.OUTPUT)
             self.pi.set_mode(config.en_pin, pigpio.OUTPUT)
-            self.pi.write(config.en_pin, 1) # Disabilita di default
+            self.pi.write(config.en_pin, 1)
 
     def execute_timeline(self, timeline: list, active_motors: set, directions: dict):
         if not self.pi or not self.pi.connected:
@@ -192,9 +206,9 @@ class MotorController:
 
         created_wave_ids = []
         try:
+            # Abilita i motori (la direzione è già gestita dalla timeline)
             for motor_name in active_motors:
                 config = self.motor_configs[motor_name]
-                self.pi.write(config.dir_pin, directions[motor_name])
                 self.pi.write(config.en_pin, 0)
             time.sleep(0.01)
 
@@ -266,7 +280,7 @@ MOTION_PLANNER = MotionPlanner(MOTOR_CONFIGS)
 MOTOR_CONTROLLER = MotorController(MOTOR_CONFIGS)
 
 motor_command_queue = queue.Queue()
-SYSTEM_CONFIG_LOCK = threading.Lock() # Lock per l'hot-reload
+SYSTEM_CONFIG_LOCK = threading.Lock()
 
 def motor_worker():
     """Worker thread che orchestra la pianificazione e l'esecuzione dei movimenti."""
@@ -283,8 +297,7 @@ def motor_worker():
             logging.error(f"Errore critico nel motor_worker su comando {targets}: {e}", exc_info=True)
         finally:
             motor_command_queue.task_done()
-
-threading.Thread(target=motor_worker, daemon=True, name="MotorWorker").start()
+            time.sleep(0.1) # Pausa per stabilità pigpio
 
 def handle_exception(e):
     import traceback
@@ -344,12 +357,9 @@ def stop_motor_view(request):
     except Exception as e:
         return handle_exception(e)
 
-# --- API REINSERITA PER COMPATIBILITÀ ---
 @api_view(['POST'])
 def update_config_view(request):
-    """
-    Ricarica a caldo la configurazione dei motori dal file JSON.
-    """
+    """Ricarica a caldo la configurazione dei motori dal file JSON."""
     global MOTOR_CONFIGS, MOTION_PLANNER, MOTOR_CONTROLLER
     
     logging.warning("Inizio procedura di Hot-Reload della configurazione di sistema.")
@@ -373,7 +383,6 @@ def update_config_view(request):
             logging.error(f"Fallimento durante la procedura di Hot-Reload: {e}", exc_info=True)
             return JsonResponse({"log": "Errore critico durante l'hot-reload.", "error": str(e)}, status=500)
 
-# --- API REINSERITA PER COMPATIBILITÀ ---
 @api_view(['POST'])
 def start_simulation_view(request):
     """Esegue una sequenza di movimenti predefinita e bloccante."""
@@ -392,7 +401,6 @@ def start_simulation_view(request):
             logging.info(f"Accodamento passo simulazione {i+1}: {step}")
             motor_command_queue.put(step)
         
-        # Attende che la coda si svuoti, rendendo la chiamata bloccante
         motor_command_queue.join()
         
         logging.info("Simulazione completata.")
@@ -421,5 +429,4 @@ def save_motor_config_view(request):
 @csrf_exempt
 @api_view(['GET'])
 def get_motor_speeds_view(request):
-    # Questa view rimane un placeholder, poiché la velocità istantanea è complessa da calcolare.
     return JsonResponse({"log": "API di velocità non implementata nella nuova architettura", "speeds": {}})
