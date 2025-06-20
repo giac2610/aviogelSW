@@ -22,7 +22,7 @@ if not IS_RPI:
     logging.warning(f"Piattaforma non-Raspberry Pi rilevata ({sys.platform}). 'pigpio' simulato.")
 import pigpio  # type: ignore
 
-# --- Configurazione Percorsi, Logging, etc. (IDENTICO A PRIMA) ---
+# --- Configurazione Percorsi, Logging, etc. ---
 try:
     CURRENT_SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 except NameError:
@@ -102,17 +102,29 @@ def write_settings(data):
 load_motor_config(); get_pigpio_instance()
 
 motor_command_queue = queue.Queue()
+
+# ==============================================================================
+# Motor Worker CORRETTO con gestione finally per task_done()
+# ==============================================================================
 def motor_worker():
     logging.info("Motor worker avviato.")
     while True:
+        targets = motor_command_queue.get()
         try:
-            targets = motor_command_queue.get(); logging.info(f"Worker: nuovo comando {targets}"); execute_movement(targets)
-            logging.info(f"Worker: comando {targets} completato."); motor_command_queue.task_done()
-        except Exception as e: logging.error(f"Errore nel motor_worker: {e}", exc_info=True)
+            logging.info(f"Worker: nuovo comando {targets}")
+            execute_movement(targets)
+            logging.info(f"Worker: comando {targets} completato.")
+        except Exception as e:
+            # L'errore viene comunque loggato
+            logging.error(f"Errore durante l'esecuzione del comando {targets} nel motor_worker: {e}", exc_info=True)
+        finally:
+            # Assicuriamoci che la coda venga notificata in ogni caso, anche in caso di errore
+            motor_command_queue.task_done()
+
 threading.Thread(target=motor_worker, daemon=True, name="MotorWorker").start()
 
 # ==============================================================================
-# Core Logic: Generazione ed Esecuzione Waveform (LOGICA DI STREAMING FINALE)
+# Core Logic: Generazione ed Esecuzione Waveform
 # ==============================================================================
 MAX_PULSES_PER_WAVE = 4096
 
@@ -151,19 +163,16 @@ def stop_all_motors():
     pi_instance = get_pigpio_instance()
     if not pi_instance or not pi_instance.connected: return
     try:
-        # Ferma qualsiasi waveform in esecuzione (sia send che chain)
-        pi_instance.wave_tx_stop() 
-        # Pulisce le waveform dalla memoria
+        pi_instance.wave_tx_stop()
         pi_instance.wave_clear()
-        # Disabilita tutti i motori per sicurezza
-        for pins in MOTORS.values(): 
+        for pins in MOTORS.values():
             pi_instance.write(pins["EN"], 1)
         logging.info("Tutti i motori sono stati fermati e disabilitati.")
-    except Exception as e: 
+    except Exception as e:
         logging.error(f"Errore durante lo stop dei motori: {e}")
 
 # ==============================================================================
-# Funzione execute_movement CORRETTA con wave_chain
+# Funzione execute_movement con pulizia (finally) CORRETTA
 # ==============================================================================
 def execute_movement(targets):
     pi_instance = get_pigpio_instance()
@@ -176,7 +185,6 @@ def execute_movement(targets):
         if motor_id not in MOTORS or distance_mm == 0:
             continue
         pi_instance.write(MOTORS[motor_id]["DIR"], 1 if distance_mm >= 0 else 0)
-        # Usiamo una maschera di bit per gestire i pin EN
         active_motor_pins_en_mask |= (1 << MOTORS[motor_id]["EN"])
         logging.info(f"Generazione timeline per {motor_id} ({distance_mm}mm)...")
         master_timeline.extend(_generate_motor_event_timeline(motor_id, distance_mm))
@@ -189,17 +197,15 @@ def execute_movement(targets):
     logging.info("Ordinamento completato. Inizio esecuzione a flusso con `wave_chain`...")
 
     try:
-        pi_instance.wave_clear()
-        
         # Abilita i motori necessari impostando i loro pin EN a 0 (LOW)
         for motor_id, pins in MOTORS.items():
             if (1 << pins["EN"]) & active_motor_pins_en_mask:
-                 pi_instance.write(pins["EN"], 0) # Abilita motore
+                 pi_instance.write(pins["EN"], 0)
         
-        time.sleep(0.01) # Breve pausa per assicurare che i driver siano pronti
+        time.sleep(0.01)
 
         wave_pulses = []
-        wave_chain_data = [] # Lista per contenere i blocchi della catena
+        wave_chain_data = []
 
         last_time_us = 0
         for time_us, events_at_time in groupby(master_timeline, key=lambda e: e['time_us']):
@@ -217,47 +223,51 @@ def execute_movement(targets):
             wave_pulses.append(pigpio.pulse(on_mask, off_mask, 0))
             last_time_us = time_us
 
-            # Se il chunk è abbastanza grande, lo prepariamo e lo aggiungiamo alla catena
             if len(wave_pulses) >= MAX_PULSES_PER_WAVE:
                 pi_instance.wave_add_generic(wave_pulses)
                 wave_id = pi_instance.wave_create()
-                wave_chain_data.extend([255, 0, wave_id]) # Codice per aggiungere una wave alla catena
-                wave_pulses = [] # Resetta per il prossimo chunk
+                wave_chain_data.extend([255, 0, wave_id])
+                wave_pulses = []
 
-        # Aggiungi l'ultimo chunk rimasto, se esiste
         if wave_pulses:
             pi_instance.wave_add_generic(wave_pulses)
             wave_id = pi_instance.wave_create()
             wave_chain_data.extend([255, 0, wave_id])
 
-        # Aggiungi il comando di fine catena [255, 2, ritardo_ms, 0] per terminare
         wave_chain_data.extend([255, 2, 0, 0])
 
-        # Invia l'intera catena in una sola volta
-        logging.info(f"Invio della catena di {len(wave_chain_data) // 3} waveform...")
-        pi_instance.wave_chain(wave_chain_data)
+        if wave_chain_data:
+            logging.info(f"Invio della catena di {len(wave_chain_data) // 3} waveform...")
+            pi_instance.wave_chain(wave_chain_data)
 
-        # Attendi la fine dell'intera sequenza
-        while pi_instance.wave_tx_busy():
-            time.sleep(0.05)
-        
-        logging.info("Esecuzione catena waveform completata.")
+            while pi_instance.wave_tx_busy():
+                time.sleep(0.05)
+            
+            logging.info("Esecuzione catena waveform completata.")
 
     finally:
-        # Disabilita tutti i motori (impostando EN a 1 HIGH)
-        for pins in MOTORS.values():
-            try:
-                pi_instance.write(pins["EN"], 1)
-            except Exception as e:
-                logging.error(f"Errore disabilitazione pin EN {pins['EN']}: {e}")
-        
+        # Sequenza di pulizia robusta
         try:
-             # Pulisci tutte le waveform create dalla memoria di pigpio per liberare risorse
+            # 1. Ferma qualsiasi trasmissione di waveform in corso
+            pi_instance.wave_tx_stop()
+        except Exception as e:
+            logging.error(f"Errore durante pi.wave_tx_stop(): {e}")
+
+        try:
+            # 2. Pulisci tutte le waveform dalla memoria di pigpio
             pi_instance.wave_clear()
         except Exception as e:
             logging.error(f"Errore durante pi.wave_clear(): {e}")
-
-        logging.info("Motori disabilitati e waveform pulite.")
+            
+        # 3. Disabilita tutti i motori (impostando EN a 1 HIGH)
+        for pins in MOTORS.values():
+            try:
+                if pi_instance.connected:
+                    pi_instance.write(pins["EN"], 1)
+            except Exception as e:
+                logging.error(f"Errore disabilitazione pin EN {pins['EN']}: {e}")
+        
+        logging.info("Pulizia post-movimento completata (stop, clear, motori disabilitati).")
 
 
 def handle_exception(e):
@@ -266,7 +276,7 @@ def handle_exception(e):
     return JsonResponse({"log": f"Errore interno: {error_type}", "error": error_message}, status=500)
 
 # ==============================================================================
-# API VIEWS (Interfaccia Originale Mantenuta, NESSUNA MODIFICA QUI)
+# API VIEWS (Originali)
 # ==============================================================================
 @api_view(['POST'])
 def update_config_view(request):
@@ -286,14 +296,19 @@ def move_motor_view(request):
 def stop_motor_view(request):
     try:
         logging.info("Richiesta di STOP motori ricevuta.")
-        # Svuota la coda di comandi per prevenire l'avvio di nuovi movimenti
         while not motor_command_queue.empty():
             try: motor_command_queue.get_nowait()
             except queue.Empty: continue
-            motor_command_queue.task_done()
-        # Chiama la funzione di stop che ferma le waveform e disabilita i motori
         stop_all_motors()
-        return JsonResponse({"log": "Motori fermati con successo", "status": "success"})
+        # Svuotare la coda e chiamare task_done per ogni elemento rimosso
+        # per sbloccare qualsiasi `queue.join()` in attesa.
+        while not motor_command_queue.empty():
+            try:
+                motor_command_queue.get_nowait()
+                motor_command_queue.task_done()
+            except queue.Empty:
+                continue
+        return JsonResponse({"log": "Motori fermati e coda pulita con successo", "status": "success"})
     except Exception as e: return handle_exception(e)
 
 @api_view(['POST'])
@@ -318,8 +333,6 @@ def save_motor_config_view(request):
 def get_motor_speeds_view(request):
     global current_speeds
     try:
-        # Questa funzione andrebbe migliorata per leggere la velocità reale,
-        # per ora restituisce solo uno stato placeholder.
         speeds_snapshot = {motor: current_speeds.get(motor, 0) for motor in MOTORS.keys()}
         return JsonResponse({"log": "Velocità motori (stato placeholder)", "speeds": speeds_snapshot})
     except Exception as e: return handle_exception(e)
@@ -332,13 +345,10 @@ def start_simulation_view(request):
             for _ in range(3): simulation_steps.append({"syringe": 5}); simulation_steps.append({"extruder": 50 * extruder_direction})
             extruder_direction *= -1; simulation_steps.append({"conveyor": 50})
         logging.info("Avvio simulazione predefinita...")
-        # La simulazione ora usa la coda, come un comando normale
         for i, step in enumerate(simulation_steps):
-            logging.info(f"Accodamento passo simulazione {i+1}: {step}")
-            motor_command_queue.put(step)
+            logging.info(f"Accodamento passo simulazione {i+1}: {step}"); motor_command_queue.put(step)
         
-        # Aggiungiamo un task finale per sapere quando la coda è vuota
-        motor_command_queue.join() 
+        motor_command_queue.join()
         logging.info("Simulazione completata.")
         return JsonResponse({"log": "Simulazione completata con successo", "status": "success"})
     except Exception as e: return handle_exception(e)
@@ -352,12 +362,10 @@ def execute_route_view(request):
         for idx, step in enumerate(route):
             if idx == 0 and all((isinstance(v, (int, float)) and v == 0) for v in step.values()):
                 logging.info(f"Salto primo movimento nullo: {step}"); continue
-            step_to_execute = dict(step)
-            step_to_execute["syringe"] = -10
+            step_to_execute = dict(step); step_to_execute["syringe"] = -10
             logging.info(f"Accodamento passo rotta {idx+1}: {step_to_execute}")
             motor_command_queue.put(step_to_execute)
-        
-        # Attendi il completamento di tutti i passi della rotta
+
         motor_command_queue.join()
         logging.info("Rotta completata.")
         return JsonResponse({"log": "Rotta eseguita con successo", "status": "success"})
