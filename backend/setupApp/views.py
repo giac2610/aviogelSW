@@ -5,7 +5,7 @@ from django.http import JsonResponse
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
 from .serializers import SettingsSerializer
-from aviogelMotor.views import load_motor_config
+from aviogelMotor.views import load_system_config
 # Percorso del file settings.json
 SETTINGS_FILE = os.path.join(settings.BASE_DIR, 'config', 'setup.json')
 # print(SETTINGS_FILE)
@@ -37,7 +37,7 @@ def update_settings(request):
     if serializer.is_valid():
         settings_data.update(serializer.validated_data)  # Aggiorna solo i campi forniti
         write_settings(settings_data)
-        load_motor_config()
+        load_system_config()
         return Response({"success": True, "settings": settings_data})
     
     # print("Errori del serializer:", serializer.errors)  # Log degli errori
