@@ -362,7 +362,7 @@ def execute_route_view(request):
         for idx, step in enumerate(route):
             if idx == 0 and all((isinstance(v, (int, float)) and v == 0) for v in step.values()):
                 logging.info(f"Salto primo movimento nullo: {step}"); continue
-            step_to_execute = dict(step); step_to_execute["syringe"] = -10
+            step_to_execute = dict(step)
             logging.info(f"Accodamento passo rotta {idx+1}: {step_to_execute}")
             motor_command_queue.put(step_to_execute)
 
