@@ -336,21 +336,22 @@ def move_motor_view(request):
         return handle_exception(e)
 
 @api_view(['POST'])
+
 def execute_route_view(request):
+
     try:
-        # Il corpo della richiesta è direttamente la lista dei comandi
-        motor_commands = json.loads(request.body)
-        
-        # Aggiungiamo un controllo di tipo per sicurezza
-        if not isinstance(motor_commands, list):
-            return JsonResponse({"log": "Input non valido, attesa una lista di comandi.", "error": "Input non valido"}, status=400)
-        
-        logging.info(f"Accodamento rotta con {len(motor_commands)} passi.")
-        for step in motor_commands:
-            if isinstance(step, dict):
+
+        data = json.loads(request.body)
+        route = data.get("route", [])
+        if not isinstance(route, list):
+            return JsonResponse({"log": "Percorso non valido", "error": "Input non valido"}, status=400)
+
+        logging.info(f"Accodamento rotta con {len(route)} passi.")
+
+        for step in route:
+            if isinstance(step, dict):  
                 motor_command_queue.put(step)
-        
-        return JsonResponse({"log": f"Rotta con {len(motor_commands)} passi accodata con successo.", "status": "queued"})
+        return JsonResponse({"log": f"Rotta con {len(route)} passi accodata con successo.", "status": "queued"})
     except Exception as e:
         return handle_exception(e)
     
