@@ -2,6 +2,8 @@ import { Component, OnInit, ViewChild, ElementRef } from '@angular/core';
 import { MotorsControlService } from '../../services/motors-control.service';
 import { ToastController, AlertController } from '@ionic/angular';
 import { SetupAPIService } from 'src/app/services/setup-api.service';
+import { switchMap, tap, catchError } from 'rxjs/operators';
+import { of } from 'rxjs';
 
 @Component({
   selector: 'app-blob-simulation',
@@ -92,29 +94,31 @@ export class BlobSimulationPage implements OnInit {
 
   executeRoute() {
     this.configService.getMotorsRoute().subscribe({
-      next: async (res) => {
+      next: (res) => {
         if (res.status === 'success') {
           this.presentToast('Rotta ottenuta con successo');
-          // console.log('percorso:', res.motor_commands);
-            this.configService.executeRoute(res.motor_commands).subscribe({
+          
+          // ORA QUESTO FUNZIONA PERFETTAMENTE!
+          // Passiamo direttamente l'array, perché il servizio sa come gestirlo.
+          this.configService.executeRoute(res.motor_commands).subscribe({
               next: (moveRes) => {
                 if (moveRes.status === 'success') {
-                  console.log(`Comandi inserito in coda con successo`);
+                  console.log(`Comandi eseguiti con successo`);
                   this.graphUrl = 'http://localhost:8000/camera/plot_graph/?t=' + new Date().getTime();
                 } else {
                   this.presentToast(`Errore nell'esecuzione: ${moveRes.message}`, 'danger');
                 }
               }, 
               error: (err) => {
-                this.presentToast(`Errore nella richiesta: ${err.message}`, 'danger');
+                this.presentToast(`Errore nella richiesta di esecuzione: ${err.message}`, 'danger');
               }
             });
-          // Se la risposta contiene l'immagine base64:
+
           if (res.plot_graph_base64) {
             this.graphUrl = 'data:image/png;base64,' + res.plot_graph_base64;
           }
         } else {
-          this.presentToast(res.message || 'Errore nell\'esecuzione della rotta', 'danger');
+          this.presentToast(res.message || 'Errore nell\'ottenimento della rotta', 'danger');
         }
       },
       error: (_err: any) => {
