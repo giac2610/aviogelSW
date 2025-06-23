@@ -98,7 +98,6 @@ export class BlobSimulationPage implements OnInit {
         if (res.status === 'success') {
           this.presentToast('Rotta ottenuta con successo');
           
-          // ORA QUESTO FUNZIONA PERFETTAMENTE!
           // Passiamo direttamente l'array, perché il servizio sa come gestirlo.
           this.configService.executeRoute(res.motor_commands).subscribe({
               next: (moveRes) => {
