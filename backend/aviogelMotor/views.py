@@ -197,6 +197,9 @@ class MotorController:
         self._callbacks = []
         self._pin_to_switch_map = {}
         
+        # --- NUOVO: Flag per tracciare le interruzioni ---
+        self.last_move_interrupted = False
+        
         self._initialize_gpio_pins()
 
     def _get_pigpio_instance(self):
@@ -223,27 +226,25 @@ class MotorController:
             self.pi.set_mode(config.en_pin, pigpio.OUTPUT)
             self.pi.write(config.en_pin, 1)
 
-        # --- LOGICA PULL-UP PER I FINECORSA ---
         for motor, pins in SWITCHES.items():
             for name, pin in pins.items():
                 switch_id = f"{motor}_{name.lower()}"
                 self.pi.set_mode(pin, pigpio.INPUT)
-                # Attiva la resistenza di PULL-UP interna
                 self.pi.set_pull_up_down(pin, pigpio.PUD_UP)
-                
-                # Lo stato "attivo" ora è 0 (BASSO)
                 self.switch_states[switch_id] = self.pi.read(pin) == 0 
                 self._pin_to_switch_map[pin] = switch_id
-                
-                # Reagisce al fronte di discesa (FALLING_EDGE), quando il pin va da ALTO a BASSO
                 cb = self.pi.callback(pin, pigpio.FALLING_EDGE, self._switch_callback)
                 self._callbacks.append(cb)
         logging.info(f"Finecorsa inizializzati in modalità PULL-UP. Stato attuale: {self.switch_states}")
 
     def _switch_callback(self, gpio, level, tick):
         switch_id = self._pin_to_switch_map.get(gpio)
-        if switch_id and not self.switch_states[switch_id]:
+        if switch_id and not self.switch_states.get(switch_id, True):
             self.switch_states[switch_id] = True
+            
+            # --- MODIFICA: Imposta il flag di interruzione ---
+            self.last_move_interrupted = True
+
             logging.warning(f"!!! FINE CORSA ATTIVATO: {switch_id.upper()} (GPIO: {gpio}) !!! ARRESTO IMMEDIATO.")
             self.pi.wave_tx_stop()
             
@@ -255,6 +256,10 @@ class MotorController:
 
     def execute_streamed_move(self, pulse_generator: object, active_motors: set):
         if not self.pi or not self.pi.connected: raise ConnectionError("Esecuzione fallita: pigpio non connesso.")
+        
+        # --- MODIFICA: Resetta il flag all'inizio di ogni movimento ---
+        self.last_move_interrupted = False
+
         for motor_name in active_motors:
             self.pi.write(self.motor_configs[motor_name].en_pin, 0)
         time.sleep(0.01)
@@ -275,10 +280,6 @@ class MotorController:
             self.pi.wave_chain([255, 0, wave_id, 255, 1, 0, 0])
             
             while self.pi.wave_tx_busy():
-                if not self.pi.wave_tx_busy():
-                    logging.warning("Movimento interrotto da un finecorsa.")
-                    break
-
                 next_chunk = next(pulse_generator, None)
                 if not next_chunk: break
 
@@ -293,7 +294,12 @@ class MotorController:
 
             self.pi.wave_chain([255, 2, 0, 0])
             while self.pi.wave_tx_busy(): time.sleep(0.05)
-            logging.info("Streaming del movimento completato o interrotto.")
+
+            # --- MODIFICA: Logica di logging chiara e specifica ---
+            if self.last_move_interrupted:
+                logging.warning("MOVIMENTO INTERROTTO da un finecorsa.")
+            else:
+                logging.info("Movimento completato normalmente.")
 
         finally:
             if self.pi and self.pi.connected:
@@ -303,8 +309,10 @@ class MotorController:
                     except pigpio.error: pass
                 for config in self.motor_configs.values(): self.pi.write(config.en_pin, 1)
                 logging.info(f"Pulizia post-movimento completata.")
-
+    
+    # La funzione execute_homing_sequence non necessita di modifiche per questo problema
     def execute_homing_sequence(self, motor_name: str):
+        # ... (codice invariato) ...
         if motor_name not in SWITCHES:
             logging.error(f"Impossibile eseguire homing: '{motor_name}' non ha finecorsa.")
             return
@@ -322,7 +330,6 @@ class MotorController:
 
         homing_hit = threading.Event()
         def homing_callback(gpio, level, tick):
-            # Logica PULL-UP: reagisce al livello BASSO (0)
             if level == 0:
                 self.pi.wave_tx_stop()
                 self.switch_states[switch_id] = True
@@ -330,11 +337,10 @@ class MotorController:
                 homing_hit.set()
                 logging.info(f"Homing: finecorsa {switch_id.upper()} raggiunto.")
 
-        # Logica PULL-UP: il callback reagisce al fronte di discesa
         cb_homing = self.pi.callback(switch_pin, pigpio.FALLING_EDGE, homing_callback)
         
         self.pi.write(config.en_pin, 0)
-        self.pi.write(config.dir_pin, 0) # Direzione START
+        self.pi.write(config.dir_pin, 0)
         
         self.pi.wave_clear()
         period_us = int(1_000_000 / 1000)
@@ -349,7 +355,6 @@ class MotorController:
         self.pi.wave_delete(wave_id)
         cb_homing.cancel()
 
-        # Ripristina il callback di emergenza
         self._callbacks = [cb for cb in self._callbacks if cb.gpio() != switch_pin]
         new_cb = self.pi.callback(switch_pin, pigpio.FALLING_EDGE, self._switch_callback)
         self._callbacks.append(new_cb)
@@ -359,6 +364,7 @@ class MotorController:
             logging.error(f"Homing fallito per '{motor_name}': timeout.")
         else:
             logging.info(f"Homing per '{motor_name}' completato.")
+
 
 def load_system_config() -> dict[str, MotorConfig]:
     configs = {}
