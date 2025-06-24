@@ -1,11 +1,10 @@
 # -*- coding: utf-8 -*-
 
 # ==============================================================================
-# ARCHITETTURA STREAMING CON GESTIONE FINECORSA (Versione Completa)
-# Questa versione del codice implementa una metodologia a "streaming" per la
-# generazione e l'esecuzione degli impulsi, la gestione dei finecorsa (switches)
-# per l'arresto immediato e una funzionalità di Homing per l'azzeramento.
-# Tutte le funzioni, incluse le API Views, sono scritte per intero.
+# ARCHITETTURA STREAMING CON GESTIONE FINECORSA (Versione PULL-UP)
+# Questa versione implementa la gestione dei finecorsa usando le resistenze
+# di PULL-UP interne del Raspberry Pi per una maggiore robustezza al rumore.
+# Il segnale attivo è un LIVELLO BASSO (collegamento a GND).
 # ==============================================================================
 
 # Requisito: numpy. Eseguire 'pip install numpy'
@@ -224,17 +223,22 @@ class MotorController:
             self.pi.set_mode(config.en_pin, pigpio.OUTPUT)
             self.pi.write(config.en_pin, 1)
 
+        # --- LOGICA PULL-UP PER I FINECORSA ---
         for motor, pins in SWITCHES.items():
             for name, pin in pins.items():
                 switch_id = f"{motor}_{name.lower()}"
                 self.pi.set_mode(pin, pigpio.INPUT)
-                self.pi.set_pull_up_down(pin, pigpio.PUD_DOWN)
-                self.switch_states[switch_id] = self.pi.read(pin) == 1
+                # Attiva la resistenza di PULL-UP interna
+                self.pi.set_pull_up_down(pin, pigpio.PUD_UP)
+                
+                # Lo stato "attivo" ora è 0 (BASSO)
+                self.switch_states[switch_id] = self.pi.read(pin) == 0 
                 self._pin_to_switch_map[pin] = switch_id
                 
-                cb = self.pi.callback(pin, pigpio.RISING_EDGE, self._switch_callback)
+                # Reagisce al fronte di discesa (FALLING_EDGE), quando il pin va da ALTO a BASSO
+                cb = self.pi.callback(pin, pigpio.FALLING_EDGE, self._switch_callback)
                 self._callbacks.append(cb)
-        logging.info(f"Finecorsa inizializzati. Stato attuale: {self.switch_states}")
+        logging.info(f"Finecorsa inizializzati in modalità PULL-UP. Stato attuale: {self.switch_states}")
 
     def _switch_callback(self, gpio, level, tick):
         switch_id = self._pin_to_switch_map.get(gpio)
@@ -310,7 +314,6 @@ class MotorController:
         switch_id = f"{motor_name}_start"
         config = self.motor_configs[motor_name]
         
-        # Disabilita callback di emergenza
         for cb in self._callbacks:
             if cb.gpio() == switch_pin:
                 cb.cancel()
@@ -319,20 +322,22 @@ class MotorController:
 
         homing_hit = threading.Event()
         def homing_callback(gpio, level, tick):
-            if level == 1:
+            # Logica PULL-UP: reagisce al livello BASSO (0)
+            if level == 0:
                 self.pi.wave_tx_stop()
                 self.switch_states[switch_id] = True
                 self.switch_states[f"{motor_name}_end"] = False
                 homing_hit.set()
                 logging.info(f"Homing: finecorsa {switch_id.upper()} raggiunto.")
 
-        cb_homing = self.pi.callback(switch_pin, pigpio.RISING_EDGE, homing_callback)
+        # Logica PULL-UP: il callback reagisce al fronte di discesa
+        cb_homing = self.pi.callback(switch_pin, pigpio.FALLING_EDGE, homing_callback)
         
         self.pi.write(config.en_pin, 0)
         self.pi.write(config.dir_pin, 0) # Direzione START
         
         self.pi.wave_clear()
-        period_us = int(1_000_000 / 1000) # Frequenza fissa lenta
+        period_us = int(1_000_000 / 1000)
         pulse = [pigpio.pulse(1 << config.step_pin, 0, period_us // 2), pigpio.pulse(0, 1 << config.step_pin, period_us // 2)]
         self.pi.wave_add_generic(pulse)
         wave_id = self.pi.wave_create()
@@ -346,7 +351,7 @@ class MotorController:
 
         # Ripristina il callback di emergenza
         self._callbacks = [cb for cb in self._callbacks if cb.gpio() != switch_pin]
-        new_cb = self.pi.callback(switch_pin, pigpio.RISING_EDGE, self._switch_callback)
+        new_cb = self.pi.callback(switch_pin, pigpio.FALLING_EDGE, self._switch_callback)
         self._callbacks.append(new_cb)
         self.pi.write(config.en_pin, 1)
 
@@ -504,7 +509,6 @@ def update_config_view(request):
 
             MOTOR_CONFIGS = new_configs
             MOTION_PLANNER = MotionPlanner(MOTOR_CONFIGS)
-            # Ricrea il motor controller per reinizializzare i pin e i callback
             MOTOR_CONTROLLER = MotorController(MOTOR_CONFIGS)
             
             logging.info("Hot-Reload completato. Il sistema ora usa la nuova configurazione.")
