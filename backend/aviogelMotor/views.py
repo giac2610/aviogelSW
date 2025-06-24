@@ -472,3 +472,21 @@ def save_motor_config_view(request):
 @api_view(['GET'])
 def get_motor_speeds_view(request):
     return JsonResponse({"log": "API di velocità non implementata nella nuova architettura", "speeds": {}})
+
+# Aggiungi questa funzione insieme alle altre API Views alla fine del file
+
+@api_view(['GET'])
+def get_motor_status_view(request):
+    """
+    Endpoint di diagnostica per leggere lo stato interno in tempo reale 
+    del controller dei motori, in particolare lo stato dei finecorsa.
+    """
+    try:
+        with SYSTEM_CONFIG_LOCK:
+            status_data = {
+                "switch_states": MOTOR_CONTROLLER.switch_states,
+                "last_move_interrupted": MOTOR_CONTROLLER.last_move_interrupted,
+            }
+        return JsonResponse(status_data)
+    except Exception as e:
+        return handle_exception(e)

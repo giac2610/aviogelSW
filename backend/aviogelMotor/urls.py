@@ -1,5 +1,5 @@
 from django.urls import path
-from .views import update_config_view, execute_route_view, move_motor_view, stop_motor_view, save_motor_config_view, get_motor_speeds_view, start_simulation_view
+from .views import get_motor_status_view, update_config_view, execute_route_view, move_motor_view, stop_motor_view, save_motor_config_view, get_motor_speeds_view, start_simulation_view
 
 urlpatterns = [
     path('update/', update_config_view, name='update_config'),
@@ -9,4 +9,5 @@ urlpatterns = [
     path('speeds/', get_motor_speeds_view, name='get_motor_speeds'),
     path('simulate/', start_simulation_view, name='start_simulation'),
     path('execute_route/', execute_route_view, name='execute_route'),
+    path('motors/status/', get_motor_status_view, name='get_motor_status'),
 ]
