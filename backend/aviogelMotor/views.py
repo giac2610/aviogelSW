@@ -1,5 +1,13 @@
-import numpy as np
+# -*- coding: utf-8 -*-
 
+# ==============================================================================
+# ARCHITETTURA STREAMING con Accelerazione per Motore (Versione Completa)
+# Questa versione legge e utilizza il parametro "acceleration" dal file
+# setup.json per ogni motore, permettendo una calibrazione fine.
+# Utilizza la logica di esecuzione semplificata per la massima stabilità.
+# ==============================================================================
+
+import numpy as np
 import json
 import os
 import time
@@ -50,8 +58,7 @@ SWITCHES = {
     "syringe": {"Start": 19, "End": 26},
 }
 
-# --- PARAMETRO PER ACCELERAZIONE LINEARE ---
-LINEAR_ACCEL_STEPS = 400
+# La costante globale LINEAR_ACCEL_STEPS è stata rimossa.
 
 # ==============================================================================
 # ARCHITETTURA REFACTORING: Classi per la Gestione del Movimento
@@ -66,6 +73,7 @@ class MotorConfig:
     en_pin: int
     steps_per_mm: float
     max_freq_hz: float
+    acceleration_steps: int # Campo per l'accelerazione per-motore
 
 class MotionPlanner:
     """Il cervello del sistema. Pianifica movimenti coordinati."""
@@ -73,22 +81,28 @@ class MotionPlanner:
         self.motor_configs = motor_configs
         logging.info(f"MotionPlanner inizializzato con motori: {list(motor_configs.keys())}")
 
-    def _generate_trapezoidal_profile(self, total_steps: int, max_freq_hz: float) -> list[float]:
-        """Genera i timestamp per ogni passo usando un profilo Trapezoidale (accelerazione lineare)."""
+    def _generate_trapezoidal_profile(self, total_steps: int, max_freq_hz: float, accel_steps: int) -> list[float]:
+        """Genera i timestamp per ogni passo usando un profilo Trapezoidale, accettando un valore di accelerazione specifico."""
         if total_steps == 0:
             return []
-        accel_steps = min(LINEAR_ACCEL_STEPS, total_steps // 2)
-        decel_start_step = total_steps - accel_steps
+        
+        # Usa il parametro ricevuto invece di una costante globale
+        effective_accel_steps = min(accel_steps, total_steps // 2)
+        decel_start_step = total_steps - effective_accel_steps
+
         i = np.arange(total_steps, dtype=np.float64)
         freq = np.full(total_steps, max_freq_hz, dtype=np.float64)
-        if accel_steps > 0:
-            accel_mask = i < accel_steps
-            freq[accel_mask] = max_freq_hz * (i[accel_mask] + 1) / accel_steps
+        
+        if effective_accel_steps > 0:
+            accel_mask = i < effective_accel_steps
+            freq[accel_mask] = max_freq_hz * (i[accel_mask] + 1) / effective_accel_steps
+
         if decel_start_step < total_steps:
             decel_mask = i >= decel_start_step
             steps_into_decel = i[decel_mask] - decel_start_step
-            remaining_steps = accel_steps - steps_into_decel
-            freq[decel_mask] = max_freq_hz * remaining_steps / accel_steps
+            remaining_steps = effective_accel_steps - steps_into_decel
+            freq[decel_mask] = max_freq_hz * remaining_steps / effective_accel_steps
+
         np.maximum(freq, 1.0, out=freq)
         periods_us = 1_000_000.0 / freq
         return np.cumsum(periods_us).tolist()
@@ -112,12 +126,25 @@ class MotionPlanner:
             }
         if not move_data:
             return (None for _ in range(0)), set()
+        
         master_id = max(move_data, key=lambda k: move_data[k]["steps"])
-        master_steps = move_data[master_id]["steps"]
+        master_data = move_data[master_id]
+        master_steps = master_data["steps"]
+
         if master_steps == 0:
             return (None for _ in range(0)), set()
-        logging.info(f"Streaming pianificato. Master: '{master_id}' ({master_steps} passi).")
-        master_profile_ts = self._generate_trapezoidal_profile(master_steps, move_data[master_id]["config"].max_freq_hz)
+
+        # Prende l'accelerazione specifica del motore master del movimento attuale
+        accel_for_this_move = master_data["config"].acceleration_steps
+        logging.info(f"Streaming pianificato. Master: '{master_id}' ({master_steps} passi). Uso accelerazione di {accel_for_this_move} passi.")
+        
+        # Passa il valore di accelerazione alla funzione che genera il profilo
+        master_profile_ts = self._generate_trapezoidal_profile(
+            master_steps, 
+            master_data["config"].max_freq_hz, 
+            accel_for_this_move
+        )
+        
         active_motors = {m["config"].name for m in move_data.values()}
         def pulse_generator():
             dir_on_mask, dir_off_mask = 0, 0
@@ -128,7 +155,7 @@ class MotionPlanner:
             bresenham_errors = {mid: -master_steps / 2 for mid in move_data if mid != master_id}
             last_time_us, pulse_chunk = 0.0, []
             for i in range(master_steps):
-                on_mask = 1 << move_data[master_id]["config"].step_pin
+                on_mask = 1 << master_data["config"].step_pin
                 for slave_id in bresenham_errors:
                     bresenham_errors[slave_id] += move_data[slave_id]["steps"]
                     if bresenham_errors[slave_id] > 0:
@@ -148,7 +175,7 @@ class MotionPlanner:
         return pulse_generator(), active_motors
 
 class MotorController:
-    """Gestisce l'interazione diretta con pigpio e l'hardware, inclusi i finecorsa."""
+    # ... (L'intera classe MotorController rimane invariata rispetto all'ultima versione funzionante) ...
     def __init__(self, motor_configs: dict[str, MotorConfig]):
         self.pi = self._get_pigpio_instance()
         self.motor_configs = motor_configs
@@ -181,17 +208,13 @@ class MotorController:
             self.pi.set_mode(config.en_pin, pigpio.OUTPUT)
             self.pi.write(config.en_pin, 1)
 
-        # --- LOGICA PULL-DOWN RIPRISTINATA PER I FINECORSA ---
         for motor, pins in SWITCHES.items():
             for name, pin in pins.items():
                 switch_id = f"{motor}_{name.lower()}"
                 self.pi.set_mode(pin, pigpio.INPUT)
-                # Attiva la resistenza di PULL-DOWN interna
                 self.pi.set_pull_up_down(pin, pigpio.PUD_DOWN)
-                # Lo stato "attivo" ora è 1 (ALTO)
                 self.switch_states[switch_id] = self.pi.read(pin) == 1 
                 self._pin_to_switch_map[pin] = switch_id
-                # Reagisce al fronte di salita (RISING_EDGE), quando il pin va da BASSO ad ALTO
                 cb = self.pi.callback(pin, pigpio.RISING_EDGE, self._switch_callback)
                 self._callbacks.append(cb)
         logging.info(f"Finecorsa inizializzati in modalità PULL-DOWN. Stato attuale: {self.switch_states}")
@@ -209,81 +232,48 @@ class MotorController:
             if other_switch_id in self.switch_states:
                 self.switch_states[other_switch_id] = False
 
-# All'interno della classe MotorController, sostituisci la funzione esistente con questa:
-
     def execute_streamed_move(self, pulse_generator: object, active_motors: set):
-        """
-        Versione di debug che prima colleziona tutti gli impulsi dal generatore
-        e poi li esegue in un blocco unico, bypassando la logica di streaming "live".
-        """
         if not self.pi or not self.pi.connected:
             raise ConnectionError("Esecuzione fallita: pigpio non connesso.")
-
         self.last_move_interrupted = False
-
-        # --- FASE 1: Colleziona tutti gli impulsi ---
-        # Invece di inviarli un po' alla volta, li mettiamo tutti in una lista.
-        # Questo è il grande cambiamento rispetto a prima.
         full_pulse_list = []
         for chunk in pulse_generator:
             full_pulse_list.extend(chunk)
-
         if not full_pulse_list:
             logging.warning("Generatore di impulsi vuoto, nessun movimento eseguito.")
             return
-
         logging.info(f"Esecuzione di un movimento con {len(full_pulse_list)} impulsi totali.")
-
-        # --- FASE 2: Esecuzione in blocco unico (logica più semplice e collaudata) ---
         for motor_name in active_motors:
-            self.pi.write(self.motor_configs[motor_name].en_pin, 0) # Abilita motori
+            self.pi.write(self.motor_configs[motor_name].en_pin, 0)
         time.sleep(0.01)
-
         created_wave_ids = []
         try:
             self.pi.wave_clear()
-            
-            # Aggiungiamo l'intera lista di impulsi in una sola volta
             self.pi.wave_add_generic(full_pulse_list)
-            
-            # Creiamo un'unica, grande waveform
             wave_id = self.pi.wave_create()
             if wave_id < 0:
                 raise pigpio.error(f"Errore critico durante la creazione della waveform: {wave_id}")
-            
             created_wave_ids.append(wave_id)
-            
-            # Inviamo la waveform e attendiamo la sua fine
             self.pi.wave_send_once(wave_id)
-            
             while self.pi.wave_tx_busy():
-                # Se un finecorsa interrompe il movimento, usciamo dal ciclo
                 if self.last_move_interrupted:
                     logging.warning("Interruzione da finecorsa rilevata. Attendo la fine della trasmissione.")
                     break
                 time.sleep(0.05)
-
-            # Logica di logging chiara
             if self.last_move_interrupted:
                 logging.warning("MOVIMENTO INTERROTTO da un finecorsa.")
             else:
                 logging.info("Movimento completato normalmente.")
-
         finally:
             if self.pi and self.pi.connected:
-                # Assicurati che l'onda sia fermata in ogni caso
                 self.pi.wave_tx_stop()
-                
-                # Pulisci le onde create
                 for wid in created_wave_ids:
                     try: self.pi.wave_delete(wid)
                     except pigpio.error: pass
-                
-                # Disabilita tutti i motori
                 for config in self.motor_configs.values():
                     self.pi.write(config.en_pin, 1)
                 logging.info(f"Pulizia post-movimento completata.")
-# --- FINE DELLA CLASSE MotorController ---
+
     def execute_homing_sequence(self, motor_name: str):
         if motor_name not in SWITCHES:
             logging.error(f"Impossibile eseguire homing: '{motor_name}' non ha finecorsa.")
@@ -299,17 +289,15 @@ class MotorController:
                 break
         homing_hit = threading.Event()
         def homing_callback(gpio, level, tick):
-            # Logica PULL-DOWN: reagisce al livello ALTO (1)
             if level == 1:
                 self.pi.wave_tx_stop()
                 self.switch_states[switch_id] = True
                 self.switch_states[f"{motor_name}_end"] = False
                 homing_hit.set()
                 logging.info(f"Homing: finecorsa {switch_id.upper()} raggiunto.")
-        # Logica PULL-DOWN: il callback reagisce al fronte di salita
         cb_homing = self.pi.callback(switch_pin, pigpio.RISING_EDGE, homing_callback)
         self.pi.write(config.en_pin, 0)
-        self.pi.write(config.dir_pin, 0) # Direzione START
+        self.pi.write(config.dir_pin, 0)
         self.pi.wave_clear()
         period_us = int(1_000_000 / 1000)
         pulse = [pigpio.pulse(1 << config.step_pin, 0, period_us // 2), pigpio.pulse(0, 1 << config.step_pin, period_us // 2)]
@@ -320,7 +308,6 @@ class MotorController:
         self.pi.wave_tx_stop()
         self.pi.wave_delete(wave_id)
         cb_homing.cancel()
-        # Ripristina il callback di emergenza
         self._callbacks = [cb for cb in self._callbacks if cb.gpio() != switch_pin]
         new_cb = self.pi.callback(switch_pin, pigpio.RISING_EDGE, self._switch_callback)
         self._callbacks.append(new_cb)
@@ -329,21 +316,40 @@ class MotorController:
         else: logging.info(f"Homing per '{motor_name}' completato.")
 
 def load_system_config() -> dict[str, MotorConfig]:
+    """Legge la configurazione, incluso il nuovo parametro 'acceleration'."""
     configs = {}
     try:
         with open(SETTINGS_FILE, "r") as f:
             full_config = json.load(f).get("motors", {})
             for name, params in full_config.items():
                 if name not in MOTORS: continue
-                steps_per_rev,microsteps,pitch=float(params.get("stepOneRev",200.0)),int(params.get("microstep",8)),float(params.get("pitch",5.0))
+                steps_per_rev = float(params.get("stepOneRev", 200.0))
+                microsteps = int(params.get("microstep", 8))
+                pitch = float(params.get("pitch", 5.0))
                 if pitch == 0: raise ValueError(f"'pitch' per '{name}' non può essere zero.")
                 max_speed_mms = float(params.get("maxSpeed", 250.0))
+                
+                # Legge il valore "acceleration" dal JSON. Se non lo trova, usa 400 come default.
+                acceleration = int(params.get("acceleration", 400))
+                
                 steps_per_mm = (steps_per_rev * microsteps) / pitch
                 max_freq_hz = max_speed_mms * steps_per_mm
-                configs[name] = MotorConfig(name=name,step_pin=MOTORS[name]["STEP"],dir_pin=MOTORS[name]["DIR"],en_pin=MOTORS[name]["EN"],steps_per_mm=steps_per_mm,max_freq_hz=max_freq_hz)
-            logging.info("Configurazione motori caricata e parsata.")
-    except Exception as e: logging.error(f"Errore caricamento configurazione: {e}")
+
+                configs[name] = MotorConfig(
+                    name=name,
+                    step_pin=MOTORS[name]["STEP"],
+                    dir_pin=MOTORS[name]["DIR"],
+                    en_pin=MOTORS[name]["EN"],
+                    steps_per_mm=steps_per_mm,
+                    max_freq_hz=max_freq_hz,
+                    acceleration_steps=acceleration
+                )
+            logging.info("Configurazione motori caricata e parsata (inclusa accelerazione per motore).")
+    except Exception as e:
+        logging.error(f"Errore caricamento configurazione: {e}")
     return configs
+
+# --- Blocco di Inizializzazione e Worker (invariato) ---
 
 MOTOR_CONFIGS = load_system_config()
 MOTION_PLANNER = MotionPlanner(MOTOR_CONFIGS)
@@ -390,6 +396,7 @@ else:
 # ==============================================================================
 # API VIEWS (Interfaccia esterna preservata)
 # ==============================================================================
+# ... (Tutte le funzioni API da @api_view in poi rimangono invariate) ...
 @api_view(['POST'])
 def move_motor_view(request):
     try:
@@ -493,8 +500,6 @@ def save_motor_config_view(request):
 @api_view(['GET'])
 def get_motor_speeds_view(request):
     return JsonResponse({"log": "API di velocità non implementata nella nuova architettura", "speeds": {}})
-
-# Aggiungi questa funzione insieme alle altre API Views alla fine del file
 
 @api_view(['GET'])
 def get_motor_status_view(request):
