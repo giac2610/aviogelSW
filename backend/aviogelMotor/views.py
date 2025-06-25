@@ -357,6 +357,22 @@ MOTOR_CONTROLLER = MotorController(MOTOR_CONFIGS)
 motor_command_queue = queue.Queue()
 SYSTEM_CONFIG_LOCK = threading.Lock()
 
+def split_and_queue_move(targets, max_steps=1000):
+    """
+    Suddivide un movimento troppo lungo in più movimenti più brevi.
+    """
+    for motor, distance in targets.items():
+        config = MOTOR_CONFIGS.get(motor)
+        if not config:
+            continue
+        total_steps = int(abs(distance) * config.steps_per_mm)
+        direction = 1 if distance >= 0 else -1
+        while total_steps > 0:
+            step_chunk = min(total_steps, max_steps)
+            mm_chunk = step_chunk / config.steps_per_mm * direction
+            motor_command_queue.put({"command": "move", "targets": {motor: mm_chunk}})
+            total_steps -= step_chunk
+            
 def motor_worker():
     """Worker thread che orchestra la pianificazione e l'esecuzione dei movimenti."""
     logging.info("Motor worker avviato con architettura a streaming e gestione finecorsa.")
@@ -404,7 +420,8 @@ def move_motor_view(request):
         targets = data.get("targets")
         if not targets or not isinstance(targets, dict):
             return JsonResponse({"log": "Input non valido", "error": "targets deve essere un dizionario"}, status=400)
-        motor_command_queue.put({"command": "move", "targets": targets})
+        # motor_command_queue.put({"command": "move", "targets": targets})
+        split_and_queue_move(targets, max_steps=1000)
         return JsonResponse({"log": "Movimento messo in coda", "status": "queued"})
     except Exception as e: return handle_exception(e)
 
@@ -429,7 +446,9 @@ def execute_route_view(request):
             return JsonResponse({"log": "Percorso non valido", "error": "Input non valido"}, status=400)
         logging.info(f"Accodamento rotta con {len(route)} passi.")
         for step in route:
-            if isinstance(step, dict): motor_command_queue.put({"command": "move", "targets": step})
+            if isinstance(step, dict): 
+                # motor_command_queue.put({"command": "move", "targets": step})
+                split_and_queue_move(step, max_steps=1000)
         return JsonResponse({"log": f"Rotta con {len(route)} passi accodata.", "status": "queued"})
     except Exception as e: return handle_exception(e)
 
@@ -479,7 +498,8 @@ def start_simulation_view(request):
         logging.info("Avvio simulazione predefinita...")
         for i, step in enumerate(simulation_steps):
             logging.info(f"Accodamento passo simulazione {i+1}: {step}")
-            motor_command_queue.put({"command": "move", "targets": step})
+            # motor_command_queue.put({"command": "move", "targets": step})
+            split_and_queue_move(step, max_steps=1000)
         motor_command_queue.join()
         logging.info("Simulazione completata.")
         return JsonResponse({"log": "Simulazione completata con successo", "status": "success"})
