@@ -1,13 +1,3 @@
-# -*- coding: utf-8 -*-
-
-# ==============================================================================
-# ARCHITETTURA STREAMING CON GESTIONE FINECORSA (Versione PULL-DOWN)
-# Questa versione ripristina la gestione dei finecorsa usando le resistenze
-# di PULL-DOWN interne. Il segnale attivo è un LIVELLO ALTO (collegamento a 3.3V).
-# La logica di logging chiara è stata mantenuta.
-# ==============================================================================
-
-# Requisito: numpy. Eseguire 'pip install numpy'
 import numpy as np
 
 import json
@@ -219,50 +209,81 @@ class MotorController:
             if other_switch_id in self.switch_states:
                 self.switch_states[other_switch_id] = False
 
+# All'interno della classe MotorController, sostituisci la funzione esistente con questa:
+
     def execute_streamed_move(self, pulse_generator: object, active_motors: set):
-        if not self.pi or not self.pi.connected: raise ConnectionError("Esecuzione fallita: pigpio non connesso.")
+        """
+        Versione di debug che prima colleziona tutti gli impulsi dal generatore
+        e poi li esegue in un blocco unico, bypassando la logica di streaming "live".
+        """
+        if not self.pi or not self.pi.connected:
+            raise ConnectionError("Esecuzione fallita: pigpio non connesso.")
+
         self.last_move_interrupted = False
+
+        # --- FASE 1: Colleziona tutti gli impulsi ---
+        # Invece di inviarli un po' alla volta, li mettiamo tutti in una lista.
+        # Questo è il grande cambiamento rispetto a prima.
+        full_pulse_list = []
+        for chunk in pulse_generator:
+            full_pulse_list.extend(chunk)
+
+        if not full_pulse_list:
+            logging.warning("Generatore di impulsi vuoto, nessun movimento eseguito.")
+            return
+
+        logging.info(f"Esecuzione di un movimento con {len(full_pulse_list)} impulsi totali.")
+
+        # --- FASE 2: Esecuzione in blocco unico (logica più semplice e collaudata) ---
         for motor_name in active_motors:
-            self.pi.write(self.motor_configs[motor_name].en_pin, 0)
+            self.pi.write(self.motor_configs[motor_name].en_pin, 0) # Abilita motori
         time.sleep(0.01)
+
         created_wave_ids = []
         try:
             self.pi.wave_clear()
-            first_chunk = next(pulse_generator, None)
-            if not first_chunk:
-                logging.warning("Generatore di impulsi vuoto, nessun movimento eseguito.")
-                return
-            self.pi.wave_add_generic(first_chunk)
+            
+            # Aggiungiamo l'intera lista di impulsi in una sola volta
+            self.pi.wave_add_generic(full_pulse_list)
+            
+            # Creiamo un'unica, grande waveform
             wave_id = self.pi.wave_create()
-            if wave_id < 0: raise pigpio.error(f"Errore creazione wave: {wave_id}")
+            if wave_id < 0:
+                raise pigpio.error(f"Errore critico durante la creazione della waveform: {wave_id}")
+            
             created_wave_ids.append(wave_id)
-            self.pi.wave_chain([255, 0, wave_id, 255, 1, 0, 0])
+            
+            # Inviamo la waveform e attendiamo la sua fine
+            self.pi.wave_send_once(wave_id)
+            
             while self.pi.wave_tx_busy():
-                next_chunk = next(pulse_generator, None)
-                if not next_chunk: break
-                self.pi.wave_add_generic(next_chunk)
-                wave_id = self.pi.wave_create()
-                if wave_id < 0:
-                    logging.error(f"Errore creazione wave in streaming: {wave_id}")
+                # Se un finecorsa interrompe il movimento, usciamo dal ciclo
+                if self.last_move_interrupted:
+                    logging.warning("Interruzione da finecorsa rilevata. Attendo la fine della trasmissione.")
                     break
-                created_wave_ids.append(wave_id)
-                self.pi.wave_chain([255, 0, wave_id, 255, 1, 0, 0])
-                time.sleep(0.05) 
-            self.pi.wave_chain([255, 2, 0, 0])
-            while self.pi.wave_tx_busy(): time.sleep(0.05)
+                time.sleep(0.05)
+
+            # Logica di logging chiara
             if self.last_move_interrupted:
                 logging.warning("MOVIMENTO INTERROTTO da un finecorsa.")
             else:
                 logging.info("Movimento completato normalmente.")
+
         finally:
             if self.pi and self.pi.connected:
+                # Assicurati che l'onda sia fermata in ogni caso
                 self.pi.wave_tx_stop()
+                
+                # Pulisci le onde create
                 for wid in created_wave_ids:
                     try: self.pi.wave_delete(wid)
                     except pigpio.error: pass
-                for config in self.motor_configs.values(): self.pi.write(config.en_pin, 1)
+                
+                # Disabilita tutti i motori
+                for config in self.motor_configs.values():
+                    self.pi.write(config.en_pin, 1)
                 logging.info(f"Pulizia post-movimento completata.")
-
+# --- FINE DELLA CLASSE MotorController ---
     def execute_homing_sequence(self, motor_name: str):
         if motor_name not in SWITCHES:
             logging.error(f"Impossibile eseguire homing: '{motor_name}' non ha finecorsa.")
