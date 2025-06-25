@@ -11,9 +11,9 @@ export class MotorsControlService {
   constructor(private http: HttpClient) { }
   
   // Ottieni le impostazioni dei motori
-  updateSettings():Observable<any>{
+  updateSettings(body: any):Observable<any>{
     const url = `${this.apiUrl}update/`
-    return this.http.get<any>(url);
+    return this.http.post<any>(url, body);
     }
   
   // richiesta per muovere il motore

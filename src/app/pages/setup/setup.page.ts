@@ -218,7 +218,7 @@ onPresetChange() {
         this.presentToast('Errore durante il salvataggio delle impostazioni', 'danger');
       }
     });
-    this.motorsService.updateSettings().subscribe({
+    this.motorsService.updateSettings({}).subscribe({
       next: (response) => {
         console.log('Impostazioni motori aggiornate:', response);
         this.presentToast('Impostazioni motori aggiornate con successo', 'success');
