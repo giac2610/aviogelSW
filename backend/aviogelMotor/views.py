@@ -109,95 +109,95 @@ class MotionPlanner:
 
    # All'interno della classe MotionPlanner
 
-def plan_move_streamed(self, targets: dict[str, float], switch_states: dict, chunk_size: int = 2048) -> tuple[object, set]:
-    if not targets:
-        return (None for _ in range(0)), set()
-    
-    move_data = {}
-    for motor_id, distance in targets.items():
-        if distance == 0 or motor_id not in self.motor_configs:
-            continue
+    def plan_move_streamed(self, targets: dict[str, float], switch_states: dict, chunk_size: int = 2048) -> tuple[object, set]:
+        if not targets:
+            return (None for _ in range(0)), set()
         
-        # La direzione 1 corrisponde a un movimento POSITIVO (es. verso l'end-stop)
-        # La direzione 0 corrisponde a un movimento NEGATIVO (es. verso lo start-stop)
-        direction = 1 if distance >= 0 else 0
-
-        # --- NUOVA LOGICA DI SBLOCCO AUTOMATICO ---
-        # Se ci stiamo muovendo in direzione POSITIVA (lontano da START)
-        # e il finecorsa START è segnato come attivo, lo resettiamo.
-        # Questo ci permette di muoverci via dal finecorsa.
-        if direction == 1 and switch_states.get(f"{motor_id}_start"):
-            logging.info(f"Sblocco logico: il movimento positivo per '{motor_id}' resetta lo stato del finecorsa START.")
-            switch_states[f"{motor_id}_start"] = False
-
-        # Se ci stiamo muovendo in direzione NEGATIVA (lontano da END)
-        # e il finecorsa END è segnato come attivo, lo resettiamo.
-        if direction == 0 and switch_states.get(f"{motor_id}_end"):
-            logging.info(f"Sblocco logico: il movimento negativo per '{motor_id}' resetta lo stato del finecorsa END.")
-            switch_states[f"{motor_id}_end"] = False
-        # --- FINE NUOVA LOGICA ---
-
-        # La logica di blocco originale ora opera su uno stato potenzialmente aggiornato.
-        # Blocca il movimento se si tenta di andare OLTRE un finecorsa già attivo.
-        if direction == 0 and switch_states.get(f"{motor_id}_start"):
-            logging.warning(f"Movimento per '{motor_id}' bloccato: si sta tentando di superare il finecorsa START attivo.")
-            continue
-        if direction == 1 and switch_states.get(f"{motor_id}_end"):
-            logging.warning(f"Movimento per '{motor_id}' bloccato: si sta tentando di superare il finecorsa END attivo.")
-            continue
+        move_data = {}
+        for motor_id, distance in targets.items():
+            if distance == 0 or motor_id not in self.motor_configs:
+                continue
             
-        config = self.motor_configs[motor_id]
-        move_data[motor_id] = {
-            "steps": int(abs(distance) * config.steps_per_mm), "dir": direction, "config": config
-        }
-
-    if not move_data:
-        return (None for _ in range(0)), set()
+            # La direzione 1 corrisponde a un movimento POSITIVO (es. verso l'end-stop)
+            # La direzione 0 corrisponde a un movimento NEGATIVO (es. verso lo start-stop)
+            direction = 1 if distance >= 0 else 0
     
-    master_id = max(move_data, key=lambda k: move_data[k]["steps"])
-    master_data = move_data[master_id]
-    master_steps = master_data["steps"]
-
-    if master_steps == 0:
-        return (None for _ in range(0)), set()
-
-    accel_for_this_move = master_data["config"].acceleration_steps
-    logging.info(f"Streaming pianificato. Master: '{master_id}' ({master_steps} passi). Uso accelerazione di {accel_for_this_move} passi.")
+            # --- NUOVA LOGICA DI SBLOCCO AUTOMATICO ---
+            # Se ci stiamo muovendo in direzione POSITIVA (lontano da START)
+            # e il finecorsa START è segnato come attivo, lo resettiamo.
+            # Questo ci permette di muoverci via dal finecorsa.
+            if direction == 1 and switch_states.get(f"{motor_id}_start"):
+                logging.info(f"Sblocco logico: il movimento positivo per '{motor_id}' resetta lo stato del finecorsa START.")
+                switch_states[f"{motor_id}_start"] = False
     
-    master_profile_ts = self._generate_trapezoidal_profile(
-        master_steps, 
-        master_data["config"].max_freq_hz, 
-        accel_for_this_move
-    )
+            # Se ci stiamo muovendo in direzione NEGATIVA (lontano da END)
+            # e il finecorsa END è segnato come attivo, lo resettiamo.
+            if direction == 0 and switch_states.get(f"{motor_id}_end"):
+                logging.info(f"Sblocco logico: il movimento negativo per '{motor_id}' resetta lo stato del finecorsa END.")
+                switch_states[f"{motor_id}_end"] = False
+            # --- FINE NUOVA LOGICA ---
     
-    active_motors = {m["config"].name for m in move_data.values()}
-    def pulse_generator():
-        dir_on_mask, dir_off_mask = 0, 0
-        for motor_id, move in move_data.items():
-            if move["dir"] == 1: dir_on_mask |= (1 << move["config"].dir_pin)
-            else: dir_off_mask |= (1 << move["config"].dir_pin)
-        yield [pigpio.pulse(dir_on_mask, dir_off_mask, 20)]
-        bresenham_errors = {mid: -master_steps / 2 for mid in move_data if mid != master_id}
-        last_time_us, pulse_chunk = 0.0, []
-        for i in range(master_steps):
-            on_mask = 1 << master_data["config"].step_pin
-            for slave_id in bresenham_errors:
-                bresenham_errors[slave_id] += move_data[slave_id]["steps"]
-                if bresenham_errors[slave_id] > 0:
-                    on_mask |= 1 << move_data[slave_id]["config"].step_pin
-                    bresenham_errors[slave_id] -= master_steps
-            current_time_us = master_profile_ts[i]
-            total_period_us = current_time_us - last_time_us
-            if total_period_us >= 2:
-                pulse_chunk.extend([pigpio.pulse(on_mask, 0, 2), pigpio.pulse(0, on_mask, int(round(total_period_us - 2)))])
-            elif total_period_us > 0:
-                pulse_chunk.extend([pigpio.pulse(on_mask, 0, 1), pigpio.pulse(0, on_mask, 0)])
-            last_time_us = current_time_us
-            if len(pulse_chunk) >= chunk_size:
-                yield pulse_chunk
-                pulse_chunk = []
-        if pulse_chunk: yield pulse_chunk
-    return pulse_generator(), active_motors
+            # La logica di blocco originale ora opera su uno stato potenzialmente aggiornato.
+            # Blocca il movimento se si tenta di andare OLTRE un finecorsa già attivo.
+            if direction == 0 and switch_states.get(f"{motor_id}_start"):
+                logging.warning(f"Movimento per '{motor_id}' bloccato: si sta tentando di superare il finecorsa START attivo.")
+                continue
+            if direction == 1 and switch_states.get(f"{motor_id}_end"):
+                logging.warning(f"Movimento per '{motor_id}' bloccato: si sta tentando di superare il finecorsa END attivo.")
+                continue
+                
+            config = self.motor_configs[motor_id]
+            move_data[motor_id] = {
+                "steps": int(abs(distance) * config.steps_per_mm), "dir": direction, "config": config
+            }
+    
+        if not move_data:
+            return (None for _ in range(0)), set()
+        
+        master_id = max(move_data, key=lambda k: move_data[k]["steps"])
+        master_data = move_data[master_id]
+        master_steps = master_data["steps"]
+    
+        if master_steps == 0:
+            return (None for _ in range(0)), set()
+    
+        accel_for_this_move = master_data["config"].acceleration_steps
+        logging.info(f"Streaming pianificato. Master: '{master_id}' ({master_steps} passi). Uso accelerazione di {accel_for_this_move} passi.")
+        
+        master_profile_ts = self._generate_trapezoidal_profile(
+            master_steps, 
+            master_data["config"].max_freq_hz, 
+            accel_for_this_move
+        )
+        
+        active_motors = {m["config"].name for m in move_data.values()}
+        def pulse_generator():
+            dir_on_mask, dir_off_mask = 0, 0
+            for motor_id, move in move_data.items():
+                if move["dir"] == 1: dir_on_mask |= (1 << move["config"].dir_pin)
+                else: dir_off_mask |= (1 << move["config"].dir_pin)
+            yield [pigpio.pulse(dir_on_mask, dir_off_mask, 20)]
+            bresenham_errors = {mid: -master_steps / 2 for mid in move_data if mid != master_id}
+            last_time_us, pulse_chunk = 0.0, []
+            for i in range(master_steps):
+                on_mask = 1 << master_data["config"].step_pin
+                for slave_id in bresenham_errors:
+                    bresenham_errors[slave_id] += move_data[slave_id]["steps"]
+                    if bresenham_errors[slave_id] > 0:
+                        on_mask |= 1 << move_data[slave_id]["config"].step_pin
+                        bresenham_errors[slave_id] -= master_steps
+                current_time_us = master_profile_ts[i]
+                total_period_us = current_time_us - last_time_us
+                if total_period_us >= 2:
+                    pulse_chunk.extend([pigpio.pulse(on_mask, 0, 2), pigpio.pulse(0, on_mask, int(round(total_period_us - 2)))])
+                elif total_period_us > 0:
+                    pulse_chunk.extend([pigpio.pulse(on_mask, 0, 1), pigpio.pulse(0, on_mask, 0)])
+                last_time_us = current_time_us
+                if len(pulse_chunk) >= chunk_size:
+                    yield pulse_chunk
+                    pulse_chunk = []
+            if pulse_chunk: yield pulse_chunk
+        return pulse_generator(), active_motors
 
 class MotorController:
     # ... (L'intera classe MotorController rimane invariata rispetto all'ultima versione funzionante) ...
