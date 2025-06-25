@@ -9,5 +9,5 @@ urlpatterns = [
     path('speeds/', get_motor_speeds_view, name='get_motor_speeds'),
     path('simulate/', start_simulation_view, name='start_simulation'),
     path('execute_route/', execute_route_view, name='execute_route'),
-    path('motors/status/', get_motor_status_view, name='get_motor_status'),
+    path('status/', get_motor_status_view, name='get_motor_status'),
 ]
