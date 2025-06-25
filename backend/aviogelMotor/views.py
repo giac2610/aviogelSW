@@ -232,24 +232,32 @@ class MotorController:
             if other_switch_id in self.switch_states:
                 self.switch_states[other_switch_id] = False
 
-    def execute_streamed_move(self, pulse_generator: object, active_motors: set):
-        if not self.pi or not self.pi.connected:
-            raise ConnectionError("Esecuzione fallita: pigpio non connesso.")
-        self.last_move_interrupted = False
-        full_pulse_list = []
-        for chunk in pulse_generator:
-            full_pulse_list.extend(chunk)
-        if not full_pulse_list:
-            logging.warning("Generatore di impulsi vuoto, nessun movimento eseguito.")
-            return
-        logging.info(f"Esecuzione di un movimento con {len(full_pulse_list)} impulsi totali.")
-        for motor_name in active_motors:
-            self.pi.write(self.motor_configs[motor_name].en_pin, 0)
-        time.sleep(0.01)
-        created_wave_ids = []
-        try:
-            self.pi.wave_clear()
-            self.pi.wave_add_generic(full_pulse_list)
+# ...existing code...
+def execute_streamed_move(self, pulse_generator: object, active_motors: set):
+    if not self.pi or not self.pi.connected:
+        raise ConnectionError("Esecuzione fallita: pigpio non connesso.")
+    self.last_move_interrupted = False
+
+    # Genera tutta la lista di impulsi per il movimento completo
+    full_pulse_list = []
+    for chunk in pulse_generator:
+        full_pulse_list.extend(chunk)
+    if not full_pulse_list:
+        logging.warning("Generatore di impulsi vuoto, nessun movimento eseguito.")
+        return
+    logging.info(f"Esecuzione di un movimento con {len(full_pulse_list)} impulsi totali.")
+    for motor_name in active_motors:
+        self.pi.write(self.motor_configs[motor_name].en_pin, 0)
+    time.sleep(0.01)
+
+    # Invia la waveform a pigpio a chunk, mantenendo la rampa unica
+    chunk_size = 2048  # o altro valore sicuro per pigpio
+    created_wave_ids = []
+    try:
+        self.pi.wave_clear()
+        for i in range(0, len(full_pulse_list), chunk_size):
+            chunk = full_pulse_list[i:i+chunk_size]
+            self.pi.wave_add_generic(chunk)
             wave_id = self.pi.wave_create()
             if wave_id < 0:
                 raise pigpio.error(f"Errore critico durante la creazione della waveform: {wave_id}")
@@ -260,19 +268,21 @@ class MotorController:
                     logging.warning("Interruzione da finecorsa rilevata. Attendo la fine della trasmissione.")
                     break
                 time.sleep(0.05)
-            if self.last_move_interrupted:
-                logging.warning("MOVIMENTO INTERROTTO da un finecorsa.")
-            else:
-                logging.info("Movimento completato normalmente.")
-        finally:
-            if self.pi and self.pi.connected:
-                self.pi.wave_tx_stop()
-                for wid in created_wave_ids:
-                    try: self.pi.wave_delete(wid)
-                    except pigpio.error: pass
-                for config in self.motor_configs.values():
-                    self.pi.write(config.en_pin, 1)
-                logging.info(f"Pulizia post-movimento completata.")
+            self.pi.wave_delete(wave_id)
+        if self.last_move_interrupted:
+            logging.warning("MOVIMENTO INTERROTTO da un finecorsa.")
+        else:
+            logging.info("Movimento completato normalmente.")
+    finally:
+        if self.pi and self.pi.connected:
+            self.pi.wave_tx_stop()
+            for wid in created_wave_ids:
+                try: self.pi.wave_delete(wid)
+                except pigpio.error: pass
+            for config in self.motor_configs.values():
+                self.pi.write(config.en_pin, 1)
+            logging.info(f"Pulizia post-movimento completata.")
+# ...existing code...
 
     def execute_homing_sequence(self, motor_name: str):
         if motor_name not in SWITCHES:
@@ -420,8 +430,8 @@ def move_motor_view(request):
         targets = data.get("targets")
         if not targets or not isinstance(targets, dict):
             return JsonResponse({"log": "Input non valido", "error": "targets deve essere un dizionario"}, status=400)
-        # motor_command_queue.put({"command": "move", "targets": targets})
-        split_and_queue_move(targets, max_steps=1000)
+        motor_command_queue.put({"command": "move", "targets": targets})
+        # split_and_queue_move(targets, max_steps=1000)
         return JsonResponse({"log": "Movimento messo in coda", "status": "queued"})
     except Exception as e: return handle_exception(e)
 
@@ -447,8 +457,8 @@ def execute_route_view(request):
         logging.info(f"Accodamento rotta con {len(route)} passi.")
         for step in route:
             if isinstance(step, dict): 
-                # motor_command_queue.put({"command": "move", "targets": step})
-                split_and_queue_move(step, max_steps=1000)
+                motor_command_queue.put({"command": "move", "targets": step})
+                # split_and_queue_move(step, max_steps=1000)
         return JsonResponse({"log": f"Rotta con {len(route)} passi accodata.", "status": "queued"})
     except Exception as e: return handle_exception(e)
 
@@ -498,8 +508,8 @@ def start_simulation_view(request):
         logging.info("Avvio simulazione predefinita...")
         for i, step in enumerate(simulation_steps):
             logging.info(f"Accodamento passo simulazione {i+1}: {step}")
-            # motor_command_queue.put({"command": "move", "targets": step})
-            split_and_queue_move(step, max_steps=1000)
+            motor_command_queue.put({"command": "move", "targets": step})
+            # split_and_queue_move(step, max_steps=1000)
         motor_command_queue.join()
         logging.info("Simulazione completata.")
         return JsonResponse({"log": "Simulazione completata con successo", "status": "success"})
