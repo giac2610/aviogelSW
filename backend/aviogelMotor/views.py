@@ -456,7 +456,8 @@ def update_config_view(request):
                 MOTOR_CONTROLLER.pi.wave_tx_stop()
             logging.info("Movimento corrente interrotto per aggiornamento configurazione.")
             new_configs = load_system_config()
-            if not new_configs: raise ValueError("Caricamento nuova configurazione fallito o file vuoto.")
+            if not new_configs: 
+                raise ValueError("Caricamento nuova configurazione fallito o file vuoto.")
             MOTOR_CONFIGS, MOTION_PLANNER, MOTOR_CONTROLLER = new_configs, MotionPlanner(new_configs), MotorController(new_configs)
             logging.info("Hot-Reload completato. Il sistema ora usa la nuova configurazione.")
             return JsonResponse({"log": "Configurazione aggiornata e ricaricata con successo.", "status": "success"})
@@ -487,11 +488,13 @@ def start_simulation_view(request):
 @api_view(['POST'])
 def save_motor_config_view(request):
     try:
-        with open(SETTINGS_FILE, 'r') as f: full_config = json.load(f)
+        with open(SETTINGS_FILE, 'r') as f: 
+            full_config = json.load(f)
     except (FileNotFoundError, json.JSONDecodeError): full_config = {}
     new_data = json.loads(request.body)
     full_config.setdefault('motors', {}).update(new_data)
-    with open(SETTINGS_FILE, 'w') as f: json.dump(full_config, f, indent=4)
+    with open(SETTINGS_FILE, 'w') as f:
+        json.dump(full_config, f, indent=4)
     msg = "Configurazione motori salvata. Chiamare /motors/update_config/ per applicare le modifiche."
     logging.info(msg)
     return JsonResponse({"log": msg, "success": True})
