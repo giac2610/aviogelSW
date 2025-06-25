@@ -218,6 +218,16 @@ onPresetChange() {
         this.presentToast('Errore durante il salvataggio delle impostazioni', 'danger');
       }
     });
+    this.motorsService.updateSettings().subscribe({
+      next: (response) => {
+        console.log('Impostazioni motori aggiornate:', response);
+        this.presentToast('Impostazioni motori aggiornate con successo', 'success');
+      },
+      error: (error) => {
+        console.error('Errore durante l\'aggiornamento delle impostazioni motori:', error);
+        this.presentToast('Errore durante l\'aggiornamento delle impostazioni motori', 'danger');
+      }
+    });
   }
 
   onCameraSettingChange() {
