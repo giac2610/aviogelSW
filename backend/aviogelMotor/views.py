@@ -282,56 +282,80 @@ class MotorController:
                 self.switch_states[other_switch_id] = False
 
 
+# All'interno della classe MotorController
+
     def execute_streamed_move(self, pulse_generator: object, active_motors: set):
         if not self.pi or not self.pi.connected:
             raise ConnectionError("Esecuzione fallita: pigpio non connesso.")
+
         self.last_move_interrupted = False
 
-        # Genera tutta la lista di impulsi per il movimento completo
-        full_pulse_list = []
-        for chunk in pulse_generator:
-            full_pulse_list.extend(chunk)
-        if not full_pulse_list:
-            logging.warning("Generatore di impulsi vuoto, nessun movimento eseguito.")
-            return
-        logging.info(f"Esecuzione di un movimento con {len(full_pulse_list)} impulsi totali.")
+        # 1. Attiva i motori
         for motor_name in active_motors:
             self.pi.write(self.motor_configs[motor_name].en_pin, 0)
         time.sleep(0.01)
 
-        # Invia la waveform a pigpio a chunk, mantenendo la rampa unica
-        chunk_size = 4096
-        created_wave_ids = []
+        wave_ids = []
         try:
+            # 2. Cancella le vecchie waveform e genera tutti i chunk
             self.pi.wave_clear()
-            for i in range(0, len(full_pulse_list), chunk_size):
-                chunk = full_pulse_list[i:i+chunk_size]
+
+            # Genera tutti i chunk di impulsi in memoria
+            all_chunks = [chunk for chunk in pulse_generator if chunk]
+            if not all_chunks:
+                logging.warning("Generatore di impulsi vuoto, nessun movimento eseguito.")
+                return
+
+            logging.info(f"Esecuzione di un movimento con {len(all_chunks)} chunk di waveform.")
+
+            # 3. Aggiungi tutti i chunk a pigpio e crea le relative wave ID
+            for chunk in all_chunks:
                 self.pi.wave_add_generic(chunk)
                 wave_id = self.pi.wave_create()
                 if wave_id < 0:
                     raise pigpio.error(f"Errore critico durante la creazione della waveform: {wave_id}")
-                created_wave_ids.append(wave_id)
-                self.pi.wave_send_once(wave_id)
-                while self.pi.wave_tx_busy():
-                    if self.last_move_interrupted:
-                        logging.warning("Interruzione da finecorsa rilevata. Attendo la fine della trasmissione.")
-                        break
-                    time.sleep(0.05)
-                self.pi.wave_delete(wave_id)
+                wave_ids.append(wave_id)
+
+            # 4. Crea la CATENA DI ESECUZIONE (la modifica chiave!)
+            #    Questo dice a pigpio di eseguire le wave una dopo l'altra senza pause.
+            #    La sintassi [255, 0, id_1, id_2, ..., 255, 1, N, M] è il linguaggio della catena di pigpio.
+            chain = []
+            for wid in wave_ids:
+                chain.extend([255, 0, wid & 0xFF, (wid >> 8) & 0xFF])
+            chain.extend([255, 3]) # Fine della catena
+
+            # 5. Esegui la catena in un colpo solo
+            self.pi.wave_chain(chain)
+
+            # 6. Attendi la fine della trasmissione, controllando le interruzioni
+            while self.pi.wave_tx_busy():
+                if self.last_move_interrupted:
+                    logging.warning("Interruzione da finecorsa rilevata. Arresto della catena.")
+                    self.pi.wave_tx_stop() # Ferma immediatamente la catena in esecuzione
+                    break
+                time.sleep(0.05)
+
             if self.last_move_interrupted:
                 logging.warning("MOVIMENTO INTERROTTO da un finecorsa.")
             else:
                 logging.info("Movimento completato normalmente.")
+
         finally:
+            # 7. Pulizia finale
             if self.pi and self.pi.connected:
-                self.pi.wave_tx_stop()
-                for wid in created_wave_ids:
+                # Assicura che la trasmissione sia ferma
+                if self.pi.wave_tx_busy():
+                    self.pi.wave_tx_stop()
+                # Cancella tutte le waveform create per questo movimento
+                for wid in wave_ids:
                     try: self.pi.wave_delete(wid)
                     except pigpio.error: pass
+
+                # Disattiva i motori
                 for config in self.motor_configs.values():
                     self.pi.write(config.en_pin, 1)
                 logging.info(f"Pulizia post-movimento completata.")
-
+                
     def execute_homing_sequence(self, motor_name: str):
         if motor_name not in SWITCHES:
             logging.error(f"Impossibile eseguire homing: '{motor_name}' non ha finecorsa.")
