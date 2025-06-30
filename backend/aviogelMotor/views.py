@@ -58,8 +58,6 @@ SWITCHES = {
     "syringe": {"Start": 19, "End": 26},
 }
 
-# La costante globale LINEAR_ACCEL_STEPS è stata rimossa.
-
 # ==============================================================================
 # ARCHITETTURA REFACTORING: Classi per la Gestione del Movimento
 # ==============================================================================
@@ -73,7 +71,7 @@ class MotorConfig:
     en_pin: int
     steps_per_mm: float
     max_freq_hz: float
-    acceleration_steps: int # Campo per l'accelerazione per-motore
+    acceleration_steps: int
 
 class MotionPlanner:
     """Il cervello del sistema. Pianifica movimenti coordinati."""

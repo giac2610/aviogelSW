@@ -434,7 +434,7 @@ def get_graph_and_tsp_path():
     filtered_coords = []
     for coord in coordinates_with_origin:
         x_rel = coord[0] - origin_x
-        if 50 <= x_rel <= 200:
+        if 5 <= x_rel <= 250:
             filtered_coords.append(coord)
     nodi = [tuple(coord) for coord in filtered_coords]
     
