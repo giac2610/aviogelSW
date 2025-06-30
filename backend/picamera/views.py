@@ -283,7 +283,7 @@ def detect_blobs_from_params(binary_image, blob_detection_params, scale_x=1.0, s
     return detector.detect(binary_image)
 
 def get_current_frame_and_keypoints_from_config():
-    frame = get_frame(release_after=True)
+    frame = get_frame(release_after=False)
     if frame is None or frame.size == 0:
         print("get_current_frame_and_keypoints: Invalid frame received.")
         configured_height = camera_settings.get("picamera_config", {}).get("main", {}).get("size", [640, 480])[1]
@@ -511,7 +511,7 @@ def camera_feed(request):
                 dist_coeffs = np.array(cam_calib["distortion_coefficients"], dtype=np.float32)
                 
                 try:
-                    sample_frame_for_dims = get_frame(release_after=True) 
+                    sample_frame_for_dims = get_frame(release_after=False) 
                     if sample_frame_for_dims is not None and sample_frame_for_dims.size > 0:
                         h_str, w_str = sample_frame_for_dims.shape[:2]
                         new_cam_matrix_stream, _ = cv2.getOptimalNewCameraMatrix(cam_matrix, dist_coeffs, (w_str,h_str), 1.0, (w_str,h_str))
@@ -766,7 +766,7 @@ def set_camera_origin(request):
 @require_POST
 def save_frame_calibration(request):
     try:
-        frame_to_save = get_frame(release_after=True)
+        frame_to_save = get_frame(release_after=False)
         if frame_to_save is None or frame_to_save.size == 0:
             return JsonResponse({"status": "error", "message": "Invalid frame received from camera."}, status=500)
         
@@ -860,7 +860,7 @@ def set_fixed_perspective_view(request):
     FIXED_HEIGHT = fixed_perspective_cfg.get("output_height", 800)
     
     try:
-        frame_cap = get_frame(release_after=True)
+        frame_cap = get_frame(release_after=False)
         if frame_cap is None or frame_cap.size == 0: 
             return JsonResponse({"status": "error", "message": "Could not get frame from camera."}, status=500)
         h_cam_cap, w_cam_cap = frame_cap.shape[:2]
@@ -956,7 +956,7 @@ def fixed_perspective_stream(request):
         
         new_cam_matrix_stream = None
         try:
-            sample_frame_for_dims = get_frame(release_after=True) 
+            sample_frame_for_dims = get_frame(release_after=False) 
             if sample_frame_for_dims is not None and sample_frame_for_dims.size > 0:
                 h_str, w_str = sample_frame_for_dims.shape[:2]
                 new_cam_matrix_stream, _ = cv2.getOptimalNewCameraMatrix(cam_matrix, dist_coeffs, (w_str,h_str), 1.0, (w_str,h_str))
