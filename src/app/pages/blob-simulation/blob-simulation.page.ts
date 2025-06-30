@@ -98,12 +98,20 @@ export class BlobSimulationPage implements OnInit {
       next: (res) => {
         if (res.success) {
           this.presentToast('Camera inizializzata con successo');
-        
+          this.isCameraInit = true;
         this.configService.getMotorsRoute().subscribe({
           next: (res) => {
             if (res.status === 'success') {
               this.presentToast('Rotta ottenuta con successo');
-              this.configService.deInitializeCamera().subscribe()
+              this.configService.deInitializeCamera().subscribe({
+                next: () => {
+                  this.presentToast('Camera de-inizializzata con successo');
+                  this.isCameraInit = false;
+                },
+                error: (err) => {
+                  this.presentToast(`Errore nella de-inizializzazione della camera: ${err.message}`, 'danger');
+                } 
+              });
               // Passiamo direttamente l'array, perché il servizio sa come gestirlo.
               this.configService.executeRoute(res.motor_commands).subscribe({
                   next: (moveRes) => {
