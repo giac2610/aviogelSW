@@ -79,32 +79,57 @@ class MotionPlanner:
         self.motor_configs = motor_configs
         logging.info(f"MotionPlanner inizializzato con motori: {list(motor_configs.keys())}")
 
-    def _generate_trapezoidal_profile(self, total_steps: int, max_freq_hz: float, accel_steps: int) -> list[float]:
-        """Genera i timestamp per ogni passo usando un profilo Trapezoidale, accettando un valore di accelerazione specifico."""
+    def _generate_trapezoidal_profile(self, total_steps: int, max_freq_hz: float, accel_mmss: float, steps_per_mm: float) -> list[float]:
+        """
+        Genera i timestamp per ogni passo usando un profilo trapezoidale
+        con accelerazione costante espressa in mm/s^2.
+        """
         if total_steps == 0:
             return []
-        
-        # Usa il parametro ricevuto invece di una costante globale
-        effective_accel_steps = min(accel_steps, total_steps // 2)
-        decel_start_step = total_steps - effective_accel_steps
 
+        # Calcola la velocità massima in mm/s
+        v_max = max_freq_hz / steps_per_mm  # mm/s
+
+        # Calcola il tempo necessario per accelerare da 0 a v_max
+        t_accel = v_max / accel_mmss  # secondi
+
+        # Spazio percorso durante l'accelerazione (in mm)
+        s_accel = 0.5 * accel_mmss * t_accel**2
+
+        # Passi necessari per accelerare
+        steps_accel = int(s_accel * steps_per_mm)
+        steps_accel = min(steps_accel, total_steps // 2)
+
+        # Se il movimento è troppo corto per raggiungere v_max, ricalcola la rampa (profilo triangolare)
+        if steps_accel == 0:
+            steps_accel = 1
+        if steps_accel * 2 > total_steps:
+            steps_accel = total_steps // 2
+            v_peak = (accel_mmss * (steps_accel / steps_per_mm))**0.5
+            v_max = v_peak
+            t_accel = v_max / accel_mmss
+
+        # Genera il profilo di frequenza
         i = np.arange(total_steps, dtype=np.float64)
-        freq = np.full(total_steps, max_freq_hz, dtype=np.float64)
-        
-        if effective_accel_steps > 0:
-            accel_mask = i < effective_accel_steps
-            freq[accel_mask] = max_freq_hz * (i[accel_mask] + 1) / effective_accel_steps
+        freq = np.full(total_steps, v_max * steps_per_mm, dtype=np.float64)
 
+        # Accelerazione
+        if steps_accel > 0:
+            accel_mask = i < steps_accel
+            t = (i[accel_mask] + 1) / steps_per_mm / v_max * t_accel
+            freq[accel_mask] = accel_mmss * t * steps_per_mm
+
+        # Decelerazione
+        decel_start_step = total_steps - steps_accel
         if decel_start_step < total_steps:
             decel_mask = i >= decel_start_step
             steps_into_decel = i[decel_mask] - decel_start_step
-            remaining_steps = effective_accel_steps - steps_into_decel
-            freq[decel_mask] = max_freq_hz * remaining_steps / effective_accel_steps
+            t = (steps_accel - steps_into_decel) / steps_per_mm / v_max * t_accel
+            freq[decel_mask] = accel_mmss * t * steps_per_mm
 
         np.maximum(freq, 1.0, out=freq)
         periods_us = 1_000_000.0 / freq
         return np.cumsum(periods_us).tolist()
-
    # All'interno della classe MotionPlanner
 
     def plan_move_streamed(self, targets: dict[str, float], switch_states: dict, chunk_size: int = 2048) -> tuple[object, set]:
@@ -163,9 +188,10 @@ class MotionPlanner:
         logging.info(f"Streaming pianificato. Master: '{master_id}' ({master_steps} passi). Uso accelerazione di {accel_for_this_move} passi.")
         
         master_profile_ts = self._generate_trapezoidal_profile(
-            master_steps, 
-            master_data["config"].max_freq_hz, 
-            accel_for_this_move
+            master_steps,
+            master_data["config"].max_freq_hz,
+            master_data["config"].acceleration_steps,  # <-- ora è in mm/s^2
+            master_data["config"].steps_per_mm
         )
         
         active_motors = {m["config"].name for m in move_data.values()}
