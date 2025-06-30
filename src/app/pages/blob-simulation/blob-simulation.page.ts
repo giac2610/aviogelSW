@@ -18,6 +18,7 @@ export class BlobSimulationPage implements OnInit {
   streamUrl: string = '';
   // graphUrl: string = 'http://localhost:8000/camera/plot_graph/';
   graphUrl: string = '';
+  isCameraInit: boolean = false;
 
   @ViewChild('cameraImg', { static: false }) cameraImgRef!: ElementRef<HTMLImageElement>;
   imgWidth: number = 1280/3.5;
@@ -32,16 +33,16 @@ export class BlobSimulationPage implements OnInit {
   }
 
   ngOnInit() {
-    this.configService.initializeCamera().subscribe({
-      next: (res) => {
-        if (res.success) {
-          this.presentToast('Camera inizializzata con successo');
-        } else {
-          this.presentToast('Errore nell\'inizializzazione della camera', 'danger');
-        }
-      },
-    });
-    this.getRealCoordinates();
+    // this.configService.initializeCamera().subscribe({
+    //   next: (res) => {
+    //     if (res.success) {
+    //       this.presentToast('Camera inizializzata con successo');
+    //     } else {
+    //       this.presentToast('Errore nell\'inizializzazione della camera', 'danger');
+    //     }
+    //   },
+    // });
+    // this.getRealCoordinates();
   }
 
 
@@ -93,36 +94,46 @@ export class BlobSimulationPage implements OnInit {
   }
 
   executeRoute() {
-    this.configService.getMotorsRoute().subscribe({
+    this.configService.initializeCamera().subscribe({
       next: (res) => {
-        if (res.status === 'success') {
-          this.presentToast('Rotta ottenuta con successo');
-          
-          // Passiamo direttamente l'array, perché il servizio sa come gestirlo.
-          this.configService.executeRoute(res.motor_commands).subscribe({
-              next: (moveRes) => {
-                if (moveRes.status === 'success') {
-                  console.log(`Comandi eseguiti con successo`);
-                  this.graphUrl = 'http://localhost:8000/camera/plot_graph/?t=' + new Date().getTime();
-                } else {
-                  this.presentToast(`Errore nell'esecuzione: ${moveRes.message}`, 'danger');
-                }
-              }, 
-              error: (err) => {
-                this.presentToast(`Errore nella richiesta di esecuzione: ${err.message}`, 'danger');
+        if (res.success) {
+          this.presentToast('Camera inizializzata con successo');
+        
+        this.configService.getMotorsRoute().subscribe({
+          next: (res) => {
+            if (res.status === 'success') {
+              this.presentToast('Rotta ottenuta con successo');
+              this.configService.deInitializeCamera().subscribe()
+              // Passiamo direttamente l'array, perché il servizio sa come gestirlo.
+              this.configService.executeRoute(res.motor_commands).subscribe({
+                  next: (moveRes) => {
+                    if (moveRes.status === 'success') {
+                      console.log(`Comandi eseguiti con successo`);
+                      this.graphUrl = 'http://localhost:8000/camera/plot_graph/?t=' + new Date().getTime();
+                    } else {
+                      this.presentToast(`Errore nell'esecuzione: ${moveRes.message}`, 'danger');
+                    }
+                  }, 
+                  error: (err) => {
+                    this.presentToast(`Errore nella richiesta di esecuzione: ${err.message}`, 'danger');
+                  }
+                });
+              
+              if (res.plot_graph_base64) {
+                this.graphUrl = 'data:image/png;base64,' + res.plot_graph_base64;
               }
-            });
-
-          if (res.plot_graph_base64) {
-            this.graphUrl = 'data:image/png;base64,' + res.plot_graph_base64;
+            } else {
+              this.presentToast(res.message || 'Errore nell\'ottenimento della rotta', 'danger');
+            }
+          },
+          error: (_err: any) => {
+            this.presentToast('Errore nella richiesta della rotta', 'danger');
           }
+        });
         } else {
-          this.presentToast(res.message || 'Errore nell\'ottenimento della rotta', 'danger');
+          this.presentToast('Errore nell\'inizializzazione della camera', 'danger');
         }
       },
-      error: (_err: any) => {
-        this.presentToast('Errore nella richiesta della rotta', 'danger');
-      }
     });
   }
 }

@@ -15,7 +15,7 @@
     </ion-card-header>
 
     <ion-card-content>
-      <img #cameraImg [src]="streamUrl" [width]="imgWidth" [height]="imgHeight" alt="Camera Stream" />
+      <img *ngIf="isCameraInit" #cameraImg [src]="streamUrl" [width]="imgWidth" [height]="imgHeight" alt="Camera Stream" />
       <img [src]="graphUrl" alt="Coordinate Plot" [width]="imgWidth" [height]="imgHeight"/>
 
       <ion-button (click)="getRealCoordinates()" expand="full" color="primary">
