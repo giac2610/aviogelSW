@@ -300,7 +300,7 @@ class MotorController:
         time.sleep(0.01)
 
         # Invia la waveform a pigpio a chunk, mantenendo la rampa unica
-        chunk_size = 8192
+        chunk_size = 4096
         created_wave_ids = []
         try:
             self.pi.wave_clear()
