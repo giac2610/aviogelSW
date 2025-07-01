@@ -47,7 +47,7 @@ logging.basicConfig(
 
 # --- MAPPATURA HARDWARE FONDAMENTALE ---
 MOTORS = {
-    "extruder": {"STEP": 13, "DIR": 25, "EN": 3},
+    "extruder": {"STEP": 13, "DIR": 6, "EN": 3},
     "syringe": {"STEP": 18, "DIR": 27, "EN": 8},
     "conveyor": {"STEP": 12, "DIR": 5, "EN": 7}
 }
@@ -229,6 +229,7 @@ class MotorController:
         for config in self.motor_configs.values():
             self.pi.set_mode(config.step_pin, pigpio.OUTPUT)
             self.pi.set_mode(config.dir_pin, pigpio.OUTPUT)
+            self.pi.set_pull_up_down(config.en_pin, pigpio.PUD_DOWN)
             self.pi.set_mode(config.en_pin, pigpio.OUTPUT)
             self.pi.write(config.en_pin, 1)
             self.pi.write(config.dir_pin, 0)
