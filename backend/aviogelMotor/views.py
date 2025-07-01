@@ -2,9 +2,8 @@
 
 # ==============================================================================
 # ARCHITETTURA STREAMING con Accelerazione per Motore (Versione Corretta e Completa)
-# Questa versione corregge i problemi di esecuzione a scatti e di blocco,
-# utilizzando pi.wave_chain() in modo corretto.
-# Interpreta correttamente il parametro "acceleration" come mm/s^2.
+# Questa versione corregge i problemi di esecuzione a scatti, blocco,
+# e controllo della direzione.
 # ==============================================================================
 
 import numpy as np
@@ -71,7 +70,7 @@ class MotorConfig:
     en_pin: int
     steps_per_mm: float
     max_freq_hz: float
-    acceleration_mmss: float  # MODIFICA: Nome cambiato per chiarezza (era acceleration_steps)
+    acceleration_mmss: float
 
 class MotionPlanner:
     """Il cervello del sistema. Pianifica movimenti coordinati."""
@@ -80,10 +79,6 @@ class MotionPlanner:
         logging.info(f"MotionPlanner inizializzato con motori: {list(motor_configs.keys())}")
 
     def _generate_trapezoidal_profile(self, total_steps: int, max_freq_hz: float, accel_mmss: float, steps_per_mm: float) -> list[float]:
-        """
-        Genera i timestamp per ogni passo usando un profilo trapezoidale
-        con accelerazione costante espressa in mm/s^2.
-        """
         if total_steps == 0:
             return []
 
@@ -120,10 +115,10 @@ class MotionPlanner:
         periods_us = 1_000_000.0 / freq
         return np.cumsum(periods_us).tolist()
 
-
-    def plan_move_streamed(self, targets: dict[str, float], switch_states: dict, chunk_size: int = 2048) -> tuple[object, set]:
+    # MODIFICA: Funzione aggiornata per la gestione della direzione
+    def plan_move_streamed(self, targets: dict[str, float], switch_states: dict, chunk_size: int = 2048) -> tuple[object, set, dict]:
         if not targets:
-            return (None for _ in range(0)), set()
+            return (None for _ in range(0)), set(), {}
         
         move_data = {}
         for motor_id, distance in targets.items():
@@ -153,16 +148,15 @@ class MotionPlanner:
             }
     
         if not move_data:
-            return (None for _ in range(0)), set()
+            return (None for _ in range(0)), set(), {}
         
         master_id = max(move_data, key=lambda k: move_data[k]["steps"])
         master_data = move_data[master_id]
         master_steps = master_data["steps"]
     
         if master_steps == 0:
-            return (None for _ in range(0)), set()
+            return (None for _ in range(0)), set(), {}
     
-        # MODIFICA: Usa il campo corretto e logga l'unità di misura corretta
         accel_for_this_move = master_data["config"].acceleration_mmss
         logging.info(f"Streaming pianificato. Master: '{master_id}' ({master_steps} passi). Uso accelerazione di {accel_for_this_move} mm/s^2.")
         
@@ -174,12 +168,9 @@ class MotionPlanner:
         )
         
         active_motors = {m["config"].name for m in move_data.values()}
+        directions_to_set = {mid: move['dir'] for mid, move in move_data.items()}
+
         def pulse_generator():
-            dir_on_mask, dir_off_mask = 0, 0
-            for motor_id, move in move_data.items():
-                if move["dir"] == 1: dir_on_mask |= (1 << move["config"].dir_pin)
-                else: dir_off_mask |= (1 << move["config"].dir_pin)
-            yield [pigpio.pulse(dir_on_mask, dir_off_mask, 20)]
             bresenham_errors = {mid: -master_steps / 2 for mid in move_data if mid != master_id}
             last_time_us, pulse_chunk = 0.0, []
             for i in range(master_steps):
@@ -200,7 +191,8 @@ class MotionPlanner:
                     yield pulse_chunk
                     pulse_chunk = []
             if pulse_chunk: yield pulse_chunk
-        return pulse_generator(), active_motors
+        
+        return pulse_generator(), active_motors, directions_to_set
 
 class MotorController:
     def __init__(self, motor_configs: dict[str, MotorConfig]):
@@ -260,24 +252,29 @@ class MotorController:
             if other_switch_id in self.switch_states:
                 self.switch_states[other_switch_id] = False
     
-    def execute_streamed_move(self, pulse_generator: object, active_motors: set):
+    # MODIFICA: Funzione aggiornata per la gestione della direzione
+    def execute_streamed_move(self, pulse_generator: object, active_motors: set, directions: dict):
         if not self.pi or not self.pi.connected:
             raise ConnectionError("Esecuzione fallita: pigpio non connesso.")
-
+        
         self.last_move_interrupted = False
 
-        # Attiva i motori prima di iniziare qualsiasi operazione con pigpio
+        # Imposta e mantieni lo stato dei pin di direzione
+        for motor_id, direction in directions.items():
+            dir_pin = self.motor_configs[motor_id].dir_pin
+            self.pi.write(dir_pin, direction)
+            logging.info(f"Impostata direzione per '{motor_id}' a {direction}")
+
+        # Attiva i motori (pin EN)
         for motor_name in active_motors:
             self.pi.write(self.motor_configs[motor_name].en_pin, 0)
         time.sleep(0.01)
 
         wave_ids = []
         try:
-            # 1. Prepara tutti i chunk e crea le relative wave
-            # NOTA: wave_clear() è stato rimosso da qui.
             for chunk in pulse_generator:
                 if not chunk: continue
-
+                
                 self.pi.wave_add_generic(chunk)
                 wave_id = self.pi.wave_create()
 
@@ -285,46 +282,36 @@ class MotorController:
                     wave_ids.append(wave_id)
                 else:
                     logging.error(f"Errore critico (codice {wave_id}) durante creazione waveform. Movimento annullato.")
-                    # La pulizia avverrà comunque nel blocco finally, quindi usciamo.
                     return
 
             if not wave_ids:
                 logging.warning("Nessuna waveform valida generata, nessun movimento eseguito.")
                 return
 
-            # 2. Esecuzione della catena
             logging.info(f"Invio catena a pigpio con {len(wave_ids)} waves.")
             self.pi.wave_chain(wave_ids)
 
-            # 3. Attendi la fine della trasmissione
             while self.pi.wave_tx_busy():
                 if self.last_move_interrupted:
                     logging.warning("Interruzione da finecorsa rilevata. Arresto della catena.")
                     self.pi.wave_tx_stop()
                     break
                 time.sleep(0.05)
-
+            
             if self.last_move_interrupted:
                 logging.warning("MOVIMENTO INTERROTTO da un finecorsa.")
             else:
-                logging.info("Movimento completato normally.")
+                logging.info("Movimento completato normalmente.")
 
         finally:
-            # 4. PULIZIA GARANTITA (LA MODIFICA CHIAVE)
             if self.pi and self.pi.connected:
-                # Ferma qualsiasi trasmissione ancora attiva
                 if self.pi.wave_tx_busy():
                     self.pi.wave_tx_stop()
-
-                # Cancella TUTTE le waveform, garantendo che non ci siano perdite di risorse (CBs).
-                # Questa è la correzione fondamentale per l'errore 'No more CBs'.
                 self.pi.wave_clear()
-
-                # Disattiva i motori
                 for config in self.motor_configs.values():
                     self.pi.write(config.en_pin, 1)
                 logging.info(f"Pulizia post-movimento completata (wave_clear eseguito).")
-            
+
     def execute_homing_sequence(self, motor_name: str):
         if motor_name not in SWITCHES:
             logging.error(f"Impossibile eseguire homing: '{motor_name}' non ha finecorsa.")
@@ -365,9 +352,7 @@ class MotorController:
         if not hit: logging.error(f"Homing fallito per '{motor_name}': timeout.")
         else: logging.info(f"Homing per '{motor_name}' completato.")
 
-# MODIFICA: Funzione aggiornata per interpretare l'accelerazione come mm/s^2
 def load_system_config() -> dict[str, MotorConfig]:
-    """Legge la configurazione, interpretando 'acceleration' come mm/s^2."""
     configs = {}
     try:
         with open(SETTINGS_FILE, "r") as f:
@@ -380,10 +365,7 @@ def load_system_config() -> dict[str, MotorConfig]:
                 pitch = float(params.get("pitch", 5.0))
                 if pitch == 0: raise ValueError(f"'pitch' per '{name}' non può essere zero.")
                 max_speed_mms = float(params.get("maxSpeed", 250.0))
-                
-                # Legge "acceleration" come mm/s^2. Default a un valore sicuro.
                 acceleration_mmss = float(params.get("acceleration", 100.0))
-                
                 steps_per_mm = (steps_per_rev * microsteps) / pitch
                 max_freq_hz = max_speed_mms * steps_per_mm
 
@@ -394,14 +376,14 @@ def load_system_config() -> dict[str, MotorConfig]:
                     en_pin=MOTORS[name]["EN"],
                     steps_per_mm=steps_per_mm,
                     max_freq_hz=max_freq_hz,
-                    acceleration_mmss=acceleration_mmss  # Assegnazione al campo corretto
+                    acceleration_mmss=acceleration_mmss
                 )
             logging.info("Configurazione motori caricata (acceleration interpretata come mm/s^2).")
     except Exception as e:
         logging.error(f"Errore caricamento configurazione: {e}")
     return configs
 
-# --- Blocco di Inizializzazione e Worker (invariato) ---
+# --- Blocco di Inizializzazione e Worker ---
 
 MOTOR_CONFIGS = load_system_config()
 MOTION_PLANNER = MotionPlanner(MOTOR_CONFIGS)
@@ -410,25 +392,26 @@ motor_command_queue = queue.Queue()
 SYSTEM_CONFIG_LOCK = threading.Lock()
             
 def motor_worker():
-    """Worker thread che orchestra la pianificazione e l'esecuzione dei movimenti."""
     logging.info("Motor worker avviato con architettura a streaming e gestione finecorsa.")
     while True:
         task = motor_command_queue.get()
         try:
-            # Non serve più il lock per la configurazione durante un singolo movimento
             command = task.get("command", "move")
             if command == "move":
                 targets = task.get("targets", {})
                 logging.info(f"Worker: ricevuto comando MOVE {targets}")
-                # Il lock è necessario solo per leggere lo stato attuale, non per tutta l'esecuzione
                 with SYSTEM_CONFIG_LOCK:
                     current_switch_states = MOTOR_CONTROLLER.switch_states.copy()
-                pulse_generator, active_motors = MOTION_PLANNER.plan_move_streamed(targets, current_switch_states)
-                MOTOR_CONTROLLER.execute_streamed_move(pulse_generator, active_motors)
+                
+                # MODIFICA: Gestione del nuovo valore 'directions'
+                pulse_generator, active_motors, directions = MOTION_PLANNER.plan_move_streamed(targets, current_switch_states)
+                MOTOR_CONTROLLER.execute_streamed_move(pulse_generator, active_motors, directions)
+
             elif command == "home":
                 motor_to_home = task.get("motor")
                 logging.info(f"Worker: ricevuto comando HOME per '{motor_to_home}'")
                 if motor_to_home: MOTOR_CONTROLLER.execute_homing_sequence(motor_to_home)
+            
             logging.info(f"Worker: task {task} completato con successo.")
         except Exception as e:
             logging.error(f"Errore critico nel motor_worker su task {task}: {e}", exc_info=True)
@@ -511,14 +494,12 @@ def update_config_view(request):
                 MOTOR_CONTROLLER.pi.wave_tx_stop()
             logging.info("Movimento corrente interrotto per aggiornamento configurazione.")
             
-            # Ricarica e ri-inizializza i componenti principali
             new_configs = load_system_config()
             if not new_configs: 
                 raise ValueError("Caricamento nuova configurazione fallito o file vuoto.")
             
             MOTOR_CONFIGS = new_configs
             MOTION_PLANNER = MotionPlanner(new_configs)
-            # Rilascia le risorse del vecchio controller prima di crearne uno nuovo
             if MOTOR_CONTROLLER and MOTOR_CONTROLLER.pi and MOTOR_CONTROLLER.pi.connected:
                 for cb in MOTOR_CONTROLLER._callbacks:
                     cb.cancel()
