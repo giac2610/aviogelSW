@@ -121,25 +121,25 @@ class MotionPlanner:
     def plan_move_streamed(self, targets: dict[str, float], switch_states: dict, chunk_size: int = 2048) -> tuple[object, set, dict]:
         if not targets:
             return (None for _ in range(0)), set(), {}
-        
+
         move_data = {}
         for motor_id, distance in targets.items():
             if distance == 0 or motor_id not in self.motor_configs:
                 continue
             
             direction = 1 if distance >= 0 else 0
-    
+
             # ======================================================================
             # --- TEST TEMPORANEO: La logica dei finecorsa è disabilitata ---
             # ======================================================================
             # if direction == 1 and switch_states.get(f"{motor_id}_start"):
             #     logging.info(f"Sblocco logico: il movimento positivo per '{motor_id}' resetta lo stato del finecorsa START.")
             #     switch_states[f"{motor_id}_start"] = False
-    
+
             # if direction == 0 and switch_states.get(f"{motor_id}_end"):
             #     logging.info(f"Sblocco logico: il movimento negativo per '{motor_id}' resetta lo stato del finecorsa END.")
             #     switch_states[f"{motor_id}_end"] = False
-    
+
             # if direction == 0 and switch_states.get(f"{motor_id}_start"):
             #     logging.warning(f"Movimento per '{motor_id}' bloccato: si sta tentando di superare il finecorsa START attivo.")
             #     continue
@@ -147,35 +147,35 @@ class MotionPlanner:
             #     logging.warning(f"Movimento per '{motor_id}' bloccato: si sta tentando di superare il finecorsa END attivo.")
             #     continue
             # ======================================================================
-                
+
             config = self.motor_configs[motor_id]
             move_data[motor_id] = {
                 "steps": int(abs(distance) * config.steps_per_mm), "dir": direction, "config": config
             }
-    
+
         if not move_data:
             return (None for _ in range(0)), set(), {}
-        
+
         master_id = max(move_data, key=lambda k: move_data[k]["steps"])
         master_data = move_data[master_id]
         master_steps = master_data["steps"]
-    
+
         if master_steps == 0:
             return (None for _ in range(0)), set(), {}
-    
+
         accel_for_this_move = master_data["config"].acceleration_mmss
         logging.info(f"Streaming pianificato. Master: '{master_id}' ({master_steps} passi). Uso accelerazione di {accel_for_this_move} mm/s^2.")
-        
+
         master_profile_ts = self._generate_trapezoidal_profile(
             master_steps,
             master_data["config"].max_freq_hz,
             accel_for_this_move,
             master_data["config"].steps_per_mm
         )
-        
+
         active_motors = {m["config"].name for m in move_data.values()}
         directions_to_set = {mid: move['dir'] for mid, move in move_data.items()}
-    
+
         def pulse_generator():
             bresenham_errors = {mid: -master_steps / 2 for mid in move_data if mid != master_id}
             last_time_us, pulse_chunk = 0.0, []
@@ -197,7 +197,7 @@ class MotionPlanner:
                     yield pulse_chunk
                     pulse_chunk = []
             if pulse_chunk: yield pulse_chunk
-        
+
         return pulse_generator(), active_motors, directions_to_set
 class MotorController:
     def __init__(self, motor_configs: dict[str, MotorConfig]):
@@ -315,6 +315,7 @@ class MotorController:
                 self.pi.wave_clear()
                 for config in self.motor_configs.values():
                     self.pi.write(config.en_pin, 1)
+                    self.pi.write(config.dir_pin, 0)
                 logging.info(f"Pulizia post-movimento completata (wave_clear eseguito).")
 
     def execute_homing_sequence(self, motor_name: str):
