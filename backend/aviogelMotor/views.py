@@ -47,7 +47,7 @@ logging.basicConfig(
 
 # --- MAPPATURA HARDWARE FONDAMENTALE ---
 MOTORS = {
-    "extruder": {"STEP": 13, "DIR": 6, "EN": 3},
+    "extruder": {"STEP": 13, "DIR": 25, "EN": 3},
     "syringe": {"STEP": 18, "DIR": 27, "EN": 8},
     "conveyor": {"STEP": 12, "DIR": 5, "EN": 7}
 }
@@ -73,7 +73,6 @@ class MotorConfig:
     acceleration_mmss: float
 
 class MotionPlanner:
-    """Il cervello del sistema. Pianifica movimenti coordinati."""
     def __init__(self, motor_configs: dict[str, MotorConfig]):
         self.motor_configs = motor_configs
         logging.info(f"MotionPlanner inizializzato con motori: {list(motor_configs.keys())}")
@@ -83,7 +82,8 @@ class MotionPlanner:
             return []
 
         v_max = max_freq_hz / steps_per_mm
-        if accel_mmss <= 0: accel_mmss = 1.0 # Prevenzione divisione per zero
+        if accel_mmss <= 0: 
+            accel_mmss = 1.0 # Prevenzione divisione per zero
         t_accel = v_max / accel_mmss
         s_accel = 0.5 * accel_mmss * t_accel**2
         steps_accel = int(s_accel * steps_per_mm)
@@ -128,7 +128,7 @@ class MotionPlanner:
                 continue
             
             direction = 1 if distance >= 0 else 0
-
+            logging.info(f"Calcolo movimento per '{motor_id}': distanza {distance} mm, direzione {'positiva' if direction == 1 else 'negativa'}.")
             # ======================================================================
             # --- TEST TEMPORANEO: La logica dei finecorsa è disabilitata ---
             # ======================================================================
@@ -317,6 +317,7 @@ class MotorController:
                 for config in self.motor_configs.values():
                     self.pi.write(config.en_pin, 1)
                     self.pi.write(config.dir_pin, 0)
+                    logging.info(f"DIR pin: {config.dir_pin} | Valore impostato: 0")
                 logging.info(f"Pulizia post-movimento completata (wave_clear eseguito).")
 
     def execute_homing_sequence(self, motor_name: str):
