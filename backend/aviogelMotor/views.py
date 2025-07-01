@@ -260,73 +260,71 @@ class MotorController:
             if other_switch_id in self.switch_states:
                 self.switch_states[other_switch_id] = False
     
-    # MODIFICA COMPLETA: Funzione riscritta per usare wave_chain correttamente
     def execute_streamed_move(self, pulse_generator: object, active_motors: set):
         if not self.pi or not self.pi.connected:
             raise ConnectionError("Esecuzione fallita: pigpio non connesso.")
-        
+
         self.last_move_interrupted = False
 
-        # 1. Attiva i motori
+        # Attiva i motori prima di iniziare qualsiasi operazione con pigpio
         for motor_name in active_motors:
             self.pi.write(self.motor_configs[motor_name].en_pin, 0)
         time.sleep(0.01)
 
         wave_ids = []
         try:
-            # 2. Cancella le vecchie waveform
-            self.pi.wave_clear()
-            
-            # 3. Prepara tutti i chunk e crea le relative wave in pigpio
+            # 1. Prepara tutti i chunk e crea le relative wave
+            # NOTA: wave_clear() è stato rimosso da qui.
             for chunk in pulse_generator:
                 if not chunk: continue
-                
+
                 self.pi.wave_add_generic(chunk)
                 wave_id = self.pi.wave_create()
 
                 if wave_id >= 0:
                     wave_ids.append(wave_id)
                 else:
-                    logging.error(f"Errore critico durante la creazione della waveform: {wave_id}. Movimento annullato.")
-                    for wid in wave_ids:
-                        self.pi.wave_delete(wid)
+                    logging.error(f"Errore critico (codice {wave_id}) durante creazione waveform. Movimento annullato.")
+                    # La pulizia avverrà comunque nel blocco finally, quindi usciamo.
                     return
 
             if not wave_ids:
                 logging.warning("Nessuna waveform valida generata, nessun movimento eseguito.")
                 return
 
-            # 4. ESECUZIONE DELLA CATENA (versione corretta)
+            # 2. Esecuzione della catena
             logging.info(f"Invio catena a pigpio con {len(wave_ids)} waves.")
             self.pi.wave_chain(wave_ids)
 
-            # 5. Attendi la fine della trasmissione, controllando le interruzioni
+            # 3. Attendi la fine della trasmissione
             while self.pi.wave_tx_busy():
                 if self.last_move_interrupted:
                     logging.warning("Interruzione da finecorsa rilevata. Arresto della catena.")
                     self.pi.wave_tx_stop()
                     break
                 time.sleep(0.05)
-            
+
             if self.last_move_interrupted:
                 logging.warning("MOVIMENTO INTERROTTO da un finecorsa.")
             else:
-                logging.info("Movimento completato normalmente.")
+                logging.info("Movimento completato normally.")
 
         finally:
-            # 6. Pulizia finale
+            # 4. PULIZIA GARANTITA (LA MODIFICA CHIAVE)
             if self.pi and self.pi.connected:
+                # Ferma qualsiasi trasmissione ancora attiva
                 if self.pi.wave_tx_busy():
                     self.pi.wave_tx_stop()
-                
-                for wid in wave_ids:
-                    try: self.pi.wave_delete(wid)
-                    except Exception: pass
-                
+
+                # Cancella TUTTE le waveform, garantendo che non ci siano perdite di risorse (CBs).
+                # Questa è la correzione fondamentale per l'errore 'No more CBs'.
+                self.pi.wave_clear()
+
+                # Disattiva i motori
                 for config in self.motor_configs.values():
                     self.pi.write(config.en_pin, 1)
-                logging.info(f"Pulizia post-movimento completata.")
-
+                logging.info(f"Pulizia post-movimento completata (wave_clear eseguito).")
+            
     def execute_homing_sequence(self, motor_name: str):
         if motor_name not in SWITCHES:
             logging.error(f"Impossibile eseguire homing: '{motor_name}' non ha finecorsa.")
