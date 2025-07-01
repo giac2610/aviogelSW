@@ -47,7 +47,7 @@ logging.basicConfig(
 
 # --- MAPPATURA HARDWARE FONDAMENTALE ---
 MOTORS = {
-    "extruder": {"STEP": 13, "DIR": 25, "EN": 3},
+    "extruder": {"STEP": 13, "DIR": 6, "EN": 3},
     "syringe": {"STEP": 18, "DIR": 27, "EN": 8},
     "conveyor": {"STEP": 12, "DIR": 5, "EN": 7}
 }
