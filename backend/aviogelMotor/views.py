@@ -228,8 +228,8 @@ class MotorController:
         if not self.pi or not self.pi.connected: return
         for config in self.motor_configs.values():
             self.pi.set_mode(config.step_pin, pigpio.OUTPUT)
+            self.pi.set_pull_up_down(config.dir_pin, pigpio.PUD_DOWN)
             self.pi.set_mode(config.dir_pin, pigpio.OUTPUT)
-            self.pi.set_pull_up_down(config.en_pin, pigpio.PUD_DOWN)
             self.pi.set_mode(config.en_pin, pigpio.OUTPUT)
             self.pi.write(config.en_pin, 1)
             self.pi.write(config.dir_pin, 0)
