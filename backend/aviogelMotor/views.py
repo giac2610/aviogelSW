@@ -116,7 +116,7 @@ class MotionPlanner:
         return np.cumsum(periods_us).tolist()
 
     # MODIFICA: Funzione aggiornata per la gestione della direzione e dei finecorsa
-    def plan_move_streamed(self, targets: dict[str, float], switch_states: dict, pi=None, chunk_size: int = 1024) -> tuple[object, set, dict]:
+    def plan_move_streamed(self, targets: dict[str, float], switch_states: dict, pi=None, chunk_size: int = 250) -> tuple[object, set, dict]:
         if not targets:
             return (None for _ in range(0)), set(), {}
 
@@ -285,8 +285,9 @@ class MotorController:
         wave_ids = []
         try:
             for chunk in pulse_generator:
-                if not chunk: continue
-                
+                if not chunk: 
+                    continue
+                logging.debug(f"Chunk con {len(chunk)} pulses")
                 self.pi.wave_add_generic(chunk)
                 wave_id = self.pi.wave_create()
 
