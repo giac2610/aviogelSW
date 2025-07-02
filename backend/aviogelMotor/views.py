@@ -289,38 +289,38 @@ class MotorController:
     def execute_streamed_move(self, pulse_generator: object, active_motors: set, directions: dict):
         if not self.pi or not self.pi.connected:
             raise ConnectionError("Esecuzione fallita: pigpio non connesso.")
-        
+
         self.last_move_interrupted = False
-    
+
         for motor_id, direction in directions.items():
             dir_pin = self.motor_configs[motor_id].dir_pin
             self.pi.write(dir_pin, direction)
             logging.info(f"Impostata direzione per '{motor_id}' a {direction}")
-    
+
         for motor_name in active_motors:
             self.pi.write(self.motor_configs[motor_name].en_pin, 0)
         time.sleep(0.01)
-    
+
         wave_ids = []
         try:
             all_pulses = []
             for chunk in pulse_generator:
                 if chunk:
                     all_pulses.extend(chunk)
-    
+
             if not all_pulses:
                 logging.warning("Nessun pulse generato, nessun movimento eseguito.")
                 return
-    
-            PULSE_THRESHOLD = 4096 
+
+            PULSE_THRESHOLD = 8192 
             start_idx = 0
             while start_idx < len(all_pulses):
                 end_idx = start_idx + PULSE_THRESHOLD
                 pulse_block = all_pulses[start_idx:end_idx]
-                
+
                 self.pi.wave_add_generic(pulse_block)
                 wave_id = self.pi.wave_create()
-    
+
                 if wave_id >= 0:
                     wave_ids.append(wave_id)
                 else:
@@ -329,38 +329,38 @@ class MotorController:
                     # Il logging dell'errore è già gestito dal traceback.
                     return
                 start_idx = end_idx
-    
+
             if not wave_ids:
                 logging.warning("Nessuna waveform valida generata, nessun movimento eseguito.")
                 return
-    
+
             logging.info(f"Invio catena a pigpio con {len(wave_ids)} waves.")
             self.pi.wave_chain(wave_ids)
-    
+
             while self.pi.wave_tx_busy():
                 if self.last_move_interrupted:
                     logging.warning("Interruzione da finecorsa rilevata. Arresto della catena.")
                     self.pi.wave_tx_stop()
                     break
                 time.sleep(0.05)
-            
+
             if self.last_move_interrupted:
                 logging.warning("MOVIMENTO INTERROTTO da un finecorsa.")
             else:
                 logging.info("Movimento completato normalmente.")
-    
+
         finally:
             if self.pi and self.pi.connected:
                 # Se un movimento è ancora attivo (es. interrotto), fermalo.
                 if self.pi.wave_tx_busy():
                     self.pi.wave_tx_stop()
-                
+
                 # --- MODIFICA CHIAVE ---
                 # wave_clear() è il modo più robusto per resettare lo stato.
                 # Cancella tutte le onde e svuota il buffer, prevenendo errori
                 # a cascata dovuti a uno stato "sporco".
                 self.pi.wave_clear()
-                
+
                 # Disattiva i motori
                 for config in self.motor_configs.values():
                     try:
