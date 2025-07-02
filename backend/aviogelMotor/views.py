@@ -115,12 +115,17 @@ class MotionPlanner:
         periods_us = 1_000_000.0 / freq
         return np.cumsum(periods_us).tolist()
 
-    # MODIFICA: Funzione aggiornata per la gestione della direzione
-# All'interno della classe MotionPlanner
-
-    def plan_move_streamed(self, targets: dict[str, float], switch_states: dict, chunk_size: int = 2048) -> tuple[object, set, dict]:
+    # MODIFICA: Funzione aggiornata per la gestione della direzione e dei finecorsa
+    def plan_move_streamed(self, targets: dict[str, float], switch_states: dict, pi=None, chunk_size: int = 2048) -> tuple[object, set, dict]:
         if not targets:
             return (None for _ in range(0)), set(), {}
+
+        # --- AGGIORNAMENTO STATO FINECORSA ---
+        if pi is not None:
+            for motor, pins in SWITCHES.items():
+                for name, pin in pins.items():
+                    switch_id = f"{motor}_{name.lower()}"
+                    switch_states[switch_id] = pi.read(pin) == 1
 
         move_data = {}
         for motor_id, distance in targets.items():
@@ -199,6 +204,7 @@ class MotionPlanner:
             if pulse_chunk: yield pulse_chunk
 
         return pulse_generator(), active_motors, directions_to_set
+
 class MotorController:
     def __init__(self, motor_configs: dict[str, MotorConfig]):
         self.pi = self._get_pigpio_instance()
@@ -258,8 +264,7 @@ class MotorController:
             other_switch_id = f"{motor}_{other_state}"
             if other_switch_id in self.switch_states:
                 self.switch_states[other_switch_id] = False
-    
-    # MODIFICA: Funzione aggiornata per la gestione della direzione
+
     def execute_streamed_move(self, pulse_generator: object, active_motors: set, directions: dict):
         if not self.pi or not self.pi.connected:
             raise ConnectionError("Esecuzione fallita: pigpio non connesso.")
@@ -411,9 +416,10 @@ def motor_worker():
                 logging.info(f"Worker: ricevuto comando MOVE {targets}")
                 with SYSTEM_CONFIG_LOCK:
                     current_switch_states = MOTOR_CONTROLLER.switch_states.copy()
-                
-                # MODIFICA: Gestione del nuovo valore 'directions'
-                pulse_generator, active_motors, directions = MOTION_PLANNER.plan_move_streamed(targets, current_switch_states)
+                    # Passa anche l'istanza pi per aggiornare i finecorsa reali
+                    pulse_generator, active_motors, directions = MOTION_PLANNER.plan_move_streamed(
+                        targets, current_switch_states, pi=MOTOR_CONTROLLER.pi
+                    )
                 MOTOR_CONTROLLER.execute_streamed_move(pulse_generator, active_motors, directions)
 
             elif command == "home":
@@ -459,7 +465,7 @@ def home_motor_view(request):
     try:
         data = json.loads(request.body)
         motor_to_home = data.get("motor")
-        if not motor_to_home or motor_to_home not in MOTORS:
+        if not motor_to_home or not motor_to_home not in MOTORS:
             return JsonResponse({"log": "Input non valido", "error": f"Specificare un motore valido: {list(MOTORS.keys())}"}, status=400)
         logging.info(f"Richiesta API di Homing per il motore: {motor_to_home}")
         motor_command_queue.put({"command": "home", "motor": motor_to_home})
