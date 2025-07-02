@@ -115,7 +115,7 @@ class MotionPlanner:
         periods_us = 1_000_000.0 / freq
         return np.cumsum(periods_us).tolist()
 
-    def plan_move_streamed(self, targets: dict[str, float], switch_states: dict, pi=None, chunk_size: int = 1024, max_chunks: int = 25):
+    def plan_move_streamed(self, targets: dict[str, float], switch_states: dict, pi=None, chunk_size: int = 512, max_chunks: int = 25):
         if not targets:
             return (None for _ in range(0)), set(), {}
 
