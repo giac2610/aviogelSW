@@ -301,24 +301,17 @@ class MotorController:
             self.pi.write(self.motor_configs[motor_name].en_pin, 0)
         time.sleep(0.01)
     
-        # --- INIZIO NUOVA MODIFICA ---
-        
-        all_pulses = []
-        for chunk in pulse_generator:
-            if chunk:
-                all_pulses.extend(chunk)
-    
-        if not all_pulses:
-            logging.warning("Nessun pulse generato, nessun movimento eseguito.")
-            # Assicura la pulizia
-            for config in self.motor_configs.values():
-                self.pi.write(config.en_pin, 1)
-            return
-    
         wave_ids = []
         try:
-            # 1. Suddividiamo la grande lista di impulsi in blocchi più piccoli
-            #    PULSE_THRESHOLD è un limite di sicurezza per non far crashare il demone.
+            all_pulses = []
+            for chunk in pulse_generator:
+                if chunk:
+                    all_pulses.extend(chunk)
+    
+            if not all_pulses:
+                logging.warning("Nessun pulse generato, nessun movimento eseguito.")
+                return
+    
             PULSE_THRESHOLD = 4096 
             start_idx = 0
             while start_idx < len(all_pulses):
@@ -331,10 +324,9 @@ class MotorController:
                 if wave_id >= 0:
                     wave_ids.append(wave_id)
                 else:
-                    logging.error(f"Errore critico (codice {wave_id}) durante creazione waveform. Movimento annullato.")
-                    # Pulizia parziale delle wave create finora
-                    for wid in wave_ids:
-                        self.pi.wave_delete(wid)
+                    # Se la creazione fallisce, l'eccezione verrà sollevata dalla libreria
+                    # e il blocco finally garantirà la pulizia.
+                    # Il logging dell'errore è già gestito dal traceback.
                     return
                 start_idx = end_idx
     
@@ -342,7 +334,6 @@ class MotorController:
                 logging.warning("Nessuna waveform valida generata, nessun movimento eseguito.")
                 return
     
-            # 2. Mettiamo in catena le "medie" waveform create
             logging.info(f"Invio catena a pigpio con {len(wave_ids)} waves.")
             self.pi.wave_chain(wave_ids)
     
@@ -360,23 +351,26 @@ class MotorController:
     
         finally:
             if self.pi and self.pi.connected:
+                # Se un movimento è ancora attivo (es. interrotto), fermalo.
                 if self.pi.wave_tx_busy():
                     self.pi.wave_tx_stop()
-                # Pulisci tutte le wave create in questo ciclo
-                for wid in wave_ids:
-                    try:
-                        self.pi.wave_delete(wid)
-                    except Exception:
-                        pass # Ignora errori se la connessione è già caduta
+                
+                # --- MODIFICA CHIAVE ---
+                # wave_clear() è il modo più robusto per resettare lo stato.
+                # Cancella tutte le onde e svuota il buffer, prevenendo errori
+                # a cascata dovuti a uno stato "sporco".
+                self.pi.wave_clear()
+                
+                # Disattiva i motori
                 for config in self.motor_configs.values():
                     try:
                         self.pi.write(config.en_pin, 1)
                         self.pi.write(config.dir_pin, 0)
                     except Exception:
+                        # Ignora errori se la connessione è già caduta
                         pass
-                logging.info(f"Pulizia post-movimento completata.")
-    
-    # --- FINE NUOVA MODIFICA ---
+                logging.info("Pulizia post-movimento completata (wave_clear eseguito).")
+        # --- FINE NUOVA MODIFICA ---
    
     def execute_homing_sequence(self, motor_name: str):
         if motor_name not in SWITCHES:
