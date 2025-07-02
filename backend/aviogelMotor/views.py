@@ -292,20 +292,17 @@ class MotorController:
         
         self.last_move_interrupted = False
     
-        # Imposta e mantieni lo stato dei pin di direzione
         for motor_id, direction in directions.items():
             dir_pin = self.motor_configs[motor_id].dir_pin
             self.pi.write(dir_pin, direction)
             logging.info(f"Impostata direzione per '{motor_id}' a {direction}")
     
-        # Attiva i motori (pin EN)
         for motor_name in active_motors:
             self.pi.write(self.motor_configs[motor_name].en_pin, 0)
         time.sleep(0.01)
     
-        # --- INIZIO MODIFICA ---
+        # --- INIZIO NUOVA MODIFICA ---
         
-        # 1. Accumula tutti i pulse da tutti i chunk del generatore in una singola lista
         all_pulses = []
         for chunk in pulse_generator:
             if chunk:
@@ -313,29 +310,45 @@ class MotorController:
     
         if not all_pulses:
             logging.warning("Nessun pulse generato, nessun movimento eseguito.")
-            # Assicura la pulizia anche se non ci sono pulse
+            # Assicura la pulizia
             for config in self.motor_configs.values():
                 self.pi.write(config.en_pin, 1)
-                self.pi.write(config.dir_pin, 0)
             return
     
+        wave_ids = []
         try:
-            # 2. Cancella le vecchie waveform, aggiungi la nuova "mega-wave" e creala una sola volta
-            self.pi.wave_clear()
-            self.pi.wave_add_generic(all_pulses)
-            wave_id = self.pi.wave_create()
+            # 1. Suddividiamo la grande lista di impulsi in blocchi più piccoli
+            #    PULSE_THRESHOLD è un limite di sicurezza per non far crashare il demone.
+            PULSE_THRESHOLD = 4096 
+            start_idx = 0
+            while start_idx < len(all_pulses):
+                end_idx = start_idx + PULSE_THRESHOLD
+                pulse_block = all_pulses[start_idx:end_idx]
+                
+                self.pi.wave_add_generic(pulse_block)
+                wave_id = self.pi.wave_create()
     
-            if wave_id < 0:
-                logging.error(f"Errore critico (codice {wave_id}) durante creazione waveform. Movimento annullato.")
+                if wave_id >= 0:
+                    wave_ids.append(wave_id)
+                else:
+                    logging.error(f"Errore critico (codice {wave_id}) durante creazione waveform. Movimento annullato.")
+                    # Pulizia parziale delle wave create finora
+                    for wid in wave_ids:
+                        self.pi.wave_delete(wid)
+                    return
+                start_idx = end_idx
+    
+            if not wave_ids:
+                logging.warning("Nessuna waveform valida generata, nessun movimento eseguito.")
                 return
     
-            # 3. Invia la singola waveform
-            logging.info(f"Invio waveform singola a pigpio ({len(all_pulses)} pulses totali).")
-            self.pi.wave_send_once(wave_id)
+            # 2. Mettiamo in catena le "medie" waveform create
+            logging.info(f"Invio catena a pigpio con {len(wave_ids)} waves.")
+            self.pi.wave_chain(wave_ids)
     
             while self.pi.wave_tx_busy():
                 if self.last_move_interrupted:
-                    logging.warning("Interruzione da finecorsa rilevata. Arresto della waveform.")
+                    logging.warning("Interruzione da finecorsa rilevata. Arresto della catena.")
                     self.pi.wave_tx_stop()
                     break
                 time.sleep(0.05)
@@ -349,15 +362,22 @@ class MotorController:
             if self.pi and self.pi.connected:
                 if self.pi.wave_tx_busy():
                     self.pi.wave_tx_stop()
-                # Pulisci solo la wave specifica che abbiamo creato
-                if 'wave_id' in locals() and wave_id >= 0:
-                    self.pi.wave_delete(wave_id)
+                # Pulisci tutte le wave create in questo ciclo
+                for wid in wave_ids:
+                    try:
+                        self.pi.wave_delete(wid)
+                    except Exception:
+                        pass # Ignora errori se la connessione è già caduta
                 for config in self.motor_configs.values():
-                    self.pi.write(config.en_pin, 1)
-                    self.pi.write(config.dir_pin, 0)
-                    logging.info(f"DIR pin: {config.dir_pin} | Valore impostato: 0")
+                    try:
+                        self.pi.write(config.en_pin, 1)
+                        self.pi.write(config.dir_pin, 0)
+                    except Exception:
+                        pass
                 logging.info(f"Pulizia post-movimento completata.")
-        # --- FINE MODIFICA ---
+    
+    # --- FINE NUOVA MODIFICA ---
+   
     def execute_homing_sequence(self, motor_name: str):
         if motor_name not in SWITCHES:
             logging.error(f"Impossibile eseguire homing: '{motor_name}' non ha finecorsa.")
