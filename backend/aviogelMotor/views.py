@@ -1,9 +1,9 @@
 # -*- coding: utf-8 -*-
 
 # ==============================================================================
-# ARCHITETTURA STREAMING con Accelerazione per Motore (Versione Finale)
-# Versione definitiva che bilancia la pianificazione e l'esecuzione per
-# massima fluidità e stabilità, eliminando le pause intermedie.
+# ARCHITETTURA STREAMING con Accelerazione per Motore (Versione Definitiva)
+# Questa versione implementa la pianificazione a macro-movimenti e
+# un'esecuzione "a tappe" per la massima stabilità e fluidità.
 # ==============================================================================
 
 import numpy as np
@@ -83,7 +83,7 @@ class MotionPlanner:
 
         v_max = max_freq_hz / steps_per_mm
         if accel_mmss <= 0:
-            accel_mmss = 1.0 # Prevenzione divisione per zero
+            accel_mmss = 1.0
         t_accel = v_max / accel_mmss
         s_accel = 0.5 * accel_mmss * t_accel**2
         steps_accel = int(s_accel * steps_per_mm)
@@ -115,11 +115,10 @@ class MotionPlanner:
         periods_us = 1_000_000.0 / freq
         return np.cumsum(periods_us).tolist()
 
-    def plan_move_streamed(self, targets: dict[str, float], switch_states: dict, pi=None, chunk_size: int = 512):
+    def plan_move_streamed(self, targets: dict[str, float], switch_states: dict, pi=None):
         if not targets:
             return (None for _ in range(0)), set(), {}
 
-        # --- AGGIORNAMENTO STATO FINECORSA ---
         if pi is not None:
             for motor, pins in SWITCHES.items():
                 for name, pin in pins.items():
@@ -132,8 +131,7 @@ class MotionPlanner:
                 continue
             
             direction = 1 if distance >= 0 else 0
-            # La logica di sblocco e controllo finecorsa è stata rimossa per brevità
-            # e per focalizzarsi sulla meccanica del movimento. Va reinserita come prima.
+            
             if direction == 0 and switch_states.get(f"{motor_id}_start"):
                 logging.warning(f"Movimento per '{motor_id}' bloccato: si sta tentando di superare il finecorsa START attivo.")
                 continue
@@ -168,10 +166,9 @@ class MotionPlanner:
         active_motors = {m["config"].name for m in move_data.values()}
         directions_to_set = {mid: move['dir'] for mid, move in move_data.items()}
 
-        # --- Suddivisione in macro-movimenti con il valore OTTIMALE ---
         steps_per_macro = 4096
         total_macro = (master_steps + steps_per_macro - 1) // steps_per_macro
-
+        
         logging.info(f"Pianificato movimento per '{master_id}' ({master_steps} passi) in {total_macro} macro da max {steps_per_macro} passi.")
 
         def make_pulse_generator_macro(start_step, end_step):
@@ -286,19 +283,47 @@ class MotorController:
         time.sleep(0.01)
 
         try:
+            # --- ARCHITETTURA FINALE: ESECUZIONE "A TAPPE" ---
+            
+            # Soglia di sicurezza per la dimensione di un blocco di impulsi (previene ConnectionResetError)
+            PULSE_BLOCK_THRESHOLD = 3800
+            # Soglia di sicurezza per il numero di onde in una catena (previene No more CBs)
+            CHAIN_SEGMENT_MAX_WAVES = 15
+
+            pulse_accumulator = []
+            chain_segment = []
+            
+            # Trasforma il generatore in una lista per poterlo processare
             all_pulses = list(pulse_generator)
+            
             if not all_pulses:
-                logging.warning("Nessun pulse generato, nessun movimento eseguito.")
+                logging.info("Nessun pulse da eseguire per questo segmento.")
                 return
 
-            self.pi.wave_add_generic(all_pulses)
-            wave_id = self.pi.wave_create()
+            # Suddividiamo la lista di impulsi in blocchi sicuri per `wave_add_generic`
+            for i in range(0, len(all_pulses), PULSE_BLOCK_THRESHOLD):
+                pulse_block = all_pulses[i:i + PULSE_BLOCK_THRESHOLD]
+                
+                self.pi.wave_add_generic(pulse_block)
+                wave_id = self.pi.wave_create()
+                
+                if wave_id >= 0:
+                    chain_segment.append(wave_id)
+                else:
+                    raise pigpio.error(f'Creazione onda fallita con codice {wave_id}')
 
-            if wave_id < 0:
-                raise pigpio.error(f'wave_create failed with code {wave_id}')
-
-            self.pi.wave_send_once(wave_id)
+                # Se abbiamo raggiunto il limite di onde per segmento, le inviamo
+                if len(chain_segment) >= CHAIN_SEGMENT_MAX_WAVES:
+                    logging.info(f"Invio segmento di catena con {len(chain_segment)} onde...")
+                    self.pi.wave_chain(chain_segment)
+                    chain_segment = [] # Resettiamo per il prossimo segmento
             
+            # Invia l'ultimo segmento rimasto
+            if chain_segment:
+                logging.info(f"Invio ultimo segmento di catena con {len(chain_segment)} onde...")
+                self.pi.wave_chain(chain_segment)
+
+            # Attendi che l'intera coda di trasmissione di pigpio sia vuota
             while self.pi.wave_tx_busy():
                 if self.last_move_interrupted:
                     self.pi.wave_tx_stop()
@@ -313,6 +338,7 @@ class MotorController:
                 if self.pi.wave_tx_busy():
                     self.pi.wave_tx_stop()
                 
+                # wave_clear è la pulizia più sicura e completa
                 self.pi.wave_clear()
                 
                 for config in self.motor_configs.values():
@@ -321,7 +347,7 @@ class MotorController:
                         self.pi.write(config.dir_pin, 0)
                     except Exception:
                         pass
-                logging.info("Pulizia post-movimento completata.")
+                # logging.info("Pulizia post-movimento completata.") # Rimosso per ridurre il rumore
 
     def execute_homing_sequence(self, motor_name: str):
         if motor_name not in SWITCHES:
@@ -410,7 +436,6 @@ def motor_worker():
             command = task.get("command", "move")
             if command == "move":
                 targets = task.get("targets", {})
-                logging.info(f"Worker: ricevuto comando MOVE {targets}")
                 with SYSTEM_CONFIG_LOCK:
                     current_switch_states = MOTOR_CONTROLLER.switch_states.copy()
                     pulse_generators, active_motors, directions = MOTION_PLANNER.plan_move_streamed(
