@@ -301,55 +301,60 @@ class MotorController:
             self.pi.write(self.motor_configs[motor_name].en_pin, 0)
         time.sleep(0.01)
 
+        # Lista per tenere traccia di TUTTE le onde create per la pulizia finale
+        all_created_wave_ids = []
         try:
-            # --- INIZIO ARCHITETTURA STREAMING REALE ---
-
-            # Soglia per la dimensione di un blocco di impulsi (per non crashare il demone)
+            # --- INIZIO ARCHITETTURA A ESECUZIONE "A TAPPE" ---
             PULSE_BLOCK_THRESHOLD = 4096
-            # Soglia per il numero di onde in un singolo segmento di catena (per non esaurire i CB)
             CHAIN_SEGMENT_MAX_WAVES = 15
 
             pulse_accumulator = []
             chain_segment = []
 
-            # 1. Processiamo il generatore di impulsi un pezzo alla volta
             for chunk in pulse_generator:
                 if chunk:
                     pulse_accumulator.extend(chunk)
 
-                # 2. Se abbiamo accumulato abbastanza impulsi, creiamo una singola onda
                 if len(pulse_accumulator) >= PULSE_BLOCK_THRESHOLD:
                     self.pi.wave_add_generic(pulse_accumulator)
                     wave_id = self.pi.wave_create()
                     if wave_id >= 0:
                         chain_segment.append(wave_id)
-                    pulse_accumulator = [] # Svuotiamo l'accumulatore
+                        all_created_wave_ids.append(wave_id)
+                    pulse_accumulator = []
 
-                # 3. Se abbiamo creato abbastanza onde, le inviamo come un segmento di catena
+                # Se il segmento è pieno, lo eseguiamo e attendiamo la sua fine
                 if len(chain_segment) >= CHAIN_SEGMENT_MAX_WAVES:
-                    logging.info(f"Invio segmento di catena con {len(chain_segment)} waves...")
+                    logging.info(f"Esecuzione segmento con {len(chain_segment)} waves...")
                     self.pi.wave_chain(chain_segment)
+                    
+                    # Attendiamo che QUESTO SEGMENTO finisca
+                    while self.pi.wave_tx_busy():
+                        if self.last_move_interrupted: break
+                        time.sleep(0.02)
+
+                    # Puliamo le onde appena usate per liberare risorse
+                    for wid in chain_segment:
+                        self.pi.wave_delete(wid)
+                    
                     chain_segment = []
+                    if self.last_move_interrupted: break # Usciamo dal ciclo principale se interrotto
 
-            # 4. Gestione delle rimanenze alla fine del ciclo
-            # Se ci sono impulsi rimasti nell'accumulatore, crea un'ultima onda
-            if pulse_accumulator:
-                self.pi.wave_add_generic(pulse_accumulator)
-                wave_id = self.pi.wave_create()
-                if wave_id >= 0:
-                    chain_segment.append(wave_id)
+            # Gestione delle rimanenze, se non siamo stati interrotti
+            if not self.last_move_interrupted:
+                if pulse_accumulator:
+                    self.pi.wave_add_generic(pulse_accumulator)
+                    wave_id = self.pi.wave_create()
+                    if wave_id >= 0:
+                        chain_segment.append(wave_id)
+                        all_created_wave_ids.append(wave_id)
+                
+                if chain_segment:
+                    logging.info(f"Esecuzione ultimo segmento con {len(chain_segment)} waves...")
+                    self.pi.wave_chain(chain_segment)
             
-            # Se ci sono onde rimaste nel segmento di catena, invia l'ultimo pezzo
-            if chain_segment:
-                logging.info(f"Invio ultimo segmento di catena con {len(chain_segment)} waves...")
-                self.pi.wave_chain(chain_segment)
-
-            # 5. Attendi che l'intera coda di trasmissione di pigpio sia vuota
             while self.pi.wave_tx_busy():
-                if self.last_move_interrupted:
-                    logging.warning("Interruzione da finecorsa rilevata. Arresto della catena.")
-                    self.pi.wave_tx_stop()
-                    break
+                if self.last_move_interrupted: break
                 time.sleep(0.05)
             
             if self.last_move_interrupted:
@@ -362,6 +367,7 @@ class MotorController:
                 if self.pi.wave_tx_busy():
                     self.pi.wave_tx_stop()
                 
+                # Pulizia finale di sicurezza per qualsiasi onda rimasta
                 self.pi.wave_clear()
                 
                 for config in self.motor_configs.values():
@@ -370,8 +376,8 @@ class MotorController:
                         self.pi.write(config.dir_pin, 0)
                     except Exception:
                         pass
-                logging.info("Pulizia post-movimento completata (wave_clear eseguito).")
-    
+                logging.info("Pulizia post-movimento completata.")
+
     def execute_homing_sequence(self, motor_name: str):
         if motor_name not in SWITCHES:
             logging.error(f"Impossibile eseguire homing: '{motor_name}' non ha finecorsa.")
