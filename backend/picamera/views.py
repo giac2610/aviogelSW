@@ -17,6 +17,7 @@ from django.http import StreamingHttpResponse, JsonResponse, HttpResponse
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_POST, require_GET
 import traceback # Added for more detailed error logging if needed
+import requests #type: ignore
 
 # --- File Configuration ---
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -360,6 +361,17 @@ def get_board_and_canonical_homography_for_django(undistorted_frame, new_camera_
     
     return H_canonical, canonical_board_size_tuple
 
+def get_current_motor_speeds():
+    try:
+        resp = requests.get("http://localhost:8000/motors/maxSpeeds/")
+        data = resp.json()
+        if data.get("status") == "success":
+            return data["speeds"]
+    except Exception as e:
+        print(f"Errore richiesta velocità motori: {e}")
+    return {"extruder": 4.0, "conveyor": 1.0}  # fallback
+
+
 @contextmanager
 def stream_context():
     global active_streams
@@ -420,7 +432,7 @@ def get_world_coordinates_data():
         world_coords_bottom_right_origin.append([x_br, y_br])
     return {"status": "success", "coordinates": world_coords_bottom_right_origin}
 
-def get_graph_and_tsp_path():
+def get_graph_and_tsp_path(velocita_x=4.0, velocita_y=1.0):
     response = get_world_coordinates_data()
     if response.get("status", []) != "success" and response.get("status") != "success":
         return None, None, response
@@ -429,19 +441,17 @@ def get_graph_and_tsp_path():
     origin_y = camera_settings.get("origin_y", 0.0)
     origin_coord = [origin_x, origin_y]
     coordinates_with_origin = [origin_coord] + coordinates
-    
-    # filtro per evitare punti fuori dalla zona di interesse
+
     filtered_coords = []
     for coord in coordinates_with_origin:
         x_rel = coord[0] - origin_x
         if 5 <= x_rel <= 250:
             filtered_coords.append(coord)
     nodi = [tuple(coord) for coord in filtered_coords]
-    
+
     if len(nodi) < 2:
         return None, None, {"status": "error", "message": "Nessun punto da plottare."}
-    graph = construct_graph(nodi)
-    # source = min(graph.nodes, key=lambda idx: graph.nodes[idx]['pos'][0])
+    graph = construct_graph(nodi, velocita_x, velocita_y)
     source = 0
     hamiltonian_path = nx.algorithms.approximation.traveling_salesman_problem(
         graph, cycle=False, method=nx.algorithms.approximation.greedy_tsp, source=source
@@ -1069,7 +1079,23 @@ def get_world_coordinates(request):
 @csrf_exempt
 @require_GET
 def compute_route(request):
-    graph, hamiltonian_path, info = get_graph_and_tsp_path()
+    # 1. Ottieni le velocità attuali dei motori
+    try:
+        resp = requests.get("http://localhost:8000/motors/maxSpeeds/")
+        data = resp.json()
+        if data.get("status") == "success":
+            velocita_x = data["speeds"].get("extruder", 4.0)
+            velocita_y = data["speeds"].get("conveyor", 1.0)
+        else:
+            velocita_x = 4.0
+            velocita_y = 1.0
+    except Exception as e:
+        print(f"Errore richiesta velocità motori: {e}")
+        velocita_x = 4.0
+        velocita_y = 1.0
+
+    # 2. Calcola il grafo e il percorso usando le velocità ottenute
+    graph, hamiltonian_path, info = get_graph_and_tsp_path_with_speeds(velocita_x, velocita_y)
     if graph is None or hamiltonian_path is None:
         return JsonResponse({"status": "error", "message": info.get("message", "Errore generico")}, status=500)
     nodi = info["nodi"]
@@ -1107,11 +1133,53 @@ def compute_route(request):
         "plot_graph_base64": img_base64
     })
 
+# Funzione di supporto per passare le velocità a construct_graph
+def get_graph_and_tsp_path_with_speeds(velocita_x=4.0, velocita_y=1.0):
+    response = get_world_coordinates_data()
+    if response.get("status", []) != "success" and response.get("status") != "success":
+        return None, None, response
+    coordinates = response.get("coordinates", [])
+    origin_x = camera_settings.get("origin_x", 0.0)
+    origin_y = camera_settings.get("origin_y", 0.0)
+    origin_coord = [origin_x, origin_y]
+    coordinates_with_origin = [origin_coord] + coordinates
+
+    filtered_coords = []
+    for coord in coordinates_with_origin:
+        x_rel = coord[0] - origin_x
+        if 5 <= x_rel <= 250:
+            filtered_coords.append(coord)
+    nodi = [tuple(coord) for coord in filtered_coords]
+
+    if len(nodi) < 2:
+        return None, None, {"status": "error", "message": "Nessun punto da plottare."}
+    graph = construct_graph(nodi, velocita_x, velocita_y)
+    source = 0
+    hamiltonian_path = nx.algorithms.approximation.traveling_salesman_problem(
+        graph, cycle=False, method=nx.algorithms.approximation.greedy_tsp, source=source
+    )
+    return graph, hamiltonian_path, {"status": "success", "nodi": nodi}
+
+
 @csrf_exempt
 @require_GET
 def plot_graph(request):
     try:
-        graph, hamiltonian_path, info = get_graph_and_tsp_path()
+        # 1. Ottieni le velocità attuali dei motori
+        try:
+            resp = requests.get("http://localhost:8000/motors/maxSpeeds/")
+            data = resp.json()
+            if data.get("status") == "success":
+                velocita_x = data["speeds"].get("extruder", 4.0)
+                velocita_y = data["speeds"].get("conveyor", 1.0)
+            else:
+                velocita_x = 4.0
+                velocita_y = 1.0
+        except Exception as e:
+            print(f"Errore richiesta velocità motori: {e}")
+            velocita_x = 4.0
+            velocita_y = 1.0
+        graph, hamiltonian_path, info = get_graph_and_tsp_path(velocita_x, velocita_y)
         if graph is None or hamiltonian_path is None:
             return HttpResponse("Errore: " + info.get("message", "Unknown error"), status=500)
         nodi = info["nodi"]

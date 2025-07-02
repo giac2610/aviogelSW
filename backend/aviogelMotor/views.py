@@ -564,6 +564,18 @@ def get_motor_speeds_view(request):
     return JsonResponse({"log": "API di velocità non implementata nella nuova architettura", "speeds": {}})
 
 @api_view(['GET'])
+def get_motor_max_speeds_view(request):
+    try:
+        speeds = {}
+        for name, config in MOTOR_CONFIGS.items():
+            # Calcola la velocità massima in mm/s
+            speed_mm_s = config.max_freq_hz / config.steps_per_mm
+            speeds[name] = round(speed_mm_s, 3)
+        return JsonResponse({"status": "success", "speeds": speeds})
+    except Exception as e:
+        return JsonResponse({"status": "error", "message": str(e)}, status=500)
+    
+@api_view(['GET'])
 def get_motor_status_view(request):
     try:
         with SYSTEM_CONFIG_LOCK:
