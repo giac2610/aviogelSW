@@ -115,117 +115,117 @@ class MotionPlanner:
         periods_us = 1_000_000.0 / freq
         return np.cumsum(periods_us).tolist()
 
-def plan_move_streamed(self, targets: dict[str, float], switch_states: dict, pi=None, chunk_size: int = 250, max_chunks: int = 10):
-    if not targets:
-        return (None for _ in range(0)), set(), {}
-
-    # --- AGGIORNAMENTO STATO FINECORSA ---
-    if pi is not None:
-        for motor, pins in SWITCHES.items():
-            for name, pin in pins.items():
-                switch_id = f"{motor}_{name.lower()}"
-                switch_states[switch_id] = pi.read(pin) == 1
-
-    move_data = {}
-    for motor_id, distance in targets.items():
-        if distance == 0 or motor_id not in self.motor_configs:
-            continue
-        
-        direction = 1 if distance >= 0 else 0
-        logging.info(f"Calcolo movimento per '{motor_id}': distanza {distance} mm, direzione {'positiva' if direction == 1 else 'negativa'}.")
-        # --- TEST TEMPORANEO: La logica dei finecorsa è disabilitata ---
-        if direction == 1 and switch_states.get(f"{motor_id}_start"):
-            logging.info(f"Sblocco logico: il movimento positivo per '{motor_id}' resetta lo stato del finecorsa START.")
-            switch_states[f"{motor_id}_start"] = False
-
-        if direction == 0 and switch_states.get(f"{motor_id}_end"):
-            logging.info(f"Sblocco logico: il movimento negativo per '{motor_id}' resetta lo stato del finecorsa END.")
-            switch_states[f"{motor_id}_end"] = False
-
-        if direction == 0 and switch_states.get(f"{motor_id}_start"):
-            logging.warning(f"Movimento per '{motor_id}' bloccato: si sta tentando di superare il finecorsa START attivo.")
-            continue
-        if direction == 1 and switch_states.get(f"{motor_id}_end"):
-            logging.warning(f"Movimento per '{motor_id}' bloccato: si sta tentando di superare il finecorsa END attivo.")
-            continue
-
-        config = self.motor_configs[motor_id]
-        move_data[motor_id] = {
-            "steps": int(abs(distance) * config.steps_per_mm), "dir": direction, "config": config
-        }
-
-    if not move_data:
-        return (None for _ in range(0)), set(), {}
-
-    master_id = max(move_data, key=lambda k: move_data[k]["steps"])
-    master_data = move_data[master_id]
-    master_steps = master_data["steps"]
-
-    if master_steps == 0:
-        return (None for _ in range(0)), set(), {}
-
-    accel_for_this_move = master_data["config"].acceleration_mmss
-    logging.info(f"Streaming pianificato. Master: '{master_id}' ({master_steps} passi). Uso accelerazione di {accel_for_this_move} mm/s^2.")
-
-    master_profile_ts = self._generate_trapezoidal_profile(
-        master_steps,
-        master_data["config"].max_freq_hz,
-        accel_for_this_move,
-        master_data["config"].steps_per_mm
-    )
-
-    active_motors = {m["config"].name for m in move_data.values()}
-    directions_to_set = {mid: move['dir'] for mid, move in move_data.items()}
-
-    # --- Suddivisione in macro-movimenti ---
-    steps_per_macro = int((chunk_size * max_chunks) // 2)  # //2 perché ogni step sono 2 pulse
-    total_macro = (master_steps + steps_per_macro - 1) // steps_per_macro
-
-    def make_pulse_generator_macro(start_step, end_step, macro_idx, total_macro):
-        def pulse_generator():
-            bresenham_errors = {mid: -master_steps / 2 for mid in move_data if mid != master_id}
-            last_time_us, pulse_chunk = 0.0, []
-            chunk_count = 0
-            total_pulse = 0
-            for i in range(start_step, end_step):
-                on_mask = 1 << master_data["config"].step_pin
-                for slave_id in bresenham_errors:
-                    bresenham_errors[slave_id] += move_data[slave_id]["steps"]
-                    if bresenham_errors[slave_id] > 0:
-                        on_mask |= 1 << move_data[slave_id]["config"].step_pin
-                        bresenham_errors[slave_id] -= master_steps
-                current_time_us = master_profile_ts[i]
-                total_period_us = current_time_us - last_time_us
-                if total_period_us >= 2:
-                    pulse_chunk.extend([pigpio.pulse(on_mask, 0, 2), pigpio.pulse(0, on_mask, int(round(total_period_us - 2)))])
-                elif total_period_us > 0:
-                    pulse_chunk.extend([pigpio.pulse(on_mask, 0, 1), pigpio.pulse(0, on_mask, 0)])
-                last_time_us = current_time_us
-                if len(pulse_chunk) >= chunk_size:
+    def plan_move_streamed(self, targets: dict[str, float], switch_states: dict, pi=None, chunk_size: int = 250, max_chunks: int = 10):
+        if not targets:
+            return (None for _ in range(0)), set(), {}
+    
+        # --- AGGIORNAMENTO STATO FINECORSA ---
+        if pi is not None:
+            for motor, pins in SWITCHES.items():
+                for name, pin in pins.items():
+                    switch_id = f"{motor}_{name.lower()}"
+                    switch_states[switch_id] = pi.read(pin) == 1
+    
+        move_data = {}
+        for motor_id, distance in targets.items():
+            if distance == 0 or motor_id not in self.motor_configs:
+                continue
+            
+            direction = 1 if distance >= 0 else 0
+            logging.info(f"Calcolo movimento per '{motor_id}': distanza {distance} mm, direzione {'positiva' if direction == 1 else 'negativa'}.")
+            # --- TEST TEMPORANEO: La logica dei finecorsa è disabilitata ---
+            if direction == 1 and switch_states.get(f"{motor_id}_start"):
+                logging.info(f"Sblocco logico: il movimento positivo per '{motor_id}' resetta lo stato del finecorsa START.")
+                switch_states[f"{motor_id}_start"] = False
+    
+            if direction == 0 and switch_states.get(f"{motor_id}_end"):
+                logging.info(f"Sblocco logico: il movimento negativo per '{motor_id}' resetta lo stato del finecorsa END.")
+                switch_states[f"{motor_id}_end"] = False
+    
+            if direction == 0 and switch_states.get(f"{motor_id}_start"):
+                logging.warning(f"Movimento per '{motor_id}' bloccato: si sta tentando di superare il finecorsa START attivo.")
+                continue
+            if direction == 1 and switch_states.get(f"{motor_id}_end"):
+                logging.warning(f"Movimento per '{motor_id}' bloccato: si sta tentando di superare il finecorsa END attivo.")
+                continue
+            
+            config = self.motor_configs[motor_id]
+            move_data[motor_id] = {
+                "steps": int(abs(distance) * config.steps_per_mm), "dir": direction, "config": config
+            }
+    
+        if not move_data:
+            return (None for _ in range(0)), set(), {}
+    
+        master_id = max(move_data, key=lambda k: move_data[k]["steps"])
+        master_data = move_data[master_id]
+        master_steps = master_data["steps"]
+    
+        if master_steps == 0:
+            return (None for _ in range(0)), set(), {}
+    
+        accel_for_this_move = master_data["config"].acceleration_mmss
+        logging.info(f"Streaming pianificato. Master: '{master_id}' ({master_steps} passi). Uso accelerazione di {accel_for_this_move} mm/s^2.")
+    
+        master_profile_ts = self._generate_trapezoidal_profile(
+            master_steps,
+            master_data["config"].max_freq_hz,
+            accel_for_this_move,
+            master_data["config"].steps_per_mm
+        )
+    
+        active_motors = {m["config"].name for m in move_data.values()}
+        directions_to_set = {mid: move['dir'] for mid, move in move_data.items()}
+    
+        # --- Suddivisione in macro-movimenti ---
+        steps_per_macro = int((chunk_size * max_chunks) // 2)  # //2 perché ogni step sono 2 pulse
+        total_macro = (master_steps + steps_per_macro - 1) // steps_per_macro
+    
+        def make_pulse_generator_macro(start_step, end_step, macro_idx, total_macro):
+            def pulse_generator():
+                bresenham_errors = {mid: -master_steps / 2 for mid in move_data if mid != master_id}
+                last_time_us, pulse_chunk = 0.0, []
+                chunk_count = 0
+                total_pulse = 0
+                for i in range(start_step, end_step):
+                    on_mask = 1 << master_data["config"].step_pin
+                    for slave_id in bresenham_errors:
+                        bresenham_errors[slave_id] += move_data[slave_id]["steps"]
+                        if bresenham_errors[slave_id] > 0:
+                            on_mask |= 1 << move_data[slave_id]["config"].step_pin
+                            bresenham_errors[slave_id] -= master_steps
+                    current_time_us = master_profile_ts[i]
+                    total_period_us = current_time_us - last_time_us
+                    if total_period_us >= 2:
+                        pulse_chunk.extend([pigpio.pulse(on_mask, 0, 2), pigpio.pulse(0, on_mask, int(round(total_period_us - 2)))])
+                    elif total_period_us > 0:
+                        pulse_chunk.extend([pigpio.pulse(on_mask, 0, 1), pigpio.pulse(0, on_mask, 0)])
+                    last_time_us = current_time_us
+                    if len(pulse_chunk) >= chunk_size:
+                        chunk_count += 1
+                        total_pulse += len(pulse_chunk)
+                        logging.info(f"[PulseGen] Macro {macro_idx+1}/{total_macro} - Yield chunk {chunk_count}: {len(pulse_chunk)} pulse ({len(pulse_chunk)//2} passi)")
+                        yield pulse_chunk
+                        pulse_chunk = []
+                if pulse_chunk:
                     chunk_count += 1
                     total_pulse += len(pulse_chunk)
                     logging.info(f"[PulseGen] Macro {macro_idx+1}/{total_macro} - Yield chunk {chunk_count}: {len(pulse_chunk)} pulse ({len(pulse_chunk)//2} passi)")
                     yield pulse_chunk
-                    pulse_chunk = []
-            if pulse_chunk:
-                chunk_count += 1
-                total_pulse += len(pulse_chunk)
-                logging.info(f"[PulseGen] Macro {macro_idx+1}/{total_macro} - Yield chunk {chunk_count}: {len(pulse_chunk)} pulse ({len(pulse_chunk)//2} passi)")
-                yield pulse_chunk
-            logging.info(f"[PulseGen] Macro {macro_idx+1}/{total_macro} - Totale chunk: {chunk_count}, pulse: {total_pulse}, passi: {total_pulse//2}")
-        return pulse_generator
-
-    macro_generators = []
-    for macro_idx in range(total_macro):
-        start_step = macro_idx * steps_per_macro
-        end_step = min((macro_idx + 1) * steps_per_macro, master_steps)
-        macro_generators.append(make_pulse_generator_macro(start_step, end_step, macro_idx, total_macro))
-
-    # Se serve solo un macro-movimento, restituisci il generatore singolo per retrocompatibilità
-    if len(macro_generators) == 1:
-        return macro_generators[0](), active_motors, directions_to_set
-    else:
-        return macro_generators, active_motors, directions_to_set
+                logging.info(f"[PulseGen] Macro {macro_idx+1}/{total_macro} - Totale chunk: {chunk_count}, pulse: {total_pulse}, passi: {total_pulse//2}")
+            return pulse_generator
+    
+        macro_generators = []
+        for macro_idx in range(total_macro):
+            start_step = macro_idx * steps_per_macro
+            end_step = min((macro_idx + 1) * steps_per_macro, master_steps)
+            macro_generators.append(make_pulse_generator_macro(start_step, end_step, macro_idx, total_macro))
+    
+        # Se serve solo un macro-movimento, restituisci il generatore singolo per retrocompatibilità
+        if len(macro_generators) == 1:
+            return macro_generators[0](), active_motors, directions_to_set
+        else:
+            return macro_generators, active_motors, directions_to_set
 class MotorController:
     def __init__(self, motor_configs: dict[str, MotorConfig]):
         self.pi = self._get_pigpio_instance()
@@ -439,21 +439,15 @@ def motor_worker():
                 with SYSTEM_CONFIG_LOCK:
                     current_switch_states = MOTOR_CONTROLLER.switch_states.copy()
                     # Passa anche l'istanza pi per aggiornare i finecorsa reali
-                    pulse_generators, active_motors, directions = MOTION_PLANNER.plan_move_streamed(
+                    pulse_generator, active_motors, directions = MOTION_PLANNER.plan_move_streamed(
                         targets, current_switch_states, pi=MOTOR_CONTROLLER.pi
                     )
-                # Gestione macro-movimenti multipli
-                if isinstance(pulse_generators, list):
-                    for gen in pulse_generators:
-                        MOTOR_CONTROLLER.execute_streamed_move(gen(), active_motors, directions)
-                else:
-                    MOTOR_CONTROLLER.execute_streamed_move(pulse_generators, active_motors, directions)
+                MOTOR_CONTROLLER.execute_streamed_move(pulse_generator, active_motors, directions)
 
             elif command == "home":
                 motor_to_home = task.get("motor")
                 logging.info(f"Worker: ricevuto comando HOME per '{motor_to_home}'")
-                if motor_to_home:
-                    MOTOR_CONTROLLER.execute_homing_sequence(motor_to_home)
+                if motor_to_home: MOTOR_CONTROLLER.execute_homing_sequence(motor_to_home)
             
             logging.info(f"Worker: task {task} completato con successo.")
         except Exception as e:
@@ -461,6 +455,7 @@ def motor_worker():
         finally:
             motor_command_queue.task_done()
             time.sleep(0.1)
+
 def handle_exception(e):
     import traceback
     error_details = traceback.format_exc()
