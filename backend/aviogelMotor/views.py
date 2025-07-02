@@ -178,7 +178,7 @@ class MotionPlanner:
         directions_to_set = {mid: move['dir'] for mid, move in move_data.items()}
 
         # --- Suddivisione in macro-movimenti ---
-        steps_per_macro = int((chunk_size * max_chunks) // 2)  # //2 perché ogni step sono 2 pulse
+        steps_per_macro = 2048 # //2 perché ogni step sono 2 pulse
         total_macro = (master_steps + steps_per_macro - 1) // steps_per_macro
 
         def make_pulse_generator_macro(start_step, end_step, macro_idx, total_macro):
