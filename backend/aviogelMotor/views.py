@@ -116,7 +116,7 @@ class MotionPlanner:
         return np.cumsum(periods_us).tolist()
 
     # MODIFICA: Funzione aggiornata per la gestione della direzione e dei finecorsa
-    def plan_move_streamed(self, targets: dict[str, float], switch_states: dict, pi=None, chunk_size: int = 2048) -> tuple[object, set, dict]:
+    def plan_move_streamed(self, targets: dict[str, float], switch_states: dict, pi=None, chunk_size: int = 1024) -> tuple[object, set, dict]:
         if not targets:
             return (None for _ in range(0)), set(), {}
 
