@@ -184,6 +184,8 @@ class MotionPlanner:
         def pulse_generator():
             bresenham_errors = {mid: -master_steps / 2 for mid in move_data if mid != master_id}
             last_time_us, pulse_chunk = 0.0, []
+            chunk_count = 0
+            total_pulse = 0
             for i in range(master_steps):
                 on_mask = 1 << master_data["config"].step_pin
                 for slave_id in bresenham_errors:
@@ -199,9 +201,17 @@ class MotionPlanner:
                     pulse_chunk.extend([pigpio.pulse(on_mask, 0, 1), pigpio.pulse(0, on_mask, 0)])
                 last_time_us = current_time_us
                 if len(pulse_chunk) >= chunk_size:
+                    chunk_count += 1
+                    total_pulse += len(pulse_chunk)
+                    logging.info(f"[PulseGen] Yield chunk {chunk_count}: {len(pulse_chunk)} pulse ({len(pulse_chunk)//2} passi)")
                     yield pulse_chunk
                     pulse_chunk = []
-            if pulse_chunk: yield pulse_chunk
+            if pulse_chunk:
+                chunk_count += 1
+                total_pulse += len(pulse_chunk)
+                logging.info(f"[PulseGen] Yield chunk {chunk_count}: {len(pulse_chunk)} pulse ({len(pulse_chunk)//2} passi)")
+                yield pulse_chunk
+            logging.info(f"[PulseGen] Totale chunk generati: {chunk_count}, totale pulse: {total_pulse}, totale passi: {total_pulse//2}")
 
         return pulse_generator(), active_motors, directions_to_set
 
