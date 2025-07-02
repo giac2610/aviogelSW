@@ -132,20 +132,20 @@ class MotionPlanner:
             # ======================================================================
             # --- TEST TEMPORANEO: La logica dei finecorsa è disabilitata ---
             # ======================================================================
-            # if direction == 1 and switch_states.get(f"{motor_id}_start"):
-            #     logging.info(f"Sblocco logico: il movimento positivo per '{motor_id}' resetta lo stato del finecorsa START.")
-            #     switch_states[f"{motor_id}_start"] = False
+            if direction == 1 and switch_states.get(f"{motor_id}_start"):
+                logging.info(f"Sblocco logico: il movimento positivo per '{motor_id}' resetta lo stato del finecorsa START.")
+                switch_states[f"{motor_id}_start"] = False
 
-            # if direction == 0 and switch_states.get(f"{motor_id}_end"):
-            #     logging.info(f"Sblocco logico: il movimento negativo per '{motor_id}' resetta lo stato del finecorsa END.")
-            #     switch_states[f"{motor_id}_end"] = False
+            if direction == 0 and switch_states.get(f"{motor_id}_end"):
+                logging.info(f"Sblocco logico: il movimento negativo per '{motor_id}' resetta lo stato del finecorsa END.")
+                switch_states[f"{motor_id}_end"] = False
 
-            # if direction == 0 and switch_states.get(f"{motor_id}_start"):
-            #     logging.warning(f"Movimento per '{motor_id}' bloccato: si sta tentando di superare il finecorsa START attivo.")
-            #     continue
-            # if direction == 1 and switch_states.get(f"{motor_id}_end"):
-            #     logging.warning(f"Movimento per '{motor_id}' bloccato: si sta tentando di superare il finecorsa END attivo.")
-            #     continue
+            if direction == 0 and switch_states.get(f"{motor_id}_start"):
+                logging.warning(f"Movimento per '{motor_id}' bloccato: si sta tentando di superare il finecorsa START attivo.")
+                continue
+            if direction == 1 and switch_states.get(f"{motor_id}_end"):
+                logging.warning(f"Movimento per '{motor_id}' bloccato: si sta tentando di superare il finecorsa END attivo.")
+                continue
             # ======================================================================
 
             config = self.motor_configs[motor_id]
