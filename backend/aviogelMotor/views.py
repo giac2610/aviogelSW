@@ -376,7 +376,7 @@ def motor_worker():
             command = task.get("command", "move")
             
             if command == "move":
-                # Pulizia preventiva, corretta e la manteniamo.
+                # Pulizia preventiva.
                 try:
                     if MOTOR_CONTROLLER.pi and MOTOR_CONTROLLER.pi.connected:
                         MOTOR_CONTROLLER.pi.wave_clear()
@@ -392,12 +392,9 @@ def motor_worker():
                     )
 
                 if not active_motors:
-                    motor_command_queue.task_done()
+                    # --- FIX: Rimosso task_done() ---
                     continue
-                
-                MOTOR_CONTROLLER.last_move_interrupted = False
-                # Lista per tenere traccia di TUTTE le onde create in questo task,
-                # per una pulizia sicura in caso di errore.
+
                 all_created_wave_ids_in_task = []
                 try:
                     # Setup iniziale motori
@@ -407,31 +404,23 @@ def motor_worker():
                         MOTOR_CONTROLLER.pi.write(MOTOR_CONTROLLER.motor_configs[motor_name].en_pin, 0)
                     time.sleep(0.01)
 
-                    # --- ARCHITETTURA "CREA -> ACCODA -> CANCELLA" ---
+                    # Architettura "Crea -> Accoda -> Cancella"
                     for i, gen_func in enumerate(pulse_generators):
                         logging.info(f"Preparo e accodo la macro {i+1}/{len(pulse_generators)}...")
                         
-                        # 1. CREA le onde solo per questa macro
                         wave_ids_for_this_macro = MOTOR_CONTROLLER._prepare_waves_from_generator(gen_func())
                         if not wave_ids_for_this_macro: continue
                         
                         all_created_wave_ids_in_task.extend(wave_ids_for_this_macro)
-
-                        # 2. ACCODA le onde alla catena di trasmissione
                         MOTOR_CONTROLLER.pi.wave_chain(wave_ids_for_this_macro)
                         
-                        # 3. CANCELLA SUBITO le onde appena accodate.
-                        # I loro dati sono già stati copiati da pigpio. Questo libera i CB.
                         for wid in wave_ids_for_this_macro:
                             MOTOR_CONTROLLER.pi.wave_delete(wid)
 
-                        # Adesso non abbiamo più bisogno di un throttle, perché liberiamo
-                        # risorse attivamente ad ogni passo del ciclo.
                         if MOTOR_CONTROLLER.last_move_interrupted:
                             logging.warning("Interruzione rilevata, fermo l'accodamento.")
                             break
                     
-                    # Attendi che l'intera catena sia stata trasmessa
                     while MOTOR_CONTROLLER.pi.wave_tx_busy():
                         if MOTOR_CONTROLLER.last_move_interrupted:
                             MOTOR_CONTROLLER.pi.wave_tx_stop()
@@ -442,23 +431,14 @@ def motor_worker():
                         logging.warning("MOVIMENTO INTERROTTO da un finecorsa.")
 
                 finally:
-                    # Pulizia finale.
                     if MOTOR_CONTROLLER.pi and MOTOR_CONTROLLER.pi.connected:
                         if MOTOR_CONTROLLER.pi.wave_tx_busy():
                             MOTOR_CONTROLLER.pi.wave_tx_stop()
-                        
-                        # Invece di wave_clear(), cancelliamo solo le onde residue che potrebbero
-                        # essere rimaste in caso di errore prima del wave_delete() nel ciclo.
-                        # Questo è più sicuro e previene la cancellazione di onde di altri processi.
                         for wid in all_created_wave_ids_in_task:
-                            try:
-                                MOTOR_CONTROLLER.pi.wave_delete(wid)
-                            except:
-                                pass # Ignora errori se l'onda è già stata cancellata
-                        
+                            try: MOTOR_CONTROLLER.pi.wave_delete(wid)
+                            except: pass
                         for config in MOTOR_CONTROLLER.motor_configs.values():
-                            try:
-                                MOTOR_CONTROLLER.pi.write(config.en_pin, 1)
+                            try: MOTOR_CONTROLLER.pi.write(config.en_pin, 1)
                             except Exception: pass
             
             elif command == "home":
@@ -471,6 +451,7 @@ def motor_worker():
         except Exception as e:
             logging.error(f"Errore critico nel motor_worker su task {task}: {e}", exc_info=True)
         finally:
+            # Questa è l'UNICA chiamata a task_done(), garantendo che sia eseguita una sola volta.
             motor_command_queue.task_done()
             time.sleep(0.1)
             
