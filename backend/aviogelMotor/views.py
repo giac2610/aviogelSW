@@ -369,27 +369,24 @@ motor_command_queue = queue.Queue()
 SYSTEM_CONFIG_LOCK = threading.Lock()
             
 def motor_worker():
-    logging.info("Motor worker avviato con architettura a streaming (Versione Stabile).")
+    logging.info("Motor worker avviato con architettura a streaming reale (Versione Finale).")
     while True:
         task = motor_command_queue.get()
         try:
             command = task.get("command", "move")
             
             if command == "move":
-                # --- FIX FONDAMENTALE: GARBAGE COLLECTION PREVENTIVA ---
-                # Pulisci SEMPRE le onde precedenti prima di iniziare un nuovo movimento.
-                # Questo previene resource leak da task falliti e garantisce uno stato pulito.
+                # Pulizia preventiva, la manteniamo perché è una buona pratica.
                 try:
                     if MOTOR_CONTROLLER.pi and MOTOR_CONTROLLER.pi.connected:
                         MOTOR_CONTROLLER.pi.wave_clear()
                 except Exception as e:
-                    logging.error(f"Errore durante la pulizia preventiva delle onde: {e}")
+                    logging.error(f"Errore durante la pulizia preventiva: {e}")
 
                 targets = task.get("targets", {})
                 
                 with SYSTEM_CONFIG_LOCK:
                     current_switch_states = MOTOR_CONTROLLER.switch_states.copy()
-                    # Ora riceverà sempre una lista di funzioni, grazie al fix precedente
                     pulse_generators, active_motors, directions = MOTION_PLANNER.plan_move_streamed(
                         targets, current_switch_states, pi=MOTOR_CONTROLLER.pi
                     )
@@ -397,36 +394,42 @@ def motor_worker():
                 if not active_motors:
                     motor_command_queue.task_done()
                     continue
-
-                full_wave_chain_ids = []
-                # Questo loop ora funziona correttamente perché pulse_generators è sempre una lista di funzioni
-                for gen_func in pulse_generators:
-                    wave_ids_for_macro = MOTOR_CONTROLLER._prepare_waves_from_generator(gen_func())
-                    full_wave_chain_ids.extend(wave_ids_for_macro)
                 
-                if not full_wave_chain_ids:
-                    logging.warning("Nessuna onda generata per il movimento.")
-                    motor_command_queue.task_done()
-                    continue
-
                 MOTOR_CONTROLLER.last_move_interrupted = False
                 try:
+                    # Setup iniziale motori (fatto una sola volta)
                     for motor_id, direction in directions.items():
                         MOTOR_CONTROLLER.pi.write(MOTOR_CONTROLLER.motor_configs[motor_id].dir_pin, direction)
                     for motor_name in active_motors:
                         MOTOR_CONTROLLER.pi.write(MOTOR_CONTROLLER.motor_configs[motor_name].en_pin, 0)
                     time.sleep(0.01)
 
-                    CHAIN_SEGMENT_MAX_WAVES = 15
-                    for i in range(0, len(full_wave_chain_ids), CHAIN_SEGMENT_MAX_WAVES):
-                        segment = full_wave_chain_ids[i:i + CHAIN_SEGMENT_MAX_WAVES]
-                        MOTOR_CONTROLLER.pi.wave_chain(segment)
+                    # --- ARCHITETTURA A STREAMING REALE ---
+                    # Ora prepariamo ed eseguiamo un pezzo alla volta.
+                    for i, gen_func in enumerate(pulse_generators):
+                        logging.info(f"Preparo e accodo la macro {i+1}/{len(pulse_generators)}...")
                         
+                        # 1. PREPARA SOLO UN PEZZO
+                        wave_ids_for_this_macro = MOTOR_CONTROLLER._prepare_waves_from_generator(gen_func())
+                        
+                        if not wave_ids_for_this_macro:
+                            continue
+                        
+                        # 2. INVIALO SUBITO IN CODA
+                        # pigpio lo aggiungerà alla catena in esecuzione senza interruzioni.
+                        MOTOR_CONTROLLER.pi.wave_chain(wave_ids_for_this_macro)
+                        
+                        # Attendi solo se la coda di pigpio si sta riempiendo troppo.
+                        # Questo dà tempo al DMA di eseguire le onde mentre la CPU prepara le successive.
                         while MOTOR_CONTROLLER.pi.wave_get_cbs() > 10000:
                             if MOTOR_CONTROLLER.last_move_interrupted: break
                             time.sleep(0.02)
-                        if MOTOR_CONTROLLER.last_move_interrupted: break
-
+                        
+                        if MOTOR_CONTROLLER.last_move_interrupted:
+                            logging.warning("Interruzione rilevata, fermo l'accodamento di altre macro.")
+                            break
+                    
+                    # Attendi che l'ULTIMO pezzo inviato sia stato completato.
                     while MOTOR_CONTROLLER.pi.wave_tx_busy():
                         if MOTOR_CONTROLLER.last_move_interrupted:
                             MOTOR_CONTROLLER.pi.wave_tx_stop()
@@ -437,10 +440,12 @@ def motor_worker():
                         logging.warning("MOVIMENTO INTERROTTO da un finecorsa.")
 
                 finally:
+                    # Pulizia finale
                     if MOTOR_CONTROLLER.pi and MOTOR_CONTROLLER.pi.connected:
+                        # La pulizia è comunque necessaria per fermare tutto e cancellare le onde
                         if MOTOR_CONTROLLER.pi.wave_tx_busy():
                             MOTOR_CONTROLLER.pi.wave_tx_stop()
-                        MOTOR_CONTROLLER.pi.wave_clear() # Pulisce le onde dell'ultimo movimento
+                        MOTOR_CONTROLLER.pi.wave_clear()
                         for config in MOTOR_CONTROLLER.motor_configs.values():
                             try:
                                 MOTOR_CONTROLLER.pi.write(config.en_pin, 1)
@@ -457,8 +462,7 @@ def motor_worker():
             logging.error(f"Errore critico nel motor_worker su task {task}: {e}", exc_info=True)
         finally:
             motor_command_queue.task_done()
-            time.sleep(0.1)
-            
+            time.sleep(0.1)   
 def handle_exception(e):
     import traceback
     error_details = traceback.format_exc()
