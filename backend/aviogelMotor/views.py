@@ -77,6 +77,7 @@ class MotionPlanner:
         logging.info(f"MotionPlanner inizializzato con motori: {list(motor_configs.keys())}")
 
     def _generate_trapezoidal_profile(self, total_steps: int, max_freq_hz: float, accel_mmss: float, steps_per_mm: float) -> list[float]:
+        # Questa funzione è corretta
         if total_steps == 0: return []
         v_max = max_freq_hz / steps_per_mm
         if accel_mmss <= 0: accel_mmss = 1.0
@@ -112,6 +113,7 @@ class MotionPlanner:
                     switch_id = f"{motor}_{name.lower()}"
                     is_pressed = pi.read(pin) == 1
                     switch_states[switch_id] = is_pressed
+        
         move_data = {}
         for motor_id, distance in targets.items():
             if distance == 0 or motor_id not in self.motor_configs: continue
@@ -127,6 +129,15 @@ class MotionPlanner:
         master_id = max(move_data, key=lambda k: move_data[k]["steps"])
         master_data = move_data[master_id]
         master_steps = master_data["steps"]
+
+        # --- LIMITE DI SICUREZZA FONDAMENTALE ---
+        # Impostiamo un limite massimo di passi per un singolo comando per non superare mai i CB.
+        # 8000 passi = 16000 impulsi, un valore sicuro per pigpio.
+        MAX_STEPS_PER_COMMAND = 8000
+        if master_steps > MAX_STEPS_PER_COMMAND:
+            logging.warning(f"MOVIMENTO TROPPO LUNGO ({master_steps} passi)! Troncato al limite di sicurezza di {MAX_STEPS_PER_COMMAND} passi.")
+            master_steps = MAX_STEPS_PER_COMMAND
+
         if master_steps == 0: return None, set(), {}
         
         periods_list = self._generate_trapezoidal_profile(
@@ -136,7 +147,6 @@ class MotionPlanner:
         directions_to_set = {mid: move['dir'] for mid, move in move_data.items()}
         logging.info(f"Pianificato movimento per '{master_id}' ({master_steps} passi).")
 
-        # --- FIX: Crea un UNICO generatore per l'intero movimento ---
         def single_pulse_generator():
             bresenham_errors = {mid: -master_steps / 2 for mid in move_data if mid != master_id}
             for i in range(master_steps):
@@ -350,7 +360,7 @@ motor_command_queue = queue.Queue()
 SYSTEM_CONFIG_LOCK = threading.Lock()
             
 def motor_worker():
-    logging.info("Motor worker avviato con architettura a streaming reale e stabile.")
+    logging.info("Motor worker avviato con architettura Stabile e Robusta.")
     while True:
         task = motor_command_queue.get()
         try:
@@ -374,41 +384,28 @@ def motor_worker():
                 if not active_motors or not pulse_generator:
                     continue
 
-                wave_to_delete = None
+                # --- ARCHITETTURA SEMPLIFICATA: PREPARA E ESEGUI ---
+                all_wave_ids = []
                 try:
+                    # 1. Prepara tutte le onde per questo singolo, sicuro movimento
+                    all_wave_ids = MOTOR_CONTROLLER._prepare_waves_from_generator(pulse_generator)
+
+                    if not all_wave_ids:
+                        logging.warning("Nessuna onda generata per questo movimento.")
+                        continue
+                    
+                    MOTOR_CONTROLLER.last_move_interrupted = False
+                    
+                    # 2. Esegui
                     for motor_id, direction in directions.items():
                         MOTOR_CONTROLLER.pi.write(MOTOR_CONTROLLER.motor_configs[motor_id].dir_pin, direction)
                     for motor_name in active_motors:
                         MOTOR_CONTROLLER.pi.write(MOTOR_CONTROLLER.motor_configs[motor_name].en_pin, 0)
                     time.sleep(0.01)
+
+                    logging.info(f"Invio movimento completo con {len(all_wave_ids)} onde...")
+                    MOTOR_CONTROLLER.pi.wave_chain(all_wave_ids)
                     
-                    PULSE_CHUNK_SIZE = 3000 # Un "sorso" di 3000 impulsi (1500 passi)
-                    chunk_num = 1
-                    while not MOTOR_CONTROLLER.last_move_interrupted:
-                        # 1. Prendi un piccolo "sorso" di impulsi dal fiume
-                        pulse_chunk = [pulse for _, pulse in zip(range(PULSE_CHUNK_SIZE), pulse_generator)]
-                        if not pulse_chunk:
-                            break # Il fiume è finito, movimento completato
-
-                        logging.info(f"Preparo e accodo il blocco #{chunk_num}...")
-                        
-                        # 2. Crea una singola, piccola onda
-                        MOTOR_CONTROLLER.pi.wave_add_generic(pulse_chunk)
-                        new_wave_id = MOTOR_CONTROLLER.pi.wave_create()
-                        if new_wave_id < 0:
-                            raise pigpio.error(f'Creazione onda fallita con codice {new_wave_id}')
-                        
-                        # 3. Accodala
-                        MOTOR_CONTROLLER.pi.wave_chain([new_wave_id])
-
-                        # 4. Cancella l'onda del "sorso" PRECEDENTE
-                        if wave_to_delete is not None:
-                            MOTOR_CONTROLLER.pi.wave_delete(wave_to_delete)
-                        
-                        # 5. Ricorda l'onda attuale per cancellarla al prossimo giro
-                        wave_to_delete = new_wave_id
-                        chunk_num += 1
-
                     while MOTOR_CONTROLLER.pi.wave_tx_busy():
                         if MOTOR_CONTROLLER.last_move_interrupted:
                             MOTOR_CONTROLLER.pi.wave_tx_stop()
@@ -419,10 +416,11 @@ def motor_worker():
                         logging.warning("MOVIMENTO INTERROTTO da un finecorsa.")
 
                 finally:
+                    # 3. Pulisci
                     if MOTOR_CONTROLLER.pi and MOTOR_CONTROLLER.pi.connected:
                         if MOTOR_CONTROLLER.pi.wave_tx_busy():
                             MOTOR_CONTROLLER.pi.wave_tx_stop()
-                        MOTOR_CONTROLLER.pi.wave_clear()
+                        MOTOR_CONTROLLER.pi.wave_clear() # Pulisce tutto in modo sicuro
                         for config in MOTOR_CONTROLLER.motor_configs.values():
                             try: MOTOR_CONTROLLER.pi.write(config.en_pin, 1)
                             except Exception: pass
