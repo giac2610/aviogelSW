@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 
 # ==============================================================================
-# ARCHITETTURA STREAMING con Accelerazione per Motore (Versione Definitiva)
+# ARCHITETTURA STREAMING con Accelerazione per Motore (Versione Finale Stabile)
 # Questa versione implementa la pianificazione a macro-movimenti e
 # un'esecuzione "a tappe" continua per la massima stabilità e fluidità.
 # ==============================================================================
@@ -172,8 +172,7 @@ class MotionPlanner:
             end_step = min((macro_idx + 1) * steps_per_macro, master_steps)
             macro_generators.append(make_pulse_generator_macro(start_step, end_step))
 
-        # --- FIX FONDAMENTALE ---
-        # Restituisce SEMPRE la lista di funzioni, mai il generatore direttamente.
+        # FIX: Restituisce SEMPRE la lista di funzioni, mai il generatore direttamente.
         return macro_generators, active_motors, directions_to_set
     
 class MotorController:
@@ -191,8 +190,7 @@ class MotorController:
         try:
             if IS_RPI:
                 pi = pigpio.pi()
-                if not pi.connected:
-                    raise ConnectionError("Connessione a pigpiod fallita.")
+                if not pi.connected: raise ConnectionError("Connessione a pigpiod fallita.")
                 logging.info("Connessione a pigpio stabilita.")
                 return pi
             else:
@@ -203,8 +201,7 @@ class MotorController:
             return None
 
     def _initialize_gpio_pins(self):
-        if not self.pi or not self.pi.connected:
-            return
+        if not self.pi or not self.pi.connected: return
         for config in self.motor_configs.values():
             self.pi.set_mode(config.step_pin, pigpio.OUTPUT)
             self.pi.set_pull_up_down(config.dir_pin, pigpio.PUD_DOWN)
@@ -218,8 +215,8 @@ class MotorController:
                 switch_id = f"{motor}_{name.lower()}"
                 self.pi.set_mode(pin, pigpio.INPUT)
                 self.pi.set_pull_up_down(pin, pigpio.PUD_DOWN)
-                is_pressed = self.pi.read(pin) == 0  # PULL-DOWN: 0=non premuto, 1=premuto
-                self.switch_states[switch_id] = not is_pressed
+                is_pressed = self.pi.read(pin) == 1
+                self.switch_states[switch_id] = is_pressed
                 self._pin_to_switch_map[pin] = switch_id
                 cb = self.pi.callback(pin, pigpio.EITHER_EDGE, self._switch_callback)
                 self._callbacks[pin] = cb
@@ -228,15 +225,12 @@ class MotorController:
     def _switch_callback(self, gpio, level, tick):
         switch_id = self._pin_to_switch_map.get(gpio)
         if switch_id:
-            # PULL-DOWN: level=1 (RISING) -> premuto; level=0 (FALLING) -> rilasciato
             is_pressed = (level == 1)
             self.switch_states[switch_id] = is_pressed
-            
             if is_pressed:
                 self.last_move_interrupted = True
                 logging.warning(f"!!! FINE CORSA ATTIVATO: {switch_id.upper()} (GPIO: {gpio}) !!!")
-                if self.pi.wave_tx_busy():
-                    self.pi.wave_tx_stop()
+                if self.pi.wave_tx_busy(): self.pi.wave_tx_stop()
 
     def _prepare_waves_from_generator(self, pulse_generator: object) -> list[int]:
         if not self.pi or not self.pi.connected:
@@ -245,9 +239,7 @@ class MotorController:
         PULSE_BLOCK_THRESHOLD = 3800
         wave_ids = []
         all_pulses = list(pulse_generator)
-        
-        if not all_pulses:
-            return []
+        if not all_pulses: return []
 
         for i in range(0, len(all_pulses), PULSE_BLOCK_THRESHOLD):
             pulse_block = all_pulses[i:i + PULSE_BLOCK_THRESHOLD]
@@ -256,8 +248,7 @@ class MotorController:
             if wave_id >= 0:
                 wave_ids.append(wave_id)
             else:
-                for wid in wave_ids:
-                    self.pi.wave_delete(wid)
+                for wid in wave_ids: self.pi.wave_delete(wid)
                 raise pigpio.error(f'Creazione onda fallita con codice {wave_id}')
         return wave_ids
 
@@ -272,63 +263,75 @@ class MotorController:
         end_switch_id = f"{motor_name}_end"
         config = self.motor_configs[motor_name]
 
-        # Controlla stato attuale e se necessario esce dal finecorsa
-        if self.pi.read(switch_pin) == 1:
-            logging.info(f"Motore '{motor_name}' già sul finecorsa START. Uscita di 5mm...")
-            self.pi.write(config.en_pin, 0)
-            self.pi.write(config.dir_pin, 1) # Direzione opposta
-            steps_to_move = int(5 * config.steps_per_mm)
-            for _ in range(steps_to_move):
-                self.pi.write(config.step_pin, 1)
-                time.sleep(0.0005)
-                self.pi.write(config.step_pin, 0)
-                time.sleep(0.0005)
-            self.pi.write(config.en_pin, 1)
-            time.sleep(0.1) # Pausa per stabilizzare
-
-        # Inizia la procedura di homing verso il sensore
+        # --- FASE 1: Ricerca Veloce del Finecorsa ---
+        logging.info("Homing: Fase 1 - Ricerca veloce del finecorsa...")
         homing_hit = threading.Event()
-
         def homing_callback(gpio, level, tick):
-            if level == 1: # Rileva il fronte di salita (pressione del tasto)
+            if level == 1:
                 self.pi.wave_tx_stop()
                 homing_hit.set()
         
-        # Rimuove temporaneamente il callback generale
         existing_cb = self._callbacks.pop(switch_pin, None)
-        if existing_cb:
-            existing_cb.cancel()
-
+        if existing_cb: existing_cb.cancel()
         cb_homing = self.pi.callback(switch_pin, pigpio.RISING_EDGE, homing_callback)
         
         self.pi.write(config.en_pin, 0)
-        self.pi.write(config.dir_pin, 0) # Direzione verso start
+        self.pi.write(config.dir_pin, 0)
         self.pi.wave_clear()
         
-        period_us = int(1_000_000 / 1000) # 1000 Hz
+        period_us = int(1_000_000 / 2000)
         pulse = [pigpio.pulse(1 << config.step_pin, 0, period_us // 2), pigpio.pulse(0, 1 << config.step_pin, period_us // 2)]
         self.pi.wave_add_generic(pulse)
         wave_id = self.pi.wave_create()
         self.pi.wave_send_repeat(wave_id)
 
         hit = homing_hit.wait(timeout=30)
-        
         self.pi.wave_tx_stop()
         self.pi.wave_delete(wave_id)
         cb_homing.cancel()
 
-        # Ripristina il callback generale
-        self._callbacks[switch_pin] = self.pi.callback(switch_pin, pigpio.EITHER_EDGE, self._switch_callback)
+        if not hit:
+            logging.error(f"Homing Fase 1 fallita per '{motor_name}': timeout.")
+            self._callbacks[switch_pin] = self.pi.callback(switch_pin, pigpio.EITHER_EDGE, self._switch_callback)
+            self.pi.write(config.en_pin, 1)
+            return
+
+        logging.info("Homing: Finecorsa toccato.")
+        time.sleep(0.1)
+
+        # --- FASE 2: Back-off lento dal finecorsa ---
+        logging.info("Homing: Fase 2 - Back-off lento per rilascio sensore...")
+        backoff_done = threading.Event()
+        def backoff_callback(gpio, level, tick):
+            if level == 0:
+                self.pi.wave_tx_stop()
+                backoff_done.set()
+
+        cb_backoff = self.pi.callback(switch_pin, pigpio.FALLING_EDGE, backoff_callback)
+        self.pi.write(config.dir_pin, 1)
         
-        # Aggiorna lo stato finale
-        self.switch_states[switch_id] = True
-        self.switch_states[end_switch_id] = False
+        period_us_slow = int(1_000_000 / 200)
+        pulse_slow = [pigpio.pulse(1 << config.step_pin, 0, period_us_slow // 2), pigpio.pulse(0, 1 << config.step_pin, period_us_slow // 2)]
+        self.pi.wave_add_generic(pulse_slow)
+        wave_id_slow = self.pi.wave_create()
+        self.pi.wave_send_repeat(wave_id_slow)
+
+        backed_off = backoff_done.wait(timeout=10)
+        self.pi.wave_tx_stop()
+        self.pi.wave_delete(wave_id_slow)
+        cb_backoff.cancel()
+
+        self._callbacks[switch_pin] = self.pi.callback(switch_pin, pigpio.EITHER_EDGE, self._switch_callback)
         self.pi.write(config.en_pin, 1)
 
-        if not hit:
-            logging.error(f"Homing fallito per '{motor_name}': timeout.")
+        if not backed_off:
+            logging.error(f"Homing Fase 2 (Back-off) fallita per '{motor_name}': timeout.")
+            self.switch_states[switch_id] = True
         else:
-            logging.info(f"Homing per '{motor_name}' completato.")
+            logging.info(f"Homing per '{motor_name}' completato con successo. Posizione zero definita.")
+            self.switch_states[switch_id] = False
+        
+        self.switch_states[end_switch_id] = False
 
 def load_system_config() -> dict[str, MotorConfig]:
     configs = {}
@@ -376,7 +379,7 @@ def motor_worker():
             command = task.get("command", "move")
             
             if command == "move":
-                # Pulizia preventiva.
+                # Pulizia preventiva per evitare resource leak da task precedenti falliti.
                 try:
                     if MOTOR_CONTROLLER.pi and MOTOR_CONTROLLER.pi.connected:
                         MOTOR_CONTROLLER.pi.wave_clear()
@@ -392,8 +395,7 @@ def motor_worker():
                     )
 
                 if not active_motors:
-                    # --- FIX: Rimosso task_done() ---
-                    continue
+                    continue # Affidati al finally per task_done()
 
                 all_created_wave_ids_in_task = []
                 try:
@@ -404,7 +406,7 @@ def motor_worker():
                         MOTOR_CONTROLLER.pi.write(MOTOR_CONTROLLER.motor_configs[motor_name].en_pin, 0)
                     time.sleep(0.01)
 
-                    # Architettura "Crea -> Accoda -> Cancella"
+                    # Architettura "Crea -> Accoda -> Cancella" per streaming reale
                     for i, gen_func in enumerate(pulse_generators):
                         logging.info(f"Preparo e accodo la macro {i+1}/{len(pulse_generators)}...")
                         
@@ -414,6 +416,7 @@ def motor_worker():
                         all_created_wave_ids_in_task.extend(wave_ids_for_this_macro)
                         MOTOR_CONTROLLER.pi.wave_chain(wave_ids_for_this_macro)
                         
+                        # Cancella subito le onde dopo averle accodate per liberare CB
                         for wid in wave_ids_for_this_macro:
                             MOTOR_CONTROLLER.pi.wave_delete(wid)
 
@@ -434,9 +437,12 @@ def motor_worker():
                     if MOTOR_CONTROLLER.pi and MOTOR_CONTROLLER.pi.connected:
                         if MOTOR_CONTROLLER.pi.wave_tx_busy():
                             MOTOR_CONTROLLER.pi.wave_tx_stop()
+                        
+                        # Per sicurezza, tenta di cancellare le onde che potrebbero essere rimaste orfane
                         for wid in all_created_wave_ids_in_task:
                             try: MOTOR_CONTROLLER.pi.wave_delete(wid)
                             except: pass
+                        
                         for config in MOTOR_CONTROLLER.motor_configs.values():
                             try: MOTOR_CONTROLLER.pi.write(config.en_pin, 1)
                             except Exception: pass
@@ -451,10 +457,10 @@ def motor_worker():
         except Exception as e:
             logging.error(f"Errore critico nel motor_worker su task {task}: {e}", exc_info=True)
         finally:
-            # Questa è l'UNICA chiamata a task_done(), garantendo che sia eseguita una sola volta.
+            # UNICA chiamata a task_done() per garantire stabilità.
             motor_command_queue.task_done()
             time.sleep(0.1)
-            
+
 def handle_exception(e):
     import traceback
     error_details = traceback.format_exc()
@@ -470,6 +476,8 @@ else:
 # ==============================================================================
 # API VIEWS (Interfaccia esterna preservata)
 # ==============================================================================
+# Le API Views rimangono invariate. Sono state omesse per brevità ma sono identiche
+# a quelle nel tuo file.
 @api_view(['POST'])
 def move_motor_view(request):
     try:
@@ -527,18 +535,15 @@ def update_config_view(request):
     logging.warning("Inizio procedura di Hot-Reload della configurazione di sistema.")
     with SYSTEM_CONFIG_LOCK:
         try:
-            # Ferma qualsiasi movimento in corso prima di ricaricare
             if MOTOR_CONTROLLER.pi and MOTOR_CONTROLLER.pi.connected and MOTOR_CONTROLLER.pi.wave_tx_busy():
                 MOTOR_CONTROLLER.pi.wave_tx_stop()
                 MOTOR_CONTROLLER.pi.wave_clear()
             logging.info("Movimento corrente interrotto per aggiornamento configurazione.")
             
-            # Cancella i vecchi callback prima di creare un nuovo controller
             if MOTOR_CONTROLLER and MOTOR_CONTROLLER.pi and MOTOR_CONTROLLER.pi.connected:
                 for pin, cb in MOTOR_CONTROLLER._callbacks.items():
                     cb.cancel()
             
-            # Ricarica tutto da capo
             new_configs = load_system_config()
             if not new_configs: 
                 raise ValueError("Caricamento nuova configurazione fallito o file vuoto.")
@@ -551,7 +556,6 @@ def update_config_view(request):
             return JsonResponse({"log": "Configurazione aggiornata e ricaricata con successo.", "status": "success"})
         except Exception as e:
             logging.error(f"Fallimento durante la procedura di Hot-Reload: {e}", exc_info=True)
-            # Tenta di ripristinare uno stato funzionante in caso di errore
             MOTOR_CONFIGS = load_system_config()
             MOTION_PLANNER = MotionPlanner(MOTOR_CONFIGS)
             MOTOR_CONTROLLER = MotorController(MOTOR_CONFIGS)
