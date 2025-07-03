@@ -213,7 +213,8 @@ class MotorController:
         self.pi = self._get_pigpio_instance()
         self.motor_configs = motor_configs
         self.switch_states = {}
-        self._callbacks = []
+        # --- MODIFICA 1: Usiamo un dizionario per i callback ---
+        self._callbacks = {} 
         self._pin_to_switch_map = {}
         self.last_move_interrupted = False
         self._initialize_gpio_pins()
@@ -250,13 +251,17 @@ class MotorController:
                 self.pi.set_pull_up_down(pin, pigpio.PUD_DOWN)
                 self.switch_states[switch_id] = self.pi.read(pin) == 1
                 self._pin_to_switch_map[pin] = switch_id
+                
+                # --- MODIFICA 2: Salviamo il callback nel dizionario usando il pin come chiave ---
                 cb = self.pi.callback(pin, pigpio.RISING_EDGE, self._switch_callback)
-                self._callbacks.append(cb)
+                self._callbacks[pin] = cb
+                
         logging.info(f"Finecorsa inizializzati in modalità PULL-DOWN. Stato attuale: {self.switch_states}")
 
     def _switch_callback(self, gpio, level, tick):
         switch_id = self._pin_to_switch_map.get(gpio)
-        if switch_id and not self.switch_states.get(switch_id, False):
+        # Questo controllo è ora più importante per evitare race condition durante l'homing
+        if switch_id and self._callbacks.get(gpio): 
             self.switch_states[switch_id] = True
             self.last_move_interrupted = True
             logging.warning(f"!!! FINE CORSA ATTIVATO: {switch_id.upper()} (GPIO: {gpio}) !!! ARRESTO IMMEDIATO.")
@@ -283,47 +288,30 @@ class MotorController:
         time.sleep(0.01)
 
         try:
-            # --- ARCHITETTURA FINALE: ESECUZIONE "A TAPPE" ---
-            
-            # Soglia di sicurezza per la dimensione di un blocco di impulsi (previene ConnectionResetError)
             PULSE_BLOCK_THRESHOLD = 3800
-            # Soglia di sicurezza per il numero di onde in una catena (previene No more CBs)
             CHAIN_SEGMENT_MAX_WAVES = 15
-
             pulse_accumulator = []
             chain_segment = []
-            
-            # Trasforma il generatore in una lista per poterlo processare
             all_pulses = list(pulse_generator)
             
             if not all_pulses:
-                logging.info("Nessun pulse da eseguire per questo segmento.")
                 return
 
-            # Suddividiamo la lista di impulsi in blocchi sicuri per `wave_add_generic`
             for i in range(0, len(all_pulses), PULSE_BLOCK_THRESHOLD):
                 pulse_block = all_pulses[i:i + PULSE_BLOCK_THRESHOLD]
-                
                 self.pi.wave_add_generic(pulse_block)
                 wave_id = self.pi.wave_create()
-                
                 if wave_id >= 0:
                     chain_segment.append(wave_id)
                 else:
                     raise pigpio.error(f'Creazione onda fallita con codice {wave_id}')
-
-                # Se abbiamo raggiunto il limite di onde per segmento, le inviamo
                 if len(chain_segment) >= CHAIN_SEGMENT_MAX_WAVES:
-                    logging.info(f"Invio segmento di catena con {len(chain_segment)} onde...")
                     self.pi.wave_chain(chain_segment)
-                    chain_segment = [] # Resettiamo per il prossimo segmento
+                    chain_segment = []
             
-            # Invia l'ultimo segmento rimasto
             if chain_segment:
-                logging.info(f"Invio ultimo segmento di catena con {len(chain_segment)} onde...")
                 self.pi.wave_chain(chain_segment)
 
-            # Attendi che l'intera coda di trasmissione di pigpio sia vuota
             while self.pi.wave_tx_busy():
                 if self.last_move_interrupted:
                     self.pi.wave_tx_stop()
@@ -337,30 +325,31 @@ class MotorController:
             if self.pi and self.pi.connected:
                 if self.pi.wave_tx_busy():
                     self.pi.wave_tx_stop()
-                
-                # wave_clear è la pulizia più sicura e completa
                 self.pi.wave_clear()
-                
                 for config in self.motor_configs.values():
                     try:
                         self.pi.write(config.en_pin, 1)
                         self.pi.write(config.dir_pin, 0)
                     except Exception:
                         pass
-                # logging.info("Pulizia post-movimento completata.") # Rimosso per ridurre il rumore
 
     def execute_homing_sequence(self, motor_name: str):
         if motor_name not in SWITCHES:
             logging.error(f"Impossibile eseguire homing: '{motor_name}' non ha finecorsa.")
             return
         logging.info(f"Avvio sequenza di Homing per '{motor_name}'...")
+        
         switch_pin = SWITCHES[motor_name]['Start']
         switch_id = f"{motor_name}_start"
         config = self.motor_configs[motor_name]
-        for cb in self._callbacks:
-            if getattr(cb, "gpio", None) == switch_pin:
-                cb.cancel()
-                break
+
+        # --- MODIFICA 3: Logica di cancellazione e ripristino del callback ---
+        # Rimuove e cancella il callback esistente in modo sicuro
+        existing_cb = self._callbacks.pop(switch_pin, None)
+        if existing_cb:
+            existing_cb.cancel()
+            logging.info(f"Callback standard per GPIO {switch_pin} temporaneamente rimosso per homing.")
+
         homing_hit = threading.Event()
         def homing_callback(gpio, level, tick):
             if level == 1:
@@ -369,25 +358,34 @@ class MotorController:
                 self.switch_states[f"{motor_name}_end"] = False
                 homing_hit.set()
                 logging.info(f"Homing: finecorsa {switch_id.upper()} raggiunto.")
+
         cb_homing = self.pi.callback(switch_pin, pigpio.RISING_EDGE, homing_callback)
+        
         self.pi.write(config.en_pin, 0)
         self.pi.write(config.dir_pin, 0)
         self.pi.wave_clear()
-        period_us = int(1_000_000 / 1000)
+        
+        period_us = int(1_000_000 / 1000) # Frequenza di homing: 1000 Hz
         pulse = [pigpio.pulse(1 << config.step_pin, 0, period_us // 2), pigpio.pulse(0, 1 << config.step_pin, period_us // 2)]
         self.pi.wave_add_generic(pulse)
         wave_id = self.pi.wave_create()
         self.pi.wave_send_repeat(wave_id)
+        
         hit = homing_hit.wait(timeout=30)
+        
         self.pi.wave_tx_stop()
         self.pi.wave_delete(wave_id)
-        cb_homing.cancel()
-        self._callbacks = [cb for cb in self._callbacks if cb.gpio() != switch_pin]
-        new_cb = self.pi.callback(switch_pin, pigpio.RISING_EDGE, self._switch_callback)
-        self._callbacks.append(new_cb)
+        cb_homing.cancel() # Cancella il callback specifico per l'homing
+        
+        # Ripristina il callback standard per il monitoraggio continuo
+        self._callbacks[switch_pin] = self.pi.callback(switch_pin, pigpio.RISING_EDGE, self._switch_callback)
+        
         self.pi.write(config.en_pin, 1)
-        if not hit: logging.error(f"Homing fallito per '{motor_name}': timeout.")
-        else: logging.info(f"Homing per '{motor_name}' completato.")
+        
+        if not hit:
+            logging.error(f"Homing fallito per '{motor_name}': timeout.")
+        else:
+            logging.info(f"Homing per '{motor_name}' completato. Callback standard ripristinato.")
 
 def load_system_config() -> dict[str, MotorConfig]:
     configs = {}
