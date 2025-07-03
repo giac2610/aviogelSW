@@ -78,21 +78,17 @@ class MotionPlanner:
         logging.info(f"MotionPlanner inizializzato con motori: {list(motor_configs.keys())}")
 
     def _generate_trapezoidal_profile(self, total_steps: int, max_freq_hz: float, accel_mmss: float, steps_per_mm: float) -> list[float]:
-        # Questa funzione è corretta e non necessita modifiche
         if total_steps == 0:
             return []
-
         v_max = max_freq_hz / steps_per_mm
-        if accel_mmss <= 0:
-            accel_mmss = 1.0 # Fallback per accelerazione non valida
+        if accel_mmss <= 0: accel_mmss = 1.0
         t_accel = v_max / accel_mmss
         s_accel = 0.5 * accel_mmss * t_accel**2
         steps_accel = int(s_accel * steps_per_mm)
         steps_accel = min(steps_accel, total_steps // 2)
 
-        if steps_accel == 0 and total_steps > 0:
-             steps_accel = 1
-        if steps_accel * 2 > total_steps: # Movimento triangolare
+        if steps_accel == 0 and total_steps > 0: steps_accel = 1
+        if steps_accel * 2 > total_steps:
             steps_accel = total_steps // 2
             v_peak = math.sqrt(2 * accel_mmss * (steps_accel / steps_per_mm))
             v_max = v_peak
@@ -104,7 +100,6 @@ class MotionPlanner:
             accel_mask = i <= steps_accel
             v_i_accel = np.sqrt(2 * accel_mmss * (i[accel_mask] / steps_per_mm))
             freq[accel_mask] = v_i_accel * steps_per_mm
-
             decel_start_step = total_steps - steps_accel
             decel_mask = i > decel_start_step
             steps_from_end = total_steps - i[decel_mask] + 1
@@ -116,64 +111,46 @@ class MotionPlanner:
         return np.cumsum(periods_us).tolist()
 
     def plan_move_streamed(self, targets: dict[str, float], switch_states: dict, pi=None):
-        # La maggior parte di questa funzione è corretta
-        if not targets:
-            return [], set(), {}
+        if not targets: return [], set(), {}
 
-        if pi is not None:
+        if pi:
             for motor, pins in SWITCHES.items():
                 for name, pin in pins.items():
                     switch_id = f"{motor}_{name.lower()}"
-                    # PULL-DOWN: 0=non premuto, 1=premuto
                     is_pressed = pi.read(pin) == 1
                     switch_states[switch_id] = is_pressed
 
         move_data = {}
         for motor_id, distance in targets.items():
-            if distance == 0 or motor_id not in self.motor_configs:
-                continue
-            
+            if distance == 0 or motor_id not in self.motor_configs: continue
             direction = 1 if distance >= 0 else 0
-            
-            if direction == 0 and switch_states.get(f"{motor_id}_start"):
-                logging.warning(f"Movimento per '{motor_id}' bloccato: finecorsa START attivo.")
+            if (direction == 0 and switch_states.get(f"{motor_id}_start")) or \
+               (direction == 1 and switch_states.get(f"{motor_id}_end")):
+                logging.warning(f"Movimento per '{motor_id}' bloccato da finecorsa attivo.")
                 continue
-            if direction == 1 and switch_states.get(f"{motor_id}_end"):
-                logging.warning(f"Movimento per '{motor_id}' bloccato: finecorsa END attivo.")
-                continue
-
             config = self.motor_configs[motor_id]
-            move_data[motor_id] = {
-                "steps": int(abs(distance) * config.steps_per_mm), "dir": direction, "config": config
-            }
+            move_data[motor_id] = {"steps": int(abs(distance) * config.steps_per_mm), "dir": direction, "config": config}
 
-        if not move_data:
-            return [], set(), {}
+        if not move_data: return [], set(), {}
 
         master_id = max(move_data, key=lambda k: move_data[k]["steps"])
         master_data = move_data[master_id]
         master_steps = master_data["steps"]
-
-        if master_steps == 0:
-            return [], set(), {}
+        if master_steps == 0: return [], set(), {}
 
         master_profile_ts = self._generate_trapezoidal_profile(
             master_steps, master_data["config"].max_freq_hz, master_data["config"].acceleration_mmss, master_data["config"].steps_per_mm
         )
-
         active_motors = {m["config"].name for m in move_data.values()}
         directions_to_set = {mid: move['dir'] for mid, move in move_data.items()}
-
         steps_per_macro = 4096
         total_macro = (master_steps + steps_per_macro - 1) // steps_per_macro
-        
         logging.info(f"Pianificato movimento per '{master_id}' ({master_steps} passi) in {total_macro} macro.")
 
         def make_pulse_generator_macro(start_step, end_step):
             def pulse_generator():
                 bresenham_errors = {mid: -master_steps / 2 for mid in move_data if mid != master_id}
                 last_time_us = master_profile_ts[start_step - 1] if start_step > 0 else 0.0
-                
                 for i in range(start_step, end_step):
                     on_mask = 1 << master_data["config"].step_pin
                     for slave_id in bresenham_errors:
@@ -181,17 +158,11 @@ class MotionPlanner:
                         if bresenham_errors[slave_id] > 0:
                             on_mask |= 1 << move_data[slave_id]["config"].step_pin
                             bresenham_errors[slave_id] -= master_steps
-                    
                     current_time_us = master_profile_ts[i]
                     total_period_us = current_time_us - last_time_us
-                    pulse_width_us = int(total_period_us / 2)
-                    
-                    if pulse_width_us >= 1:
-                        yield pigpio.pulse(on_mask, 0, pulse_width_us)
-                        yield pigpio.pulse(0, on_mask, int(total_period_us - pulse_width_us))
-                    else:
-                         yield pigpio.pulse(on_mask, 0, 1)
-                         yield pigpio.pulse(0, on_mask, 1)
+                    pulse_width_us = max(1, int(total_period_us / 2))
+                    yield pigpio.pulse(on_mask, 0, pulse_width_us)
+                    yield pigpio.pulse(0, on_mask, max(1, int(total_period_us - pulse_width_us)))
                     last_time_us = current_time_us
             return pulse_generator
 
@@ -201,9 +172,10 @@ class MotionPlanner:
             end_step = min((macro_idx + 1) * steps_per_macro, master_steps)
             macro_generators.append(make_pulse_generator_macro(start_step, end_step))
 
-        # --- MODIFICA CHIAVE QUI ---
-        # Rimuoviamo il caso speciale e restituiamo sempre una lista di funzioni.
+        # --- FIX FONDAMENTALE ---
+        # Restituisce SEMPRE la lista di funzioni, mai il generatore direttamente.
         return macro_generators, active_motors, directions_to_set
+    
 class MotorController:
     def __init__(self, motor_configs: dict[str, MotorConfig]):
         self.pi = self._get_pigpio_instance()
@@ -397,17 +369,27 @@ motor_command_queue = queue.Queue()
 SYSTEM_CONFIG_LOCK = threading.Lock()
             
 def motor_worker():
-    logging.info("Motor worker avviato con architettura a streaming (Versione Definitiva).")
+    logging.info("Motor worker avviato con architettura a streaming (Versione Stabile).")
     while True:
         task = motor_command_queue.get()
         try:
             command = task.get("command", "move")
             
             if command == "move":
+                # --- FIX FONDAMENTALE: GARBAGE COLLECTION PREVENTIVA ---
+                # Pulisci SEMPRE le onde precedenti prima di iniziare un nuovo movimento.
+                # Questo previene resource leak da task falliti e garantisce uno stato pulito.
+                try:
+                    if MOTOR_CONTROLLER.pi and MOTOR_CONTROLLER.pi.connected:
+                        MOTOR_CONTROLLER.pi.wave_clear()
+                except Exception as e:
+                    logging.error(f"Errore durante la pulizia preventiva delle onde: {e}")
+
                 targets = task.get("targets", {})
                 
                 with SYSTEM_CONFIG_LOCK:
                     current_switch_states = MOTOR_CONTROLLER.switch_states.copy()
+                    # Ora riceverà sempre una lista di funzioni, grazie al fix precedente
                     pulse_generators, active_motors, directions = MOTION_PLANNER.plan_move_streamed(
                         targets, current_switch_states, pi=MOTOR_CONTROLLER.pi
                     )
@@ -417,9 +399,7 @@ def motor_worker():
                     continue
 
                 full_wave_chain_ids = []
-                if not isinstance(pulse_generators, list):
-                    pulse_generators = [pulse_generators]
-
+                # Questo loop ora funziona correttamente perché pulse_generators è sempre una lista di funzioni
                 for gen_func in pulse_generators:
                     wave_ids_for_macro = MOTOR_CONTROLLER._prepare_waves_from_generator(gen_func())
                     full_wave_chain_ids.extend(wave_ids_for_macro)
@@ -438,11 +418,9 @@ def motor_worker():
                     time.sleep(0.01)
 
                     CHAIN_SEGMENT_MAX_WAVES = 15
-                    sent_waves = 0
                     for i in range(0, len(full_wave_chain_ids), CHAIN_SEGMENT_MAX_WAVES):
                         segment = full_wave_chain_ids[i:i + CHAIN_SEGMENT_MAX_WAVES]
                         MOTOR_CONTROLLER.pi.wave_chain(segment)
-                        sent_waves += len(segment)
                         
                         while MOTOR_CONTROLLER.pi.wave_get_cbs() > 10000:
                             if MOTOR_CONTROLLER.last_move_interrupted: break
@@ -462,12 +440,11 @@ def motor_worker():
                     if MOTOR_CONTROLLER.pi and MOTOR_CONTROLLER.pi.connected:
                         if MOTOR_CONTROLLER.pi.wave_tx_busy():
                             MOTOR_CONTROLLER.pi.wave_tx_stop()
-                        MOTOR_CONTROLLER.pi.wave_clear()
+                        MOTOR_CONTROLLER.pi.wave_clear() # Pulisce le onde dell'ultimo movimento
                         for config in MOTOR_CONTROLLER.motor_configs.values():
                             try:
                                 MOTOR_CONTROLLER.pi.write(config.en_pin, 1)
-                            except Exception:
-                                pass
+                            except Exception: pass
             
             elif command == "home":
                 motor_to_home = task.get("motor")
@@ -481,7 +458,7 @@ def motor_worker():
         finally:
             motor_command_queue.task_done()
             time.sleep(0.1)
-
+            
 def handle_exception(e):
     import traceback
     error_details = traceback.format_exc()
