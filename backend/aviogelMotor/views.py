@@ -78,6 +78,7 @@ class MotionPlanner:
         logging.info(f"MotionPlanner inizializzato con motori: {list(motor_configs.keys())}")
 
     def _generate_trapezoidal_profile(self, total_steps: int, max_freq_hz: float, accel_mmss: float, steps_per_mm: float) -> list[float]:
+        # Questa funzione è corretta
         if total_steps == 0:
             return []
         v_max = max_freq_hz / steps_per_mm
@@ -108,18 +109,18 @@ class MotionPlanner:
         
         np.maximum(freq, 1.0, out=freq)
         periods_us = 1_000_000.0 / freq
-        return np.cumsum(periods_us).tolist()
+        # Restituisce i periodi individuali, non la somma cumulativa
+        return periods_us.tolist()
 
     def plan_move_streamed(self, targets: dict[str, float], switch_states: dict, pi=None):
+        # La logica esterna è corretta
         if not targets: return [], set(), {}
-
         if pi:
             for motor, pins in SWITCHES.items():
                 for name, pin in pins.items():
                     switch_id = f"{motor}_{name.lower()}"
                     is_pressed = pi.read(pin) == 1
                     switch_states[switch_id] = is_pressed
-
         move_data = {}
         for motor_id, distance in targets.items():
             if distance == 0 or motor_id not in self.motor_configs: continue
@@ -130,15 +131,14 @@ class MotionPlanner:
                 continue
             config = self.motor_configs[motor_id]
             move_data[motor_id] = {"steps": int(abs(distance) * config.steps_per_mm), "dir": direction, "config": config}
-
         if not move_data: return [], set(), {}
-
         master_id = max(move_data, key=lambda k: move_data[k]["steps"])
         master_data = move_data[master_id]
         master_steps = master_data["steps"]
         if master_steps == 0: return [], set(), {}
 
-        master_profile_ts = self._generate_trapezoidal_profile(
+        # ORA CONTIENE I PERIODI INDIVIDUALI
+        periods_list = self._generate_trapezoidal_profile(
             master_steps, master_data["config"].max_freq_hz, master_data["config"].acceleration_mmss, master_data["config"].steps_per_mm
         )
         active_motors = {m["config"].name for m in move_data.values()}
@@ -150,7 +150,6 @@ class MotionPlanner:
         def make_pulse_generator_macro(start_step, end_step):
             def pulse_generator():
                 bresenham_errors = {mid: -master_steps / 2 for mid in move_data if mid != master_id}
-                last_time_us = master_profile_ts[start_step - 1] if start_step > 0 else 0.0
                 for i in range(start_step, end_step):
                     on_mask = 1 << master_data["config"].step_pin
                     for slave_id in bresenham_errors:
@@ -158,12 +157,14 @@ class MotionPlanner:
                         if bresenham_errors[slave_id] > 0:
                             on_mask |= 1 << move_data[slave_id]["config"].step_pin
                             bresenham_errors[slave_id] -= master_steps
-                    current_time_us = master_profile_ts[i]
-                    total_period_us = current_time_us - last_time_us
+                    
+                    # --- FIX FONDAMENTALE DELLA LOGICA ---
+                    # Ora usiamo direttamente il periodo calcolato per quello specifico step.
+                    total_period_us = periods_list[i]
                     pulse_width_us = max(1, int(total_period_us / 2))
+                    
                     yield pigpio.pulse(on_mask, 0, pulse_width_us)
                     yield pigpio.pulse(0, on_mask, max(1, int(total_period_us - pulse_width_us)))
-                    last_time_us = current_time_us
             return pulse_generator
 
         macro_generators = []
@@ -172,7 +173,6 @@ class MotionPlanner:
             end_step = min((macro_idx + 1) * steps_per_macro, master_steps)
             macro_generators.append(make_pulse_generator_macro(start_step, end_step))
 
-        # FIX: Restituisce SEMPRE la lista di funzioni, mai il generatore direttamente.
         return macro_generators, active_motors, directions_to_set
     
 class MotorController:
