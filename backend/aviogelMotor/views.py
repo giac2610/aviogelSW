@@ -358,7 +358,7 @@ class MotorController:
         switch_id = f"{motor_name}_start"
         config = self.motor_configs[motor_name]
         for cb in self._callbacks:
-            if cb.user_gpio == switch_pin:
+            if getattr(cb, "gpio", None) == switch_pin:
                 cb.cancel()
                 break
         homing_hit = threading.Event()
