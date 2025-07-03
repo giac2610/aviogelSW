@@ -338,12 +338,12 @@ class MotorController:
             logging.error(f"Impossibile eseguire homing: '{motor_name}' non ha finecorsa.")
             return
         logging.info(f"Avvio sequenza di Homing per '{motor_name}'...")
-    
+
         switch_pin = SWITCHES[motor_name]['Start']
         switch_id = f"{motor_name}_start"
         end_switch_id = f"{motor_name}_end"
         config = self.motor_configs[motor_name]
-    
+
         # 1. Se già sul finecorsa di start, esci dal sensore di 5mm (se possibile)
         if self.switch_states.get(switch_id, False):
             logging.info(f"Motore '{motor_name}' già sul finecorsa START, provo a uscire di 5mm...")
@@ -365,14 +365,14 @@ class MotorController:
                 time.sleep(0.05)
             else:
                 logging.warning(f"Motore '{motor_name}' già sul finecorsa END: impossibile uscire di 5mm prima dell'homing.")
-    
+
         # 2. Procedura standard di homing (verso start)
         # Rimuove e cancella il callback esistente in modo sicuro
         existing_cb = self._callbacks.pop(switch_pin, None)
         if existing_cb:
             existing_cb.cancel()
             logging.info(f"Callback standard per GPIO {switch_pin} temporaneamente rimosso per homing.")
-    
+
         homing_hit = threading.Event()
         def homing_callback(gpio, level, tick):
             if level == 1:
@@ -381,30 +381,30 @@ class MotorController:
                 self.switch_states[end_switch_id] = False
                 homing_hit.set()
                 logging.info(f"Homing: finecorsa {switch_id.upper()} raggiunto.")
-    
+
         cb_homing = self.pi.callback(switch_pin, pigpio.RISING_EDGE, homing_callback)
-        
+
         self.pi.write(config.en_pin, 0)
         self.pi.write(config.dir_pin, 0)  # Direzione verso home
         self.pi.wave_clear()
-        
+
         period_us = int(1_000_000 / 1000) # Frequenza di homing: 1000 Hz
         pulse = [pigpio.pulse(1 << config.step_pin, 0, period_us // 2), pigpio.pulse(0, 1 << config.step_pin, period_us // 2)]
         self.pi.wave_add_generic(pulse)
         wave_id = self.pi.wave_create()
         self.pi.wave_send_repeat(wave_id)
-        
+
         hit = homing_hit.wait(timeout=30)
-        
+
         self.pi.wave_tx_stop()
         self.pi.wave_delete(wave_id)
         cb_homing.cancel()
-        
+
         # Ripristina il callback standard per il monitoraggio continuo
         self._callbacks[switch_pin] = self.pi.callback(switch_pin, pigpio.RISING_EDGE, self._switch_callback)
-        
+
         self.pi.write(config.en_pin, 1)
-        
+
         if not hit:
             logging.error(f"Homing fallito per '{motor_name}': timeout.")
         else:
@@ -448,38 +448,100 @@ MOTOR_CONTROLLER = MotorController(MOTOR_CONFIGS)
 motor_command_queue = queue.Queue()
 SYSTEM_CONFIG_LOCK = threading.Lock()
             
+# Sostituisci di nuovo il motor_worker con questa versione finale.
+# La funzione _prepare_waves_from_generator in MotorController rimane invariata.
+
 def motor_worker():
-    logging.info("Motor worker avviato con architettura a streaming e gestione finecorsa.")
+    logging.info("Motor worker avviato con architettura a streaming (Versione Definitiva).")
     while True:
         task = motor_command_queue.get()
         try:
             command = task.get("command", "move")
+            
             if command == "move":
                 targets = task.get("targets", {})
+                
+                # --- FASE 1: Pianificazione completa (invariata) ---
                 with SYSTEM_CONFIG_LOCK:
                     current_switch_states = MOTOR_CONTROLLER.switch_states.copy()
                     pulse_generators, active_motors, directions = MOTION_PLANNER.plan_move_streamed(
                         targets, current_switch_states, pi=MOTOR_CONTROLLER.pi
                     )
-                
-                if isinstance(pulse_generators, list):
-                    for i, gen in enumerate(pulse_generators):
-                        logging.info(f"Esecuzione macro-movimento {i+1}/{len(pulse_generators)}")
-                        MOTOR_CONTROLLER.execute_streamed_move(gen(), active_motors, directions)
-                        if MOTOR_CONTROLLER.last_move_interrupted:
-                            logging.warning("Movimento interrotto da finecorsa, la rotta non proseguirà.")
-                            break 
-                else:
-                    MOTOR_CONTROLLER.execute_streamed_move(pulse_generators, active_motors, directions)
 
+                if not active_motors:
+                    motor_command_queue.task_done()
+                    continue
+
+                # --- FASE 2: Preparazione di TUTTE le onde in anticipo (invariata) ---
+                full_wave_chain_ids = []
+                if not isinstance(pulse_generators, list):
+                    pulse_generators = [pulse_generators]
+
+                for gen_func in pulse_generators:
+                    wave_ids_for_macro = MOTOR_CONTROLLER._prepare_waves_from_generator(gen_func())
+                    full_wave_chain_ids.extend(wave_ids_for_macro)
+                
+                if not full_wave_chain_ids:
+                    logging.warning("Nessuna onda generata per il movimento.")
+                    motor_command_queue.task_done()
+                    continue
+
+                # --- FASE 3: Esecuzione a Segmenti Continui (LA MODIFICA CHIAVE) ---
+                MOTOR_CONTROLLER.last_move_interrupted = False
+                try:
+                    # Setup iniziale motori
+                    for motor_id, direction in directions.items():
+                        MOTOR_CONTROLLER.pi.write(MOTOR_CONTROLLER.motor_configs[motor_id].dir_pin, direction)
+                    for motor_name in active_motors:
+                        MOTOR_CONTROLLER.pi.write(MOTOR_CONTROLLER.motor_configs[motor_name].en_pin, 0)
+                    time.sleep(0.01)
+
+                    # Invia la catena a pezzi gestibili senza mai fermarsi
+                    # pigpio accoda la nuova catena alla fine di quella in esecuzione
+                    CHAIN_SEGMENT_MAX_WAVES = 15 # Soglia di sicurezza
+                    sent_waves = 0
+                    for i in range(0, len(full_wave_chain_ids), CHAIN_SEGMENT_MAX_WAVES):
+                        segment = full_wave_chain_ids[i:i + CHAIN_SEGMENT_MAX_WAVES]
+                        MOTOR_CONTROLLER.pi.wave_chain(segment)
+                        sent_waves += len(segment)
+                        logging.info(f"Inviato segmento con {len(segment)} onde. Totale inviate: {sent_waves}/{len(full_wave_chain_ids)}")
+                        
+                        # Attendi solo se la coda di trasmissione di pigpio si sta riempiendo troppo
+                        # Questo previene di inviare dati troppo velocemente
+                        while MOTOR_CONTROLLER.pi.wave_get_cbs() > 10000: # Attendi se più di 10k CB sono in coda
+                             if MOTOR_CONTROLLER.last_move_interrupted: break
+                             time.sleep(0.02)
+                        if MOTOR_CONTROLLER.last_move_interrupted: break
+
+                    # Attendi che l'INTERA sequenza di segmenti sia stata completata
+                    while MOTOR_CONTROLLER.pi.wave_tx_busy():
+                        if MOTOR_CONTROLLER.last_move_interrupted:
+                            MOTOR_CONTROLLER.pi.wave_tx_stop()
+                            break
+                        time.sleep(0.05)
+                    
+                    if MOTOR_CONTROLLER.last_move_interrupted:
+                        logging.warning("MOVIMENTO INTERROTTO da un finecorsa.")
+
+                finally:
+                    # Pulizia finale
+                    if MOTOR_CONTROLLER.pi and MOTOR_CONTROLLER.pi.connected:
+                        if MOTOR_CONTROLLER.pi.wave_tx_busy():
+                            MOTOR_CONTROLLER.pi.wave_tx_stop()
+                        MOTOR_CONTROLLER.pi.wave_clear() # Cancella TUTTE le onde e libera i CB
+                        for config in MOTOR_CONTROLLER.motor_configs.values():
+                            try:
+                                MOTOR_CONTROLLER.pi.write(config.en_pin, 1)
+                            except Exception:
+                                pass
+            
             elif command == "home":
                 motor_to_home = task.get("motor")
-                logging.info(f"Worker: ricevuto comando HOME per '{motor_to_home}'")
                 if motor_to_home:
                     MOTOR_CONTROLLER.execute_homing_sequence(motor_to_home)
             
             if not MOTOR_CONTROLLER.last_move_interrupted:
-                logging.info(f"Worker: task {task.get('command')} completato con successo.")
+                logging.info(f"Worker: task {task.get('command')} completato.")
         except Exception as e:
             logging.error(f"Errore critico nel motor_worker su task {task}: {e}", exc_info=True)
         finally:
