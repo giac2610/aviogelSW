@@ -78,6 +78,7 @@ class MotionPlanner:
         logging.info(f"MotionPlanner inizializzato con motori: {list(motor_configs.keys())}")
 
     def _generate_trapezoidal_profile(self, total_steps: int, max_freq_hz: float, accel_mmss: float, steps_per_mm: float) -> list[float]:
+        # Questa funzione è corretta e non necessita modifiche
         if total_steps == 0:
             return []
 
@@ -100,33 +101,32 @@ class MotionPlanner:
         freq = np.full(total_steps, v_max * steps_per_mm, dtype=np.float64)
 
         if steps_accel > 0:
-            # Fase di accelerazione
             accel_mask = i <= steps_accel
             v_i_accel = np.sqrt(2 * accel_mmss * (i[accel_mask] / steps_per_mm))
             freq[accel_mask] = v_i_accel * steps_per_mm
 
-            # Fase di decelerazione
             decel_start_step = total_steps - steps_accel
             decel_mask = i > decel_start_step
             steps_from_end = total_steps - i[decel_mask] + 1
             v_i_decel = np.sqrt(2 * accel_mmss * (steps_from_end / steps_per_mm))
             freq[decel_mask] = v_i_decel * steps_per_mm
         
-        np.maximum(freq, 1.0, out=freq) # Frequenza minima di 1 Hz
+        np.maximum(freq, 1.0, out=freq)
         periods_us = 1_000_000.0 / freq
         return np.cumsum(periods_us).tolist()
 
     def plan_move_streamed(self, targets: dict[str, float], switch_states: dict, pi=None):
+        # La maggior parte di questa funzione è corretta
         if not targets:
-            return (None for _ in range(0)), set(), {}
+            return [], set(), {}
 
         if pi is not None:
             for motor, pins in SWITCHES.items():
                 for name, pin in pins.items():
                     switch_id = f"{motor}_{name.lower()}"
-                    current_state = pi.read(pin) == 0 # PULL-DOWN, quindi 0 = non premuto, 1 = premuto
-                    switch_states[switch_id] = not current_state
-
+                    # PULL-DOWN: 0=non premuto, 1=premuto
+                    is_pressed = pi.read(pin) == 1
+                    switch_states[switch_id] = is_pressed
 
         move_data = {}
         for motor_id, distance in targets.items():
@@ -136,10 +136,10 @@ class MotionPlanner:
             direction = 1 if distance >= 0 else 0
             
             if direction == 0 and switch_states.get(f"{motor_id}_start"):
-                logging.warning(f"Movimento per '{motor_id}' bloccato: si sta tentando di superare il finecorsa START attivo.")
+                logging.warning(f"Movimento per '{motor_id}' bloccato: finecorsa START attivo.")
                 continue
             if direction == 1 and switch_states.get(f"{motor_id}_end"):
-                logging.warning(f"Movimento per '{motor_id}' bloccato: si sta tentando di superare il finecorsa END attivo.")
+                logging.warning(f"Movimento per '{motor_id}' bloccato: finecorsa END attivo.")
                 continue
 
             config = self.motor_configs[motor_id]
@@ -148,22 +148,17 @@ class MotionPlanner:
             }
 
         if not move_data:
-            return (None for _ in range(0)), set(), {}
+            return [], set(), {}
 
         master_id = max(move_data, key=lambda k: move_data[k]["steps"])
         master_data = move_data[master_id]
         master_steps = master_data["steps"]
 
         if master_steps == 0:
-            return (None for _ in range(0)), set(), {}
+            return [], set(), {}
 
-        accel_for_this_move = master_data["config"].acceleration_mmss
-        
         master_profile_ts = self._generate_trapezoidal_profile(
-            master_steps,
-            master_data["config"].max_freq_hz,
-            accel_for_this_move,
-            master_data["config"].steps_per_mm
+            master_steps, master_data["config"].max_freq_hz, master_data["config"].acceleration_mmss, master_data["config"].steps_per_mm
         )
 
         active_motors = {m["config"].name for m in move_data.values()}
@@ -172,7 +167,7 @@ class MotionPlanner:
         steps_per_macro = 4096
         total_macro = (master_steps + steps_per_macro - 1) // steps_per_macro
         
-        logging.info(f"Pianificato movimento per '{master_id}' ({master_steps} passi) in {total_macro} macro da max {steps_per_macro} passi.")
+        logging.info(f"Pianificato movimento per '{master_id}' ({master_steps} passi) in {total_macro} macro.")
 
         def make_pulse_generator_macro(start_step, end_step):
             def pulse_generator():
@@ -197,8 +192,6 @@ class MotionPlanner:
                     else:
                          yield pigpio.pulse(on_mask, 0, 1)
                          yield pigpio.pulse(0, on_mask, 1)
-
-
                     last_time_us = current_time_us
             return pulse_generator
 
@@ -208,11 +201,9 @@ class MotionPlanner:
             end_step = min((macro_idx + 1) * steps_per_macro, master_steps)
             macro_generators.append(make_pulse_generator_macro(start_step, end_step))
 
-        if len(macro_generators) == 1:
-            return macro_generators[0](), active_motors, directions_to_set
-        else:
-            return macro_generators, active_motors, directions_to_set
-
+        # --- MODIFICA CHIAVE QUI ---
+        # Rimuoviamo il caso speciale e restituiamo sempre una lista di funzioni.
+        return macro_generators, active_motors, directions_to_set
 class MotorController:
     def __init__(self, motor_configs: dict[str, MotorConfig]):
         self.pi = self._get_pigpio_instance()
