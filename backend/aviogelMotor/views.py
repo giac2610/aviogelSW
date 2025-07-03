@@ -77,7 +77,6 @@ class MotionPlanner:
         logging.info(f"MotionPlanner inizializzato con motori: {list(motor_configs.keys())}")
 
     def _generate_trapezoidal_profile(self, total_steps: int, max_freq_hz: float, accel_mmss: float, steps_per_mm: float) -> list[float]:
-        # Questa funzione è corretta, non la modifichiamo
         if total_steps == 0: return []
         v_max = max_freq_hz / steps_per_mm
         if accel_mmss <= 0: accel_mmss = 1.0
@@ -106,61 +105,53 @@ class MotionPlanner:
         return periods_us.tolist()
 
     def plan_move_streamed(self, targets: dict[str, float], switch_states: dict, pi=None):
-        if not targets: return [], set(), {}
-
-        # --- FIX FONDAMENTALE: RIMOSSO BLOCCO DI LETTURA HARDWARE ---
-        # Il planner ora si fida ciecamente dello stato passato dal MotorController,
-        # eliminando i falsi positivi dovuti a rumore elettrico.
-        # if pi:
-        #    ... (codice rimosso)
-
+        if not targets: return None, set(), {}
+        if pi:
+            for motor, pins in SWITCHES.items():
+                for name, pin in pins.items():
+                    switch_id = f"{motor}_{name.lower()}"
+                    is_pressed = pi.read(pin) == 1
+                    switch_states[switch_id] = is_pressed
         move_data = {}
         for motor_id, distance in targets.items():
             if distance == 0 or motor_id not in self.motor_configs: continue
             direction = 1 if distance >= 0 else 0
             if (direction == 0 and switch_states.get(f"{motor_id}_start")) or \
                (direction == 1 and switch_states.get(f"{motor_id}_end")):
-                logging.warning(f"Movimento per '{motor_id}' bloccato da finecorsa attivo (stato software).")
+                logging.warning(f"Movimento per '{motor_id}' bloccato da finecorsa attivo.")
                 continue
             config = self.motor_configs[motor_id]
             move_data[motor_id] = {"steps": int(abs(distance) * config.steps_per_mm), "dir": direction, "config": config}
 
-        if not move_data: return [], set(), {}
+        if not move_data: return None, set(), {}
         master_id = max(move_data, key=lambda k: move_data[k]["steps"])
         master_data = move_data[master_id]
         master_steps = master_data["steps"]
-        if master_steps == 0: return [], set(), {}
+        if master_steps == 0: return None, set(), {}
+        
         periods_list = self._generate_trapezoidal_profile(
             master_steps, master_data["config"].max_freq_hz, master_data["config"].acceleration_mmss, master_data["config"].steps_per_mm
         )
         active_motors = {m["config"].name for m in move_data.values()}
         directions_to_set = {mid: move['dir'] for mid, move in move_data.items()}
-        steps_per_macro = 4096
-        total_macro = (master_steps + steps_per_macro - 1) // steps_per_macro
-        logging.info(f"Pianificato movimento per '{master_id}' ({master_steps} passi) in {total_macro} macro.")
+        logging.info(f"Pianificato movimento per '{master_id}' ({master_steps} passi).")
 
-        def make_pulse_generator_macro(start_step, end_step):
-            def pulse_generator():
-                bresenham_errors = {mid: -master_steps / 2 for mid in move_data if mid != master_id}
-                for i in range(start_step, end_step):
-                    on_mask = 1 << master_data["config"].step_pin
-                    for slave_id in bresenham_errors:
-                        bresenham_errors[slave_id] += move_data[slave_id]["steps"]
-                        if bresenham_errors[slave_id] > 0:
-                            on_mask |= 1 << move_data[slave_id]["config"].step_pin
-                            bresenham_errors[slave_id] -= master_steps
-                    total_period_us = periods_list[i]
-                    pulse_width_us = max(1, int(total_period_us / 2))
-                    yield pigpio.pulse(on_mask, 0, pulse_width_us)
-                    yield pigpio.pulse(0, on_mask, max(1, int(total_period_us - pulse_width_us)))
-            return pulse_generator
+        # --- FIX: Crea un UNICO generatore per l'intero movimento ---
+        def single_pulse_generator():
+            bresenham_errors = {mid: -master_steps / 2 for mid in move_data if mid != master_id}
+            for i in range(master_steps):
+                on_mask = 1 << master_data["config"].step_pin
+                for slave_id in bresenham_errors:
+                    bresenham_errors[slave_id] += move_data[slave_id]["steps"]
+                    if bresenham_errors[slave_id] > 0:
+                        on_mask |= 1 << move_data[slave_id]["config"].step_pin
+                        bresenham_errors[slave_id] -= master_steps
+                total_period_us = periods_list[i]
+                pulse_width_us = max(1, int(total_period_us / 2))
+                yield pigpio.pulse(on_mask, 0, pulse_width_us)
+                yield pigpio.pulse(0, on_mask, max(1, int(total_period_us - pulse_width_us)))
 
-        macro_generators = []
-        for macro_idx in range(total_macro):
-            start_step = macro_idx * steps_per_macro
-            end_step = min((macro_idx + 1) * steps_per_macro, master_steps)
-            macro_generators.append(make_pulse_generator_macro(start_step, end_step))
-        return macro_generators, active_motors, directions_to_set
+        return single_pulse_generator(), active_motors, directions_to_set
     
 class MotorController:
     def __init__(self, motor_configs: dict[str, MotorConfig]):
@@ -366,7 +357,6 @@ def motor_worker():
             command = task.get("command", "move")
             
             if command == "move":
-                # Pulizia preventiva, fondamentale per la stabilità.
                 try:
                     if MOTOR_CONTROLLER.pi and MOTOR_CONTROLLER.pi.connected:
                         MOTOR_CONTROLLER.pi.wave_clear()
@@ -377,57 +367,48 @@ def motor_worker():
                 
                 with SYSTEM_CONFIG_LOCK:
                     current_switch_states = MOTOR_CONTROLLER.switch_states.copy()
-                    pulse_generators, active_motors, directions = MOTION_PLANNER.plan_move_streamed(
+                    pulse_generator, active_motors, directions = MOTION_PLANNER.plan_move_streamed(
                         targets, current_switch_states, pi=MOTOR_CONTROLLER.pi
                     )
 
-                if not active_motors:
+                if not active_motors or not pulse_generator:
                     continue
 
-                # Lista per tenere traccia di TUTTE le onde create in questo task,
-                # per una pulizia sicura in caso di errore nel blocco finally.
-                all_created_wave_ids_in_task = []
-                
-                # Lista per le onde della macro precedente, da cancellare con un'iterazione di ritardo.
-                waves_to_delete_from_previous_macro = []
-                
+                wave_to_delete = None
                 try:
-                    # Setup iniziale motori
                     for motor_id, direction in directions.items():
                         MOTOR_CONTROLLER.pi.write(MOTOR_CONTROLLER.motor_configs[motor_id].dir_pin, direction)
                     for motor_name in active_motors:
                         MOTOR_CONTROLLER.pi.write(MOTOR_CONTROLLER.motor_configs[motor_name].en_pin, 0)
                     time.sleep(0.01)
-
-                    # --- ARCHITETTURA DEFINITIVA: STREAMING CON CANCELLAZIONE RITARDATA ---
-                    for i, gen_func in enumerate(pulse_generators):
-                        logging.info(f"Preparo la macro {i+1}/{len(pulse_generators)}...")
-                        
-                        # 1. CREA le onde solo per la macro CORRENTE.
-                        wave_ids_for_this_macro = MOTOR_CONTROLLER._prepare_waves_from_generator(gen_func())
-                        if not wave_ids_for_this_macro: continue
-                        
-                        all_created_wave_ids_in_task.extend(wave_ids_for_this_macro)
-                        
-                        # 2. ACCoda le nuove onde. Saranno eseguite dopo quelle già in coda.
-                        logging.info(f"Accodo la macro {i+1}...")
-                        MOTOR_CONTROLLER.pi.wave_chain(wave_ids_for_this_macro)
-                        
-                        # 3. CANCELLA le onde della macro PRECEDENTE.
-                        # Ora che la nuova macro è stata inviata, quelle vecchie non servono più.
-                        if waves_to_delete_from_previous_macro:
-                            logging.info(f"Cancello le onde della macro #{i} per liberare memoria...")
-                            for wid in waves_to_delete_from_previous_macro:
-                                MOTOR_CONTROLLER.pi.wave_delete(wid)
-                        
-                        # 4. MEMORIZZA le onde attuali per cancellarle alla prossima iterazione.
-                        waves_to_delete_from_previous_macro = wave_ids_for_this_macro
-
-                        if MOTOR_CONTROLLER.last_move_interrupted:
-                            logging.warning("Interruzione rilevata, fermo l'accodamento di altre macro.")
-                            break
                     
-                    # Attendi che l'intera catena di trasmissione finisca.
+                    PULSE_CHUNK_SIZE = 3000 # Un "sorso" di 3000 impulsi (1500 passi)
+                    chunk_num = 1
+                    while not MOTOR_CONTROLLER.last_move_interrupted:
+                        # 1. Prendi un piccolo "sorso" di impulsi dal fiume
+                        pulse_chunk = [pulse for _, pulse in zip(range(PULSE_CHUNK_SIZE), pulse_generator)]
+                        if not pulse_chunk:
+                            break # Il fiume è finito, movimento completato
+
+                        logging.info(f"Preparo e accodo il blocco #{chunk_num}...")
+                        
+                        # 2. Crea una singola, piccola onda
+                        MOTOR_CONTROLLER.pi.wave_add_generic(pulse_chunk)
+                        new_wave_id = MOTOR_CONTROLLER.pi.wave_create()
+                        if new_wave_id < 0:
+                            raise pigpio.error(f'Creazione onda fallita con codice {new_wave_id}')
+                        
+                        # 3. Accodala
+                        MOTOR_CONTROLLER.pi.wave_chain([new_wave_id])
+
+                        # 4. Cancella l'onda del "sorso" PRECEDENTE
+                        if wave_to_delete is not None:
+                            MOTOR_CONTROLLER.pi.wave_delete(wave_to_delete)
+                        
+                        # 5. Ricorda l'onda attuale per cancellarla al prossimo giro
+                        wave_to_delete = new_wave_id
+                        chunk_num += 1
+
                     while MOTOR_CONTROLLER.pi.wave_tx_busy():
                         if MOTOR_CONTROLLER.last_move_interrupted:
                             MOTOR_CONTROLLER.pi.wave_tx_stop()
@@ -438,17 +419,10 @@ def motor_worker():
                         logging.warning("MOVIMENTO INTERROTTO da un finecorsa.")
 
                 finally:
-                    # Pulizia finale di sicurezza.
                     if MOTOR_CONTROLLER.pi and MOTOR_CONTROLLER.pi.connected:
                         if MOTOR_CONTROLLER.pi.wave_tx_busy():
                             MOTOR_CONTROLLER.pi.wave_tx_stop()
-                        
-                        # Cancella tutte le onde che potrebbero essere rimaste orfane
-                        # a causa di un errore, inclusa l'ultima macro.
-                        for wid in all_created_wave_ids_in_task:
-                            try: MOTOR_CONTROLLER.pi.wave_delete(wid)
-                            except: pass
-                        
+                        MOTOR_CONTROLLER.pi.wave_clear()
                         for config in MOTOR_CONTROLLER.motor_configs.values():
                             try: MOTOR_CONTROLLER.pi.write(config.en_pin, 1)
                             except Exception: pass
@@ -465,7 +439,7 @@ def motor_worker():
         finally:
             motor_command_queue.task_done()
             time.sleep(0.1)
- 
+            
 def handle_exception(e):
     import traceback
     error_details = traceback.format_exc()
