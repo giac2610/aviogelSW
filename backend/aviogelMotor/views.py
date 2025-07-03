@@ -106,71 +106,81 @@ class MotionPlanner:
         return periods_us.tolist()
 
     def plan_move_streamed(self, targets: dict[str, float], switch_states: dict, pi=None):
-        if not targets: return None, set(), {}
+        if not targets: return None, set(), {}, {}
         if pi:
             for motor, pins in SWITCHES.items():
                 for name, pin in pins.items():
                     switch_id = f"{motor}_{name.lower()}"
                     is_pressed = pi.read(pin) == 1
                     switch_states[switch_id] = is_pressed
-        
+
         move_data = {}
         for motor_id, distance in targets.items():
             if distance == 0 or motor_id not in self.motor_configs: continue
             direction = 1 if distance >= 0 else 0
             if (direction == 0 and switch_states.get(f"{motor_id}_start")) or \
-               (direction == 1 and switch_states.get(f"{motor_id}_end")):
+                (direction == 1 and switch_states.get(f"{motor_id}_end")):
                 logging.warning(f"Movimento per '{motor_id}' bloccato da finecorsa attivo.")
                 continue
             config = self.motor_configs[motor_id]
             move_data[motor_id] = {"steps": int(abs(distance) * config.steps_per_mm), "dir": direction, "config": config}
 
-        if not move_data: return None, set(), {}
+        if not move_data: return None, set(), {}, {}
+
         master_id = max(move_data, key=lambda k: move_data[k]["steps"])
         master_data = move_data[master_id]
-        master_steps = master_data["steps"]
 
-        # --- LIMITE DI SICUREZZA FONDAMENTALE ---
-        # Impostiamo un limite massimo di passi per un singolo comando per non superare mai i CB.
-        # 8000 passi = 16000 impulsi, un valore sicuro per pigpio.
+        # --- MODIFICA CHIAVE ---
+        # Salviamo i passi totali del master PRIMA di troncarli. Questo è il valore corretto per l'algoritmo.
+        master_steps_total = master_data["steps"]
+
+        # Ora possiamo tranquillamente troncare il numero di passi per il blocco corrente.
+        master_steps_chunk = master_steps_total
+
         MAX_STEPS_PER_COMMAND = 5500
-        if master_steps > MAX_STEPS_PER_COMMAND:
-            logging.warning(f"MOVIMENTO TROPPO LUNGO ({master_steps} passi)! Troncato al limite di sicurezza di {MAX_STEPS_PER_COMMAND} passi.")
-            master_steps = MAX_STEPS_PER_COMMAND
+        if master_steps_chunk > MAX_STEPS_PER_COMMAND:
+            logging.warning(f"MOVIMENTO TROPPO LUNGO ({master_steps_chunk} passi)! Troncato al limite di sicurezza di {MAX_STEPS_PER_COMMAND} passi per questo blocco.")
+            master_steps_chunk = MAX_STEPS_PER_COMMAND
 
-        if master_steps == 0: return None, set(), {}
-        
+        if master_steps_chunk == 0: return None, set(), {}, {}
+
         periods_list = self._generate_trapezoidal_profile(
-            master_steps, master_data["config"].max_freq_hz, master_data["config"].acceleration_mmss, master_data["config"].steps_per_mm
+            master_steps_chunk, master_data["config"].max_freq_hz, master_data["config"].acceleration_mmss, master_data["config"].steps_per_mm
         )
         active_motors = {m["config"].name for m in move_data.values()}
         directions_to_set = {mid: move['dir'] for mid, move in move_data.items()}
-        logging.info(f"Pianificato movimento per '{master_id}' ({master_steps} passi).")
 
         def single_pulse_generator():
-            bresenham_errors = {mid: -master_steps / 2 for mid in move_data if mid != master_id}
-            for i in range(master_steps):
+            # --- MODIFICA CHIAVE ---
+            # L'algoritmo di Bresenham ora usa master_steps_total per il calcolo della proporzione.
+            bresenham_errors = {mid: -master_steps_total / 2 for mid in move_data if mid != master_id}
+
+            # Il ciclo for, invece, itera solo per la lunghezza del blocco corrente.
+            for i in range(master_steps_chunk):
                 on_mask = 1 << master_data["config"].step_pin
                 for slave_id in bresenham_errors:
+                    # L'incremento usa ancora i passi totali dello slave (corretto).
                     bresenham_errors[slave_id] += move_data[slave_id]["steps"]
                     if bresenham_errors[slave_id] > 0:
                         on_mask |= 1 << move_data[slave_id]["config"].step_pin
-                        bresenham_errors[slave_id] -= master_steps
+                        # Il decremento usa i passi totali del master (ora è corretto!).
+                        bresenham_errors[slave_id] -= master_steps_total
+
                 total_period_us = periods_list[i]
                 pulse_width_us = max(1, int(total_period_us / 2))
                 yield pigpio.pulse(on_mask, 0, pulse_width_us)
                 yield pigpio.pulse(0, on_mask, max(1, int(total_period_us - pulse_width_us)))
 
         # Calcoliamo i passi effettivi per ogni motore in questo blocco
-        steps_in_chunk = {master_id: master_steps}
-        for slave_id, data in move_data.items():
-            if slave_id != master_id:
-                # La logica di Bresenham distribuisce i passi in modo proporzionale
-                steps_in_chunk[slave_id] = int((data["steps"] / move_data[master_id]["steps"]) * master_steps)
+        steps_in_chunk = {master_id: master_steps_chunk}
+        if master_steps_total > 0: # Evita divisione per zero se il movimento è nullo
+            for slave_id, data in move_data.items():
+                if slave_id != master_id:
+                    # La logica di Bresenham distribuisce i passi in modo proporzionale
+                    steps_in_chunk[slave_id] = int((data["steps"] / master_steps_total) * master_steps_chunk)
 
-        logging.info(f"Pianificato movimento per '{master_id}' ({master_steps} passi). Motori attivi: {list(active_motors)}")
+        logging.info(f"Pianificato blocco per '{master_id}' ({master_steps_chunk} passi). Motori attivi: {list(active_motors)}")
         return single_pulse_generator(), active_motors, directions_to_set, steps_in_chunk
-    
 class MotorController:
     def __init__(self, motor_configs: dict[str, MotorConfig]):
         self.pi = self._get_pigpio_instance()
