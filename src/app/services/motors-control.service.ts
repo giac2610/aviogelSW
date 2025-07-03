@@ -40,4 +40,9 @@ export class MotorsControlService {
     const url = `${this.apiUrl}simulate/`;
     return this.http.post<any>(url, null);
   }
+
+  goHome(body: any): Observable<any> {
+    const url = `${this.apiUrl}home/`;
+    return this.http.post<any>(url, body);
+  }
 }

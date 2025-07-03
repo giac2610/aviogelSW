@@ -76,8 +76,18 @@ speedPollingSubscription!: Subscription;
       });
     });
 
-    // this.presentToast('Caricamento in corso...', 'primary');
-    // console.log('test');
+    // homing extrduer e syringe all'avvio della pagina, # TODO syringe homing at start
+    this.motorsService.goHome({ motor: 'extruder' }).subscribe({
+      next: (response) => {
+        console.log('Risposta dal backend:', response);
+        this.positions.extruder = 0; // Reset della posizione dell'extruder
+      },
+      error: (error) => {
+        const errorMessage = error.error.detail || error.error.error || error.message;
+        this.presentToast(`Errore durante il ritorno a casa dell'extruder: ${errorMessage}`, 'danger');
+        console.error('Errore durante il ritorno a casa dell\'extruder:', error);
+      }
+    });
   }
 
   ngOnDestroy() {
@@ -178,8 +188,21 @@ onPresetChange() {
   }
   
   goHome(motor: "syringe" | "extruder" | "conveyor"){
-    this.goToPosition(motor, -this.positions[motor]);
-    this.positions[motor] = 0;
+    const targets = { "motor": motor };
+    this.motorsService.goHome(targets).subscribe({
+      next: (response) => {
+        this.presentToast(`Il motore ${motor} è tornato a casa con successo`, 'success');
+        console.log('Risposta dal backend:', response);
+        this.positions[motor] = 0;
+      },
+      error: (error) => {
+        const errorMessage = error.error.detail || error.error.error || error.message;
+        this.presentToast(`Errore durante il ritorno a casa del motore ${motor}: ${errorMessage}`, 'danger');
+        console.error('Errore durante il ritorno a casa del motore:', error);
+      }
+    });
+
+
   }
 
   stopMotors() {
