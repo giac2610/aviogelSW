@@ -379,7 +379,6 @@ def motor_worker():
             command = task.get("command", "move")
             
             if command == "move":
-                # Pulizia preventiva per evitare resource leak da task precedenti falliti.
                 try:
                     if MOTOR_CONTROLLER.pi and MOTOR_CONTROLLER.pi.connected:
                         MOTOR_CONTROLLER.pi.wave_clear()
@@ -395,30 +394,38 @@ def motor_worker():
                     )
 
                 if not active_motors:
-                    continue # Affidati al finally per task_done()
+                    continue
 
                 all_created_wave_ids_in_task = []
+                # --- FIX: Lista per la cancellazione ritardata ---
+                waves_to_delete_from_previous_macro = []
                 try:
-                    # Setup iniziale motori
                     for motor_id, direction in directions.items():
                         MOTOR_CONTROLLER.pi.write(MOTOR_CONTROLLER.motor_configs[motor_id].dir_pin, direction)
                     for motor_name in active_motors:
                         MOTOR_CONTROLLER.pi.write(MOTOR_CONTROLLER.motor_configs[motor_name].en_pin, 0)
                     time.sleep(0.01)
 
-                    # Architettura "Crea -> Accoda -> Cancella" per streaming reale
+                    # --- ARCHITETTURA CON CANCELLAZIONE RITARDATA ---
                     for i, gen_func in enumerate(pulse_generators):
-                        logging.info(f"Preparo e accodo la macro {i+1}/{len(pulse_generators)}...")
+                        logging.info(f"Preparo la macro {i+1}/{len(pulse_generators)}...")
                         
                         wave_ids_for_this_macro = MOTOR_CONTROLLER._prepare_waves_from_generator(gen_func())
                         if not wave_ids_for_this_macro: continue
                         
                         all_created_wave_ids_in_task.extend(wave_ids_for_this_macro)
+                        
+                        logging.info(f"Accodo la macro {i+1}...")
                         MOTOR_CONTROLLER.pi.wave_chain(wave_ids_for_this_macro)
                         
-                        # Cancella subito le onde dopo averle accodate per liberare CB
-                        for wid in wave_ids_for_this_macro:
-                            MOTOR_CONTROLLER.pi.wave_delete(wid)
+                        # Ora che le nuove onde sono state accodate, possiamo cancellare quelle VECCHIE.
+                        if waves_to_delete_from_previous_macro:
+                            logging.info(f"Cancello le onde della macro precedente...")
+                            for wid in waves_to_delete_from_previous_macro:
+                                MOTOR_CONTROLLER.pi.wave_delete(wid)
+                        
+                        # Le onde di questa macro verranno cancellate alla prossima iterazione.
+                        waves_to_delete_from_previous_macro = wave_ids_for_this_macro
 
                         if MOTOR_CONTROLLER.last_move_interrupted:
                             logging.warning("Interruzione rilevata, fermo l'accodamento.")
@@ -438,7 +445,8 @@ def motor_worker():
                         if MOTOR_CONTROLLER.pi.wave_tx_busy():
                             MOTOR_CONTROLLER.pi.wave_tx_stop()
                         
-                        # Per sicurezza, tenta di cancellare le onde che potrebbero essere rimaste orfane
+                        # Per sicurezza finale, cancella tutte le onde create in questo task.
+                        # Questo pulisce anche l'ultima macro che non è stata cancellata nel ciclo.
                         for wid in all_created_wave_ids_in_task:
                             try: MOTOR_CONTROLLER.pi.wave_delete(wid)
                             except: pass
@@ -457,10 +465,9 @@ def motor_worker():
         except Exception as e:
             logging.error(f"Errore critico nel motor_worker su task {task}: {e}", exc_info=True)
         finally:
-            # UNICA chiamata a task_done() per garantire stabilità.
             motor_command_queue.task_done()
             time.sleep(0.1)
-
+            
 def handle_exception(e):
     import traceback
     error_details = traceback.format_exc()
