@@ -133,7 +133,7 @@ class MotionPlanner:
         # --- LIMITE DI SICUREZZA FONDAMENTALE ---
         # Impostiamo un limite massimo di passi per un singolo comando per non superare mai i CB.
         # 8000 passi = 16000 impulsi, un valore sicuro per pigpio.
-        MAX_STEPS_PER_COMMAND = 8000
+        MAX_STEPS_PER_COMMAND = 6000
         if master_steps > MAX_STEPS_PER_COMMAND:
             logging.warning(f"MOVIMENTO TROPPO LUNGO ({master_steps} passi)! Troncato al limite di sicurezza di {MAX_STEPS_PER_COMMAND} passi.")
             master_steps = MAX_STEPS_PER_COMMAND
