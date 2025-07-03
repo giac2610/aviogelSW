@@ -515,6 +515,7 @@ def execute_route_view(request):
         for step in route:
             if isinstance(step, dict): 
                 motor_command_queue.put({"command": "move", "targets": step})
+        motor_command_queue.put({"command": "home", "motor": "extruder"})
         return JsonResponse({"log": f"Rotta con {len(route)} passi accodata.", "status": "queued"})
     except Exception as e: return handle_exception(e)
 
