@@ -359,14 +359,14 @@ motor_command_queue = queue.Queue()
 SYSTEM_CONFIG_LOCK = threading.Lock()
             
 def motor_worker():
-    logging.info("Motor worker avviato con architettura stabile.")
+    logging.info("Motor worker avviato con architettura a streaming reale e stabile.")
     while True:
         task = motor_command_queue.get()
         try:
             command = task.get("command", "move")
             
             if command == "move":
-                # Pulizia preventiva per garantire uno stato pulito.
+                # Pulizia preventiva, fondamentale per la stabilità.
                 try:
                     if MOTOR_CONTROLLER.pi and MOTOR_CONTROLLER.pi.connected:
                         MOTOR_CONTROLLER.pi.wave_clear()
@@ -384,31 +384,50 @@ def motor_worker():
                 if not active_motors:
                     continue
 
-                # --- ARCHITETTURA SEMPLIFICATA E STABILE ---
-                # 1. PREPARA TUTTE LE ONDE PER IL MOVIMENTO IN UNA VOLTA
-                all_wave_ids = []
-                for gen_func in pulse_generators:
-                    wave_ids_for_macro = MOTOR_CONTROLLER._prepare_waves_from_generator(gen_func())
-                    all_wave_ids.extend(wave_ids_for_macro)
-
-                if not all_wave_ids:
-                    logging.warning("Nessuna onda generata per questo movimento.")
-                    continue
+                # Lista per tenere traccia di TUTTE le onde create in questo task,
+                # per una pulizia sicura in caso di errore nel blocco finally.
+                all_created_wave_ids_in_task = []
                 
-                MOTOR_CONTROLLER.last_move_interrupted = False
+                # Lista per le onde della macro precedente, da cancellare con un'iterazione di ritardo.
+                waves_to_delete_from_previous_macro = []
+                
                 try:
-                    # Setup motori
+                    # Setup iniziale motori
                     for motor_id, direction in directions.items():
                         MOTOR_CONTROLLER.pi.write(MOTOR_CONTROLLER.motor_configs[motor_id].dir_pin, direction)
                     for motor_name in active_motors:
                         MOTOR_CONTROLLER.pi.write(MOTOR_CONTROLLER.motor_configs[motor_name].en_pin, 0)
                     time.sleep(0.01)
 
-                    # 2. INVIA L'INTERA CATENA IN UNA VOLTA
-                    logging.info(f"Invio catena completa con {len(all_wave_ids)} onde.")
-                    MOTOR_CONTROLLER.pi.wave_chain(all_wave_ids)
+                    # --- ARCHITETTURA DEFINITIVA: STREAMING CON CANCELLAZIONE RITARDATA ---
+                    for i, gen_func in enumerate(pulse_generators):
+                        logging.info(f"Preparo la macro {i+1}/{len(pulse_generators)}...")
+                        
+                        # 1. CREA le onde solo per la macro CORRENTE.
+                        wave_ids_for_this_macro = MOTOR_CONTROLLER._prepare_waves_from_generator(gen_func())
+                        if not wave_ids_for_this_macro: continue
+                        
+                        all_created_wave_ids_in_task.extend(wave_ids_for_this_macro)
+                        
+                        # 2. ACCoda le nuove onde. Saranno eseguite dopo quelle già in coda.
+                        logging.info(f"Accodo la macro {i+1}...")
+                        MOTOR_CONTROLLER.pi.wave_chain(wave_ids_for_this_macro)
+                        
+                        # 3. CANCELLA le onde della macro PRECEDENTE.
+                        # Ora che la nuova macro è stata inviata, quelle vecchie non servono più.
+                        if waves_to_delete_from_previous_macro:
+                            logging.info(f"Cancello le onde della macro #{i} per liberare memoria...")
+                            for wid in waves_to_delete_from_previous_macro:
+                                MOTOR_CONTROLLER.pi.wave_delete(wid)
+                        
+                        # 4. MEMORIZZA le onde attuali per cancellarle alla prossima iterazione.
+                        waves_to_delete_from_previous_macro = wave_ids_for_this_macro
+
+                        if MOTOR_CONTROLLER.last_move_interrupted:
+                            logging.warning("Interruzione rilevata, fermo l'accodamento di altre macro.")
+                            break
                     
-                    # 3. ASPETTA LA FINE DELL'ESECUZIONE COMPLETA
+                    # Attendi che l'intera catena di trasmissione finisca.
                     while MOTOR_CONTROLLER.pi.wave_tx_busy():
                         if MOTOR_CONTROLLER.last_move_interrupted:
                             MOTOR_CONTROLLER.pi.wave_tx_stop()
@@ -419,12 +438,17 @@ def motor_worker():
                         logging.warning("MOVIMENTO INTERROTTO da un finecorsa.")
 
                 finally:
-                    # 4. PULISCI TUTTO ALLA FINE
+                    # Pulizia finale di sicurezza.
                     if MOTOR_CONTROLLER.pi and MOTOR_CONTROLLER.pi.connected:
                         if MOTOR_CONTROLLER.pi.wave_tx_busy():
                             MOTOR_CONTROLLER.pi.wave_tx_stop()
-                        # wave_clear() è il modo più sicuro per pulire tutto.
-                        MOTOR_CONTROLLER.pi.wave_clear()
+                        
+                        # Cancella tutte le onde che potrebbero essere rimaste orfane
+                        # a causa di un errore, inclusa l'ultima macro.
+                        for wid in all_created_wave_ids_in_task:
+                            try: MOTOR_CONTROLLER.pi.wave_delete(wid)
+                            except: pass
+                        
                         for config in MOTOR_CONTROLLER.motor_configs.values():
                             try: MOTOR_CONTROLLER.pi.write(config.en_pin, 1)
                             except Exception: pass
@@ -441,7 +465,7 @@ def motor_worker():
         finally:
             motor_command_queue.task_done()
             time.sleep(0.1)
-                
+ 
 def handle_exception(e):
     import traceback
     error_details = traceback.format_exc()
