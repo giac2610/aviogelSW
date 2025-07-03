@@ -71,32 +71,27 @@ class MotorConfig:
     steps_per_mm: float
     max_freq_hz: float
     acceleration_mmss: float
-
 class MotionPlanner:
     def __init__(self, motor_configs: dict[str, MotorConfig]):
         self.motor_configs = motor_configs
         logging.info(f"MotionPlanner inizializzato con motori: {list(motor_configs.keys())}")
 
     def _generate_trapezoidal_profile(self, total_steps: int, max_freq_hz: float, accel_mmss: float, steps_per_mm: float) -> list[float]:
-        # Questa funzione è corretta
-        if total_steps == 0:
-            return []
+        # Questa funzione è corretta, non la modifichiamo
+        if total_steps == 0: return []
         v_max = max_freq_hz / steps_per_mm
         if accel_mmss <= 0: accel_mmss = 1.0
         t_accel = v_max / accel_mmss
         s_accel = 0.5 * accel_mmss * t_accel**2
         steps_accel = int(s_accel * steps_per_mm)
         steps_accel = min(steps_accel, total_steps // 2)
-
         if steps_accel == 0 and total_steps > 0: steps_accel = 1
         if steps_accel * 2 > total_steps:
             steps_accel = total_steps // 2
             v_peak = math.sqrt(2 * accel_mmss * (steps_accel / steps_per_mm))
             v_max = v_peak
-
         i = np.arange(1, total_steps + 1, dtype=np.float64)
         freq = np.full(total_steps, v_max * steps_per_mm, dtype=np.float64)
-
         if steps_accel > 0:
             accel_mask = i <= steps_accel
             v_i_accel = np.sqrt(2 * accel_mmss * (i[accel_mask] / steps_per_mm))
@@ -106,38 +101,35 @@ class MotionPlanner:
             steps_from_end = total_steps - i[decel_mask] + 1
             v_i_decel = np.sqrt(2 * accel_mmss * (steps_from_end / steps_per_mm))
             freq[decel_mask] = v_i_decel * steps_per_mm
-        
         np.maximum(freq, 1.0, out=freq)
         periods_us = 1_000_000.0 / freq
-        # Restituisce i periodi individuali, non la somma cumulativa
         return periods_us.tolist()
 
     def plan_move_streamed(self, targets: dict[str, float], switch_states: dict, pi=None):
-        # La logica esterna è corretta
         if not targets: return [], set(), {}
-        if pi:
-            for motor, pins in SWITCHES.items():
-                for name, pin in pins.items():
-                    switch_id = f"{motor}_{name.lower()}"
-                    is_pressed = pi.read(pin) == 1
-                    switch_states[switch_id] = is_pressed
+
+        # --- FIX FONDAMENTALE: RIMOSSO BLOCCO DI LETTURA HARDWARE ---
+        # Il planner ora si fida ciecamente dello stato passato dal MotorController,
+        # eliminando i falsi positivi dovuti a rumore elettrico.
+        # if pi:
+        #    ... (codice rimosso)
+
         move_data = {}
         for motor_id, distance in targets.items():
             if distance == 0 or motor_id not in self.motor_configs: continue
             direction = 1 if distance >= 0 else 0
             if (direction == 0 and switch_states.get(f"{motor_id}_start")) or \
                (direction == 1 and switch_states.get(f"{motor_id}_end")):
-                logging.warning(f"Movimento per '{motor_id}' bloccato da finecorsa attivo.")
+                logging.warning(f"Movimento per '{motor_id}' bloccato da finecorsa attivo (stato software).")
                 continue
             config = self.motor_configs[motor_id]
             move_data[motor_id] = {"steps": int(abs(distance) * config.steps_per_mm), "dir": direction, "config": config}
+
         if not move_data: return [], set(), {}
         master_id = max(move_data, key=lambda k: move_data[k]["steps"])
         master_data = move_data[master_id]
         master_steps = master_data["steps"]
         if master_steps == 0: return [], set(), {}
-
-        # ORA CONTIENE I PERIODI INDIVIDUALI
         periods_list = self._generate_trapezoidal_profile(
             master_steps, master_data["config"].max_freq_hz, master_data["config"].acceleration_mmss, master_data["config"].steps_per_mm
         )
@@ -157,12 +149,8 @@ class MotionPlanner:
                         if bresenham_errors[slave_id] > 0:
                             on_mask |= 1 << move_data[slave_id]["config"].step_pin
                             bresenham_errors[slave_id] -= master_steps
-                    
-                    # --- FIX FONDAMENTALE DELLA LOGICA ---
-                    # Ora usiamo direttamente il periodo calcolato per quello specifico step.
                     total_period_us = periods_list[i]
                     pulse_width_us = max(1, int(total_period_us / 2))
-                    
                     yield pigpio.pulse(on_mask, 0, pulse_width_us)
                     yield pigpio.pulse(0, on_mask, max(1, int(total_period_us - pulse_width_us)))
             return pulse_generator
@@ -172,7 +160,6 @@ class MotionPlanner:
             start_step = macro_idx * steps_per_macro
             end_step = min((macro_idx + 1) * steps_per_macro, master_steps)
             macro_generators.append(make_pulse_generator_macro(start_step, end_step))
-
         return macro_generators, active_motors, directions_to_set
     
 class MotorController:
@@ -267,7 +254,7 @@ class MotorController:
         logging.info("Homing: Fase 1 - Ricerca veloce del finecorsa...")
         homing_hit = threading.Event()
         def homing_callback(gpio, level, tick):
-            if level == 1:
+            if level == 1: # Rileva il fronte di salita (pressione del tasto)
                 self.pi.wave_tx_stop()
                 homing_hit.set()
         
@@ -276,10 +263,10 @@ class MotorController:
         cb_homing = self.pi.callback(switch_pin, pigpio.RISING_EDGE, homing_callback)
         
         self.pi.write(config.en_pin, 0)
-        self.pi.write(config.dir_pin, 0)
+        self.pi.write(config.dir_pin, 0) # Direzione verso start
         self.pi.wave_clear()
         
-        period_us = int(1_000_000 / 2000)
+        period_us = int(1_000_000 / 2000) # 2000 Hz
         pulse = [pigpio.pulse(1 << config.step_pin, 0, period_us // 2), pigpio.pulse(0, 1 << config.step_pin, period_us // 2)]
         self.pi.wave_add_generic(pulse)
         wave_id = self.pi.wave_create()
@@ -303,14 +290,14 @@ class MotorController:
         logging.info("Homing: Fase 2 - Back-off lento per rilascio sensore...")
         backoff_done = threading.Event()
         def backoff_callback(gpio, level, tick):
-            if level == 0:
+            if level == 0: # Rileva il fronte di discesa (rilascio del tasto)
                 self.pi.wave_tx_stop()
                 backoff_done.set()
 
         cb_backoff = self.pi.callback(switch_pin, pigpio.FALLING_EDGE, backoff_callback)
         self.pi.write(config.dir_pin, 1)
         
-        period_us_slow = int(1_000_000 / 200)
+        period_us_slow = int(1_000_000 / 200) # 200 Hz
         pulse_slow = [pigpio.pulse(1 << config.step_pin, 0, period_us_slow // 2), pigpio.pulse(0, 1 << config.step_pin, period_us_slow // 2)]
         self.pi.wave_add_generic(pulse_slow)
         wave_id_slow = self.pi.wave_create()
@@ -332,7 +319,7 @@ class MotorController:
             self.switch_states[switch_id] = False
         
         self.switch_states[end_switch_id] = False
-
+        
 def load_system_config() -> dict[str, MotorConfig]:
     configs = {}
     try:
