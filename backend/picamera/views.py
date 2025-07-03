@@ -1147,7 +1147,7 @@ def get_graph_and_tsp_path_with_speeds(velocita_x=4.0, velocita_y=1.0):
     filtered_coords = []
     for coord in coordinates_with_origin:
         x_rel = coord[0] - origin_x
-        if 5 <= x_rel <= 250:
+        if 0 <= x_rel <= 250:
             filtered_coords.append(coord)
     nodi = [tuple(coord) for coord in filtered_coords]
 
