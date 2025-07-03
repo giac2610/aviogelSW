@@ -161,7 +161,15 @@ class MotionPlanner:
                 yield pigpio.pulse(on_mask, 0, pulse_width_us)
                 yield pigpio.pulse(0, on_mask, max(1, int(total_period_us - pulse_width_us)))
 
-        return single_pulse_generator(), active_motors, directions_to_set
+        # Calcoliamo i passi effettivi per ogni motore in questo blocco
+        steps_in_chunk = {master_id: master_steps}
+        for slave_id, data in move_data.items():
+            if slave_id != master_id:
+                # La logica di Bresenham distribuisce i passi in modo proporzionale
+                steps_in_chunk[slave_id] = int((data["steps"] / move_data[master_id]["steps"]) * master_steps)
+
+        logging.info(f"Pianificato movimento per '{master_id}' ({master_steps} passi). Motori attivi: {list(active_motors)}")
+        return single_pulse_generator(), active_motors, directions_to_set, steps_in_chunk
     
 class MotorController:
     def __init__(self, motor_configs: dict[str, MotorConfig]):
@@ -360,84 +368,86 @@ motor_command_queue = queue.Queue()
 SYSTEM_CONFIG_LOCK = threading.Lock()
             
 def motor_worker():
-    logging.info("Motor worker avviato con architettura Stabile e Robusta.")
+    logging.info("Motor worker avviato con architettura a cicli continui.")
     while True:
         task = motor_command_queue.get()
         try:
             command = task.get("command", "move")
             
             if command == "move":
-                try:
-                    if MOTOR_CONTROLLER.pi and MOTOR_CONTROLLER.pi.connected:
-                        MOTOR_CONTROLLER.pi.wave_clear()
-                except Exception as e:
-                    logging.error(f"Errore durante la pulizia preventiva: {e}")
-
-                targets = task.get("targets", {})
+                remaining_targets = task.get("targets", {}).copy()
                 
-                with SYSTEM_CONFIG_LOCK:
-                    current_switch_states = MOTOR_CONTROLLER.switch_states.copy()
-                    pulse_generator, active_motors, directions = MOTION_PLANNER.plan_move_streamed(
-                        targets, current_switch_states, pi=MOTOR_CONTROLLER.pi
-                    )
-
-                if not active_motors or not pulse_generator:
-                    continue
-
-                # --- ARCHITETTURA SEMPLIFICATA: PREPARA E ESEGUI ---
-                all_wave_ids = []
-                try:
-                    # 1. Prepara tutte le onde per questo singolo, sicuro movimento
-                    all_wave_ids = MOTOR_CONTROLLER._prepare_waves_from_generator(pulse_generator)
-
-                    if not all_wave_ids:
-                        logging.warning("Nessuna onda generata per questo movimento.")
-                        continue
-                    
-                    MOTOR_CONTROLLER.last_move_interrupted = False
-                    
-                    # 2. Esegui
-                    for motor_id, direction in directions.items():
-                        MOTOR_CONTROLLER.pi.write(MOTOR_CONTROLLER.motor_configs[motor_id].dir_pin, direction)
-                    for motor_name in active_motors:
-                        MOTOR_CONTROLLER.pi.write(MOTOR_CONTROLLER.motor_configs[motor_name].en_pin, 0)
-                    time.sleep(0.01)
-
-                    logging.info(f"Invio movimento completo con {len(all_wave_ids)} onde...")
-                    MOTOR_CONTROLLER.pi.wave_chain(all_wave_ids)
-                    
-                    while MOTOR_CONTROLLER.pi.wave_tx_busy():
-                        if MOTOR_CONTROLLER.last_move_interrupted:
-                            MOTOR_CONTROLLER.pi.wave_tx_stop()
-                            break
-                        time.sleep(0.05)
-                    
+                # Cicla finché c'è ancora distanza significativa da percorrere
+                while any(abs(dist) > 0.001 for dist in remaining_targets.values()):
                     if MOTOR_CONTROLLER.last_move_interrupted:
-                        logging.warning("MOVIMENTO INTERROTTO da un finecorsa.")
+                        logging.warning("Il ciclo di movimento è stato interrotto da un finecorsa. Annullamento dei movimenti rimanenti.")
+                        MOTOR_CONTROLLER.last_move_interrupted = False # Resetta il flag
+                        break
 
-                finally:
-                    # 3. Pulisci
-                    if MOTOR_CONTROLLER.pi and MOTOR_CONTROLLER.pi.connected:
-                        if MOTOR_CONTROLLER.pi.wave_tx_busy():
-                            MOTOR_CONTROLLER.pi.wave_tx_stop()
-                        MOTOR_CONTROLLER.pi.wave_clear() # Pulisce tutto in modo sicuro
-                        for config in MOTOR_CONTROLLER.motor_configs.values():
-                            try: MOTOR_CONTROLLER.pi.write(config.en_pin, 1)
-                            except Exception: pass
-            
+                    with SYSTEM_CONFIG_LOCK:
+                        current_switch_states = MOTOR_CONTROLLER.switch_states.copy()
+                        pulse_generator, active_motors, directions, steps_executed = MOTION_PLANNER.plan_move_streamed(
+                            remaining_targets, current_switch_states, pi=MOTOR_CONTROLLER.pi
+                        )
+
+                    if not active_motors or not pulse_generator:
+                        logging.info("Nessun movimento pianificato per i target rimanenti. Uscita dal ciclo.")
+                        break
+
+                    all_wave_ids = []
+                    try:
+                        all_wave_ids = MOTOR_CONTROLLER._prepare_waves_from_generator(pulse_generator)
+                        if not all_wave_ids:
+                            continue
+                        
+                        # Esecuzione del blocco
+                        for motor_id, direction in directions.items():
+                            MOTOR_CONTROLLER.pi.write(MOTOR_CONTROLLER.motor_configs[motor_id].dir_pin, direction)
+                        for motor_name in active_motors:
+                            MOTOR_CONTROLLER.pi.write(MOTOR_CONTROLLER.motor_configs[motor_name].en_pin, 0)
+                        
+                        MOTOR_CONTROLLER.pi.wave_chain(all_wave_ids)
+                        
+                        while MOTOR_CONTROLLER.pi.wave_tx_busy():
+                            if MOTOR_CONTROLLER.last_move_interrupted:
+                                break
+                            time.sleep(0.05)
+                        
+                    finally:
+                        # Pulizia dopo ogni blocco
+                        if MOTOR_CONTROLLER.pi and MOTOR_CONTROLLER.pi.connected:
+                            if MOTOR_CONTROLLER.pi.wave_tx_busy(): MOTOR_CONTROLLER.pi.wave_tx_stop()
+                            MOTOR_CONTROLLER.pi.wave_clear()
+                            for config in MOTOR_CONTROLLER.motor_configs.values():
+                                try: MOTOR_CONTROLLER.pi.write(config.en_pin, 1)
+                                except Exception: pass
+                    
+                    # 🎯 Aggiorna le distanze rimanenti
+                    for motor_id, steps in steps_executed.items():
+                        if motor_id in remaining_targets:
+                            config = MOTOR_CONFIGS[motor_id]
+                            distance_moved_mm = steps / config.steps_per_mm
+                            # Mantieni la direzione originale del movimento
+                            if remaining_targets[motor_id] < 0:
+                                remaining_targets[motor_id] += distance_moved_mm
+                            else:
+                                remaining_targets[motor_id] -= distance_moved_mm
+                    
+                    logging.info(f"Blocco completato. Distanze rimanenti: {remaining_targets}")
+
             elif command == "home":
                 motor_to_home = task.get("motor")
                 if motor_to_home:
                     MOTOR_CONTROLLER.execute_homing_sequence(motor_to_home)
             
-            if not MOTOR_CONTROLLER.last_move_interrupted:
-                logging.info(f"Worker: task '{task.get('command')}' completato.")
+            logging.info(f"Worker: task '{task.get('command')}' completato.")
+
         except Exception as e:
             logging.error(f"Errore critico nel motor_worker su task {task}: {e}", exc_info=True)
         finally:
             motor_command_queue.task_done()
             time.sleep(0.1)
-            
+                
 def handle_exception(e):
     import traceback
     error_details = traceback.format_exc()
