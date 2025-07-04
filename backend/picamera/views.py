@@ -487,8 +487,17 @@ def compute_route(request):
         last_pos = (origin_x, origin_y)
         motor_commands = []
         for pos in path_nodes:
-            motor_commands.append({"extruder": round(pos[0] - last_pos[0], 4), "conveyor": round(pos[1] - last_pos[1], 4)})
+            # Calcola i valori
+            extruder_val = pos[0] - last_pos[0]
+            conveyor_val = pos[1] - last_pos[1]
+        
+            # SOLUZIONE: Arrotonda E POI converti a float standard
+            motor_commands.append({
+                "extruder": float(round(extruder_val, 4)),
+                "conveyor": float(round(conveyor_val, 4))
+            })
             last_pos = pos
+
 
         plt.figure(figsize=(8, 6))
         graph, pos = nx.Graph(), {i: node for i, node in enumerate(nodi)}
