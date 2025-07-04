@@ -602,14 +602,14 @@ def set_fixed_perspective_view(request):
 
 def get_frame_with_world_grid():
     """
-    Cattura un frame, lo corregge e vi disegna sopra la griglia del mondo.
+    Cattura un frame, lo corregge e vi disegna sopra la griglia del mondo
+    e il percorso a serpentina dell'estrusore.
     """
-    # 1. Recupera i dati di calibrazione e omografia dalla configurazione
+    # 1. Recupera i dati di calibrazione e omografia
     cam_calib = camera_settings.get("calibration")
     H_fixed = get_fixed_perspective_homography_from_config()
     
     if H_fixed is None or not cam_calib:
-        # Se non c'è calibrazione, restituisci il frame normale
         return get_frame()
 
     # 2. Cattura un nuovo frame e correggi la distorsione
@@ -623,34 +623,39 @@ def get_frame_with_world_grid():
     # 3. Calcola la griglia e il percorso
     graph, path_indices, info = _calculate_serpentine_path_data()
     if graph is None:
-        # Se non si può calcolare la griglia, restituisci il frame corretto
         return undistorted_frame
     
     nodi_mondo = info.get("nodi", [])
     if not nodi_mondo:
         return undistorted_frame
 
-    # 4. Esegui la trasformazione INVERSA
+    # 4. Esegui la trasformazione INVERSA per ottenere i punti sull'immagine
     H_inversa = np.linalg.inv(H_fixed)
-    
-    # Prepara i punti per la trasformazione (devono essere in un array float32 con una dimensione extra)
     nodi_mondo_np = np.array(nodi_mondo, dtype=np.float32).reshape(-1, 1, 2)
-    
-    # Applica la trasformazione prospettica inversa
     nodi_immagine = cv2.perspectiveTransform(nodi_mondo_np, H_inversa)
-    nodi_immagine = nodi_immagine.reshape(-1, 2).astype(int) # Riconverti in una lista di punti (x, y) interi
+    nodi_immagine = nodi_immagine.reshape(-1, 2).astype(int)
 
-    # 5. Disegna la griglia sull'immagine corretta
-    # Disegna i nodi del percorso
-    for i in range(len(path_indices) - 1):
-        start_point = tuple(nodi_immagine[path_indices[i]])
-        end_point = tuple(nodi_immagine[path_indices[i+1]])
-        cv2.line(undistorted_frame, start_point, end_point, (0, 255, 0), 2) # Linee verdi per il percorso
+    # 5. Disegna la griglia e il percorso
+    if path_indices:
+        # === NUOVA SEZIONE: DISEGNA IL PERCORSO ===
+        # Itera sulla sequenza del percorso per disegnare le linee di connessione
+        for i in range(len(path_indices) - 1):
+            # Punto di partenza della linea
+            start_node_index = path_indices[i]
+            start_point = tuple(nodi_immagine[start_node_index])
+            
+            # Punto di fine della linea
+            end_node_index = path_indices[i+1]
+            end_point = tuple(nodi_immagine[end_node_index])
+            
+            # Disegna la linea verde del percorso
+            cv2.line(undistorted_frame, start_point, end_point, (0, 255, 0), 2) # Linea verde
+            # =========================================
 
-    # Disegna un cerchio su ogni nodo
+    # Disegna un cerchio su ogni nodo della griglia
     for point in nodi_immagine:
-        cv2.circle(undistorted_frame, tuple(point), 5, (0, 0, 255), -1) # Cerchi rossi per i nodi
-
+        cv2.circle(undistorted_frame, tuple(point), 5, (0, 0, 255), -1) # Cerchio rosso pieno
+        
     return undistorted_frame
 
 @csrf_exempt
