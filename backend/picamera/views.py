@@ -215,7 +215,7 @@ def generate_adaptive_grid_from_cluster(points, config_data=None):
     if len(points) < 3: return None, None
     
     points_np = np.array(points, dtype=np.float32)
-    db = DBSCAN(eps=spacing * 1.3, min_samples=8).fit(points_np)
+    db = DBSCAN(eps=spacing * 1.3, min_samples=5).fit(points_np)
     labels = db.labels_
     if not np.any(labels != -1): return None, None
     
