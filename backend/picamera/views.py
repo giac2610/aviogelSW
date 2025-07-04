@@ -9,7 +9,7 @@ import cv2
 import numpy as np
 import networkx as nx
 import matplotlib
-matplotlib.use('Agg')  # Usa 'Agg' backend per ambienti non-GUI
+matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import base64
 import glob
@@ -120,7 +120,7 @@ def _initialize_camera_internally():
         camera_instance = None
     return camera_instance
 
-def get_frame(release_after=False):
+def get_frame():
     with camera_lock:
         if camera_instance is None and _initialize_camera_internally() is None:
             size = camera_settings.get("picamera_config", {}).get("main", {}).get("size", [480, 640])
@@ -155,7 +155,9 @@ def save_config_data_to_file(data):
         with open(SETUP_JSON_PATH, 'w') as f: json.dump(data, f, indent=4)
         _load_global_config_from_file()
         return True
-    except Exception: return False
+    except Exception as e:
+        print(f"Errore salvataggio {SETUP_JSON_PATH}: {e}")
+        return False
 
 def get_fixed_perspective_homography_from_config():
     H_list = camera_settings.get("fixed_perspective", {}).get("homography_matrix")
@@ -254,7 +256,6 @@ def generate_adaptive_grid_from_cluster(points, config=None):
     top_points = sorted(box[:2], key=lambda p: p[0])
     origin_point = top_points[0]
     
-    # Gestione per evitare divisione per zero se la griglia è una singola linea
     col_div = (num_cols - 1) if num_cols > 1 else 1
     row_div = (num_rows - 1) if num_rows > 1 else 1
     col_vector = (top_points[1] - origin_point) / col_div
@@ -308,35 +309,16 @@ def get_board_and_canonical_homography_for_django(undistorted_frame, new_camera_
 def stream_context():
     global active_streams
     active_streams += 1
+    print(f"[STREAM] Stream avviato. Attivi: {active_streams}")
     try: yield
-    finally: active_streams -= 1
+    finally:
+        active_streams -= 1
+        print(f"[STREAM] Stream terminato. Attivi: {active_streams}")
 
 # --- Endpoint di Controllo e Streaming ---
-@csrf_exempt
-@require_POST
-def initialize_camera_endpoint(request):
-    instance = _initialize_camera_internally()
-    status_code = 200 if instance else 500
-    message = "Inizializzazione camera completata." if instance else "Inizializzazione camera fallita."
-    return JsonResponse({"status": "success" if instance else "error", "message": message}, status=status_code)
 
-@csrf_exempt
-@require_POST
-def deinitialize_camera_endpoint(request):
-    global camera_instance
-    with camera_lock:
-        if camera_instance:
-            try:
-                if sys.platform == "darwin": camera_instance.release()
-                else: camera_instance.stop(); camera_instance.close()
-                camera_instance = None
-                return JsonResponse({"status": "success", "message": "Camera de-inizializzata."})
-            except Exception as e:
-                return JsonResponse({"status": "error", "message": str(e)}, status=500)
-    return JsonResponse({"status": "success", "message": "Camera già rilasciata."})
-
-# Funzione Wrapper per retrocompatibilità API
 def fixed_perspective_stream(request):
+    """Funzione wrapper per mantenere la vecchia API, chiama camera_feed in modalità 'fixed'."""
     request.mode_override = 'fixed'
     return camera_feed(request)
 
@@ -349,26 +331,115 @@ def camera_feed(request):
         mode = request.GET.get("mode", "normal")
     
     def gen_frames():
+        stream_cfg = camera_settings
+        H_ref = None
+        cam_matrix, dist_coeffs, new_cam_matrix_stream = None, None, None
+        OUT_W, OUT_H = 0, 0
+        
+        # Intervallo per il blob detection (es. ogni 5 frame)
+        blob_detection_interval = stream_cfg.get("blob_detection_interval", 5)
+        frame_count = 0
+        last_keypoints_for_drawing = []
+        blob_processing_width = stream_cfg.get("blob_processing_width", 640)
+
+        if mode == "fixed":
+            H_ref = get_fixed_perspective_homography_from_config()
+            cam_calib = stream_cfg.get("calibration")
+            fixed_persp_cfg = stream_cfg.get("fixed_perspective", {})
+            OUT_W = fixed_persp_cfg.get("output_width", 1000)
+            OUT_H = fixed_persp_cfg.get("output_height", 800)
+            if cam_calib and "camera_matrix" in cam_calib and "distortion_coefficients" in cam_calib:
+                cam_matrix = np.array(cam_calib["camera_matrix"], dtype=np.float32)
+                dist_coeffs = np.array(cam_calib["distortion_coefficients"], dtype=np.float32)
+                try:
+                    sample_frame = get_frame()
+                    if sample_frame.size > 0:
+                        h_str, w_str = sample_frame.shape[:2]
+                        new_cam_matrix_stream, _ = cv2.getOptimalNewCameraMatrix(cam_matrix, dist_coeffs, (w_str,h_str), 1.0, (w_str,h_str))
+                except Exception as e:
+                    print(f"Errore setup fixed stream: {e}")
+        
         with stream_context():
             while True:
-                frame = get_frame()
-                if frame.size == 0:
-                    time.sleep(0.1)
-                    continue
-                # Qui andrebbe inserita la logica di disegno per i vari mode, omessa per brevità
-                # Per ora, restituisce il frame base
-                _, buffer = cv2.imencode('.jpg', frame, [int(cv2.IMWRITE_JPEG_QUALITY), 80])
-                yield (b'--frame\r\nContent-Type: image/jpeg\r\n\r\n' + buffer.tobytes() + b'\r\n')
+                try:
+                    frame_orig = get_frame()
+                    if frame_orig is None or frame_orig.size == 0:
+                        time.sleep(0.1)
+                        continue
+                    
+                    if frame_count % blob_detection_interval == 0:
+                        gray_for_blobs = cv2.cvtColor(frame_orig, cv2.COLOR_BGR2GRAY)
+                        orig_h, orig_w = gray_for_blobs.shape
+                        proc_h = int(orig_h * (blob_processing_width / orig_w))
+                        scale_x, scale_y = orig_w / blob_processing_width, orig_h / proc_h
+                        resized_gray = cv2.resize(gray_for_blobs, (blob_processing_width, proc_h), interpolation=cv2.INTER_AREA)
+                        
+                        _, thresh = cv2.threshold(resized_gray, stream_cfg.get("minThreshold", 127), stream_cfg.get("maxThreshold", 255), cv2.THRESH_BINARY)
+                        kps_resized = detect_blobs_from_params(thresh, stream_cfg, scale_x, scale_y)
+                        last_keypoints_for_drawing = [cv2.KeyPoint(kp.pt[0]*scale_x, kp.pt[1]*scale_y, kp.size*((scale_x+scale_y)/2)) for kp in kps_resized]
+                    
+                    frame_count += 1
+                    display_frame = frame_orig.copy()
+
+                    if mode == "normal" or mode == "threshold":
+                        if mode == "threshold":
+                            gray_disp = cv2.cvtColor(frame_orig, cv2.COLOR_BGR2GRAY)
+                            _, thresh_disp = cv2.threshold(gray_disp, stream_cfg.get("minThreshold", 127), stream_cfg.get("maxThreshold", 255), cv2.THRESH_BINARY)
+                            display_frame = cv2.cvtColor(thresh_disp, cv2.COLOR_GRAY2BGR)
+                        
+                        display_frame = cv2.drawKeypoints(display_frame, last_keypoints_for_drawing, np.array([]), (0,0,255), cv2.DRAW_MATCHES_FLAGS_DRAW_RICH_KEYPOINTS)
+                    
+                    elif mode == "fixed":
+                        if H_ref is not None and new_cam_matrix_stream is not None:
+                            undistorted = cv2.undistort(frame_orig, cam_matrix, dist_coeffs, None, new_cam_matrix_stream)
+                            display_frame = cv2.warpPerspective(undistorted, H_ref, (OUT_W, OUT_H))
+                            if last_keypoints_for_drawing:
+                                pts = np.array([kp.pt for kp in last_keypoints_for_drawing], dtype=np.float32).reshape(-1,1,2)
+                                pts_undist = cv2.undistortPoints(pts, cam_matrix, dist_coeffs, P=new_cam_matrix_stream)
+                                if pts_undist is not None:
+                                    pts_warped = cv2.perspectiveTransform(pts_undist, H_ref)
+                                    if pts_warped is not None:
+                                        for pt_w in pts_warped.reshape(-1,2):
+                                            cv2.circle(display_frame, (int(round(pt_w[0])), int(round(pt_w[1]))), 8, (0,0,255), 2)
+                        else:
+                            display_frame = np.zeros((OUT_H, OUT_W, 3), dtype=np.uint8)
+                            cv2.putText(display_frame, "Fixed View Not Set", (30,30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255,255,0),1)
+
+                    _, buffer = cv2.imencode('.jpg', display_frame, [int(cv2.IMWRITE_JPEG_QUALITY), 80])
+                    yield (b'--frame\r\nContent-Type: image/jpeg\r\n\r\n' + buffer.tobytes() + b'\r\n')
+
+                except Exception as e:
+                    print(f"Errore nel loop di streaming (mode: {mode}): {e}")
+                    traceback.print_exc()
+                    time.sleep(1)
     
     return StreamingHttpResponse(gen_frames(), content_type='multipart/x-mixed-replace; boundary=frame')
 
-# --- Endpoint di Logica Principale ---
+
+@csrf_exempt
+@require_POST
+def initialize_camera_endpoint(request):
+    instance = _initialize_camera_internally()
+    return JsonResponse({"status": "success" if instance else "error"}, status=200 if instance else 500)
+
+@csrf_exempt
+@require_POST
+def deinitialize_camera_endpoint(request):
+    global camera_instance
+    with camera_lock:
+        if camera_instance:
+            try:
+                if sys.platform == "darwin": camera_instance.release()
+                else: camera_instance.stop(); camera_instance.close()
+                camera_instance = None
+            except Exception as e: return JsonResponse({"status": "error", "message": str(e)}, status=500)
+    return JsonResponse({"status": "success", "message": "Camera rilasciata."})
+        
 @csrf_exempt
 @require_GET
 def get_world_coordinates(request):
     data = get_world_coordinates_data()
-    status_code = 200 if data.get("status") == "success" else 400
-    return JsonResponse(data, status=status_code)
+    return JsonResponse(data, status=200 if data.get("status") == "success" else 400)
 
 @csrf_exempt
 @require_GET
@@ -384,12 +455,10 @@ def get_keypoints(request):
 def compute_route(request):
     try:
         response = get_world_coordinates_data()
-        if response.get("status") != "success":
-            return JsonResponse(response, status=400)
+        if response.get("status") != "success": return JsonResponse(response, status=400)
         
         nodi, grid_dims = generate_adaptive_grid_from_cluster(response.get("coordinates", []), config=config)
-        if not nodi:
-             return JsonResponse({"status": "error", "message": "Impossibile calcolare griglia adattiva."}, status=500)
+        if not nodi: return JsonResponse({"status": "error", "message": "Impossibile calcolare griglia."}, status=500)
 
         path_indices = generate_serpentine_path(nodi, grid_dims)
         path_nodes = [nodi[i] for i in path_indices]
@@ -402,10 +471,8 @@ def compute_route(request):
             motor_commands.append({"extruder": round(pos[0] - last_pos[0], 4), "conveyor": round(pos[1] - last_pos[1], 4)})
             last_pos = pos
 
-        # Creazione Plot
         plt.figure(figsize=(8, 6))
-        graph = nx.Graph()
-        pos = {i: node for i, node in enumerate(nodi)}
+        graph, pos = nx.Graph(), {i: node for i, node in enumerate(nodi)}
         graph.add_nodes_from(pos.keys())
         nx.draw_networkx_nodes(graph, pos, node_color='skyblue', node_size=150)
         if len(path_indices) > 1:
@@ -415,17 +482,49 @@ def compute_route(request):
         plt.axis('equal'); plt.gca().invert_yaxis()
         buf = BytesIO()
         plt.savefig(buf, format='png', bbox_inches='tight'); plt.close()
-        img_base64 = base64.b64encode(buf.getvalue()).decode('utf-8')
-
+        
         return JsonResponse({
             "status": "success", "message": f"Percorso per griglia {grid_dims} calcolato.",
             "grid_dimensions": grid_dims, "route_indices": path_indices,
-            "motor_commands": motor_commands, "plot_graph_base64": img_base64
+            "motor_commands": motor_commands, "plot_graph_base64": base64.b64encode(buf.getvalue()).decode('utf-8')
         })
-
     except Exception as e:
         traceback.print_exc()
         return JsonResponse({"status": "error", "message": f"Errore interno: {e}"}, status=500)
+
+@csrf_exempt
+@require_GET
+def plot_graph(request):
+    try:
+        response = get_world_coordinates_data()
+        if response.get("status") != "success":
+            return HttpResponse(f"Errore: {response.get('message')}", status=400)
+
+        nodi, grid_dims = generate_adaptive_grid_from_cluster(response.get("coordinates", []), config=config)
+        if not nodi:
+            return HttpResponse("Errore: Impossibile calcolare griglia.", status=500)
+
+        path_indices = generate_serpentine_path(nodi, grid_dims)
+
+        plt.figure(figsize=(8, 6))
+        graph, pos = nx.Graph(), {i: node for i, node in enumerate(nodi)}
+        graph.add_nodes_from(pos.keys())
+        nx.draw_networkx_nodes(graph, pos, node_color='skyblue', node_size=150)
+        
+        if len(path_indices) > 1:
+            edges = [(path_indices[i], path_indices[i+1]) for i in range(len(path_indices)-1)]
+            nx.draw_networkx_edges(graph, pos, edgelist=edges, edge_color='red', width=2)
+
+        plt.title(f"Percorso Calcolato su Griglia {grid_dims[0]}x{grid_dims[1]}")
+        plt.axis('equal'); plt.gca().invert_yaxis()
+        buf = BytesIO()
+        plt.savefig(buf, format='png', bbox_inches='tight'); plt.close()
+        buf.seek(0)
+        return HttpResponse(buf.getvalue(), content_type='image/png')
+    except Exception as e:
+        traceback.print_exc()
+        return HttpResponse(f"Errore interno: {e}", status=500)
+
 
 # --- Endpoint di Configurazione e Calibrazione ---
 @csrf_exempt
@@ -436,7 +535,7 @@ def update_camera_settings(request):
         config = load_config_data_from_file()
         config.setdefault("camera", {}).update(data)
         if save_config_data_to_file(config):
-            return JsonResponse({"status": "success", "updated_settings": camera_settings})
+            return JsonResponse({"status": "success"})
         else:
             return JsonResponse({"status": "error", "message": "Salvataggio fallito."}, status=500)
     except Exception as e:
@@ -452,7 +551,7 @@ def set_camera_origin(request):
         config["camera"]["origin_x"] = float(data.get("origin_x", 0.0))
         config["camera"]["origin_y"] = float(data.get("origin_y", 0.0))
         if save_config_data_to_file(config):
-            return JsonResponse({"status": "success", "origin": {"x": data.get("origin_x"), "y": data.get("origin_y")}})
+            return JsonResponse({"status": "success"})
         else:
             return JsonResponse({"status": "error", "message": "Salvataggio origine fallito."}, status=500)
     except Exception as e:
@@ -479,10 +578,10 @@ def reset_camera_calibration(request):
     try:
         config = load_config_data_from_file()
         config.setdefault("camera", {})
-        config["camera"]["calibration"] = {"camera_matrix": None, "distortion_coefficients": None}
-        config["camera"]["fixed_perspective"] = {"homography_matrix": None}
+        config["camera"]["calibration"] = None
+        config["camera"]["fixed_perspective"] = None
         if save_config_data_to_file(config):
-            return JsonResponse({"status": "success", "message": "Calibrazione e prospettiva resettate."})
+            return JsonResponse({"status": "success"})
         else:
             return JsonResponse({"status": "error", "message": "Salvataggio fallito."}, status=500)
     except Exception as e:
@@ -501,8 +600,7 @@ def calibrate_camera_endpoint(request):
     
     objpoints, imgpoints = [], []
     images = glob.glob(os.path.join(CALIBRATION_MEDIA_DIR, '*.jpg'))
-    if not images:
-        return JsonResponse({"status": "error", "message": f"Nessuna immagine trovata in {CALIBRATION_MEDIA_DIR}."}, status=400)
+    if not images: return JsonResponse({"status": "error", "message": "Nessuna immagine trovata."}, status=400)
     
     gray_shape = None
     for fname in images:
@@ -513,21 +611,17 @@ def calibrate_camera_endpoint(request):
         ret, corners = cv2.findChessboardCorners(gray, chessboard_dim, None)
         if ret:
             objpoints.append(objp)
-            corners2 = cv2.cornerSubPix(gray, corners, (11,11), (-1,-1), (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 30, 0.001))
+            corners2 = cv2.cornerSubPix(gray, corners, (11,11), (-1,-1), (cv2.TERM_CRITERIA_EPS+cv2.TERM_CRITERIA_MAX_ITER,30,0.001))
             imgpoints.append(corners2)
     
-    if not objpoints:
-        return JsonResponse({"status": "error", "message": "Nessun pattern scacchiera trovato nelle immagini."}, status=400)
+    if not objpoints: return JsonResponse({"status": "error", "message": "Nessun pattern trovato."}, status=400)
 
     ret, mtx, dist, rvecs, tvecs = cv2.calibrateCamera(objpoints, imgpoints, gray_shape, None, None)
-    if not ret:
-        return JsonResponse({"status": "error", "message": "Calibrazione fallita."}, status=500)
+    if not ret: return JsonResponse({"status": "error", "message": "Calibrazione fallita."}, status=500)
 
-    config.setdefault("camera", {})["calibration"] = {
-        "camera_matrix": mtx.tolist(), "distortion_coefficients": dist.tolist()
-    }
+    config.setdefault("camera", {})["calibration"] = {"camera_matrix": mtx.tolist(), "distortion_coefficients": dist.tolist()}
     if save_config_data_to_file(config):
-        return JsonResponse({"status": "success", "message": "Calibrazione completata e salvata."})
+        return JsonResponse({"status": "success"})
     else:
         return JsonResponse({"status": "error", "message": "Salvataggio calibrazione fallito."}, status=500)
 
@@ -538,9 +632,7 @@ def set_fixed_perspective_view(request):
     if not (cam_calib and "camera_matrix" in cam_calib and "distortion_coefficients" in cam_calib):
         return JsonResponse({"status": "error", "message": "Calibrazione non trovata."}, status=400)
     
-    mtx = np.array(cam_calib["camera_matrix"], dtype=np.float32)
-    dist = np.array(cam_calib["distortion_coefficients"], dtype=np.float32)
-    
+    mtx, dist = np.array(cam_calib["camera_matrix"]), np.array(cam_calib["distortion_coefficients"])
     frame = get_frame()
     if frame.size == 0: return JsonResponse({"status": "error", "message": "Frame non valido."}, status=500)
     
@@ -551,17 +643,15 @@ def set_fixed_perspective_view(request):
     calib_settings = camera_settings.get("calibration_settings", {})
     H, dims = get_board_and_canonical_homography_for_django(undistorted, new_mtx, calib_settings)
     
-    if H is None:
-        return JsonResponse({"status": "error", "message": "Pattern scacchiera non rilevato."}, status=400)
+    if H is None: return JsonResponse({"status": "error", "message": "Pattern scacchiera non rilevato."}, status=400)
     
     out_w = camera_settings.get("fixed_perspective", {}).get("output_width", 1000)
     out_h = camera_settings.get("fixed_perspective", {}).get("output_height", 800)
     offset_x = max(0, (out_w - dims[0]) / 2.0)
     offset_y = max(0, (out_h - dims[1]) / 2.0)
-    M_translate = np.float32([[1, 0, offset_x], [0, 1, offset_y], [0, 0, 1]])
-    H_final = M_translate @ H
+    H_final = np.float32([[1,0,offset_x],[0,1,offset_y],[0,0,1]]) @ H
     
     if save_fixed_perspective_homography_to_config(H_final):
-        return JsonResponse({"status": "success", "message": "Vista prospettica impostata e salvata."})
+        return JsonResponse({"status": "success"})
     else:
-        return JsonResponse({"status": "error", "message": "Salvataggio vista prospettica fallito."}, status=500)
+        return JsonResponse({"status": "error", "message": "Salvataggio vista fallito."}, status=500)
