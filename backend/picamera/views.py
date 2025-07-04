@@ -229,15 +229,12 @@ def get_world_coordinates_data():
     world_coords = cv2.perspectiveTransform(img_pts_undistorted, H_fixed).reshape(-1, 2).tolist() if img_pts_undistorted.size > 0 else []
     return {"status": "success", "coordinates": world_coords}
 
-# SOSTITUISCI LA VECCHIA FUNZIONE CON QUESTA NUOVA VERSIONE
 def generate_adaptive_grid_from_cluster(points, config=None):
-    """
-    Versione Riscostruita e Corretta:
-    Costruisce una griglia geometricamente perfetta usando la spaziatura e l'angolo
-    rilevati, garantendo che la distanza tra i punti sia sempre quella specificata.
-    """
     if config is None: config = camera_settings
     spacing = config.get("calibration_settings", {}).get("point_spacing_mm", 50.0)
+    
+    MAX_COLS = 6
+    MAX_ROWS = 8
     
     if len(points) < 3: return None, None
     
@@ -250,41 +247,59 @@ def generate_adaptive_grid_from_cluster(points, config=None):
     main_cluster_points = points_np[labels == unique[np.argmax(counts)]]
     if len(main_cluster_points) < 3: return None, None
 
-    # 1. Ottieni il rettangolo di contorno per avere dimensioni e angolo
+    # 1. Ottieni il rettangolo di contorno
     rect = cv2.minAreaRect(main_cluster_points)
-    (center, (width, height), angle_deg) = rect
-    
-    # Assicura che la larghezza sia la dimensione maggiore per coerenza
-    if width < height:
-        width, height = height, width
-        angle_deg += 90
 
-    # 2. Calcola le dimensioni della griglia (questa logica è corretta)
-    num_cols = int(round(width / spacing)) + 1
-    num_rows = int(round(height / spacing)) + 1
-    grid_dims = (num_cols, num_rows)
-    print(f"[INFO] Griglia adattiva calcolata: {grid_dims[0]}x{grid_dims[1]}")
-
-    # 3. Trova l'origine della griglia in modo robusto
+    # 2. Ottieni i 4 angoli del rettangolo
     box = cv2.boxPoints(rect)
-    # Ruota virtualmente i 4 angoli del box per trovare quello in alto a sinistra
-    angle_rad_rot = np.deg2rad(angle_deg)
-    c, s = np.cos(angle_rad_rot), np.sin(angle_rad_rot)
-    rotation_matrix = np.array([[c, s], [-s, c]]) # Matrice per ruotare "indietro"
-    rotated_box_points = np.dot(box - center, rotation_matrix) + center
-    # L'origine è l'angolo del box con le coordinate x e y minimi nel sistema ruotato
-    origin_point = box[np.argmin(rotated_box_points[:, 0] + rotated_box_points[:, 1])]
+    
+    # Ordina i punti per avere un riferimento stabile (top-left, top-right, bottom-right, bottom-left)
+    # Questa è una convenzione, l'importante è essere consistenti
+    s = box.sum(axis=1)
+    diff = np.diff(box, axis=1)
+    ordered_box = np.zeros((4, 2), dtype=np.float32)
+    ordered_box[0] = box[np.argmin(s)] # Top-left
+    ordered_box[2] = box[np.argmax(s)] # Bottom-right
+    ordered_box[1] = box[np.argmin(diff)] # Top-right
+    ordered_box[3] = box[np.argmax(diff)] # Bottom-left
+    
+    # 3. Determina i due vettori dei lati e le loro lunghezze
+    side_vec_1 = ordered_box[1] - ordered_box[0]  # Vettore da top-left a top-right
+    side_vec_2 = ordered_box[3] - ordered_box[0]  # Vettore da top-left a bottom-left
+    
+    len_side_1 = np.linalg.norm(side_vec_1)
+    len_side_2 = np.linalg.norm(side_vec_2)
 
-    # 4. Calcola i vettori di spostamento CORRETTI usando la trigonometria
-    # La distanza è sempre `spacing`, l'orientamento è dato dall'angolo del rettangolo.
-    angle_rad = np.deg2rad(angle_deg)
-    col_vector = np.array([np.cos(angle_rad), np.sin(angle_rad)]) * spacing
-    row_vector = np.array([-np.sin(angle_rad), np.cos(angle_rad)]) * spacing # Vettore perpendicolare
+    # 4. Assegna colonne e righe e calcola le dimensioni rispettando i vincoli
+    if len_side_1 < len_side_2:
+        # side1 è il lato corto -> Colonne
+        # side2 è il lato lungo -> Righe
+        num_cols = min(int(round(len_side_1 / spacing)) + 1, MAX_COLS)
+        num_rows = min(int(round(len_side_2 / spacing)) + 1, MAX_ROWS)
+        # I vettori unitari mantengono la direzione originale
+        col_unit_vector = side_vec_1 / len_side_1
+        row_unit_vector = side_vec_2 / len_side_2
+    else:
+        # side2 è il lato corto -> Colonne
+        # side1 è il lato lungo -> Righe
+        num_cols = min(int(round(len_side_2 / spacing)) + 1, MAX_COLS)
+        num_rows = min(int(round(len_side_1 / spacing)) + 1, MAX_ROWS)
+        # I vettori unitari mantengono la direzione originale
+        col_unit_vector = side_vec_2 / len_side_2
+        row_unit_vector = side_vec_1 / len_side_1
+        
+    grid_dims = (num_cols, num_rows)
+    print(f"[INFO] Griglia finale calcolata: {grid_dims[0]}x{grid_dims[1]}")
 
-    # 5. Genera la griglia finale partendo dall'origine e usando i vettori corretti
+    # 5. Costruisci la griglia usando i vettori scalati per la spaziatura corretta
+    origin_point = ordered_box[0]
+    col_vector = col_unit_vector * spacing
+    row_vector = row_unit_vector * spacing
+
     final_grid = []
-    for i in range(num_cols):      # <-- Ciclo delle colonne all'esterno
-        for j in range(num_rows):  # <-- Ciclo delle righe all'interno
+    # Genera per riga, come era corretto in origine
+    for j in range(num_rows):
+        for i in range(num_cols):
             point = origin_point + i * col_vector + j * row_vector
             final_grid.append(tuple(point))
             
