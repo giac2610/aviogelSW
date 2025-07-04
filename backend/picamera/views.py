@@ -229,7 +229,13 @@ def get_world_coordinates_data():
     world_coords = cv2.perspectiveTransform(img_pts_undistorted, H_fixed).reshape(-1, 2).tolist() if img_pts_undistorted.size > 0 else []
     return {"status": "success", "coordinates": world_coords}
 
+# SOSTITUISCI LA VECCHIA FUNZIONE CON QUESTA NUOVA VERSIONE
 def generate_adaptive_grid_from_cluster(points, config=None):
+    """
+    Versione Riscostruita e Corretta:
+    Costruisce una griglia geometricamente perfetta usando la spaziatura e l'angolo
+    rilevati, garantendo che la distanza tra i punti sia sempre quella specificata.
+    """
     if config is None: config = camera_settings
     spacing = config.get("calibration_settings", {}).get("point_spacing_mm", 50.0)
     
@@ -244,26 +250,45 @@ def generate_adaptive_grid_from_cluster(points, config=None):
     main_cluster_points = points_np[labels == unique[np.argmax(counts)]]
     if len(main_cluster_points) < 3: return None, None
 
+    # 1. Ottieni il rettangolo di contorno per avere dimensioni e angolo
     rect = cv2.minAreaRect(main_cluster_points)
-    (center, (width, height), angle) = rect
-    if width < height: width, height = height, width
+    (center, (width, height), angle_deg) = rect
+    
+    # Assicura che la larghezza sia la dimensione maggiore per coerenza
+    if width < height:
+        width, height = height, width
+        angle_deg += 90
 
+    # 2. Calcola le dimensioni della griglia (questa logica è corretta)
     num_cols = int(round(width / spacing)) + 1
     num_rows = int(round(height / spacing)) + 1
     grid_dims = (num_cols, num_rows)
     print(f"[INFO] Griglia adattiva calcolata: {grid_dims[0]}x{grid_dims[1]}")
 
+    # 3. Trova l'origine della griglia in modo robusto
     box = cv2.boxPoints(rect)
-    box = sorted(box, key=lambda p: p[1])
-    top_points = sorted(box[:2], key=lambda p: p[0])
-    origin_point = top_points[0]
-    
-    col_div = (num_cols - 1) if num_cols > 1 else 1
-    row_div = (num_rows - 1) if num_rows > 1 else 1
-    col_vector = (top_points[1] - origin_point) / col_div
-    row_vector = (sorted(box[2:], key=lambda p: p[0])[0] - origin_point) / row_div
-    
-    final_grid = [tuple(origin_point + i * col_vector + j * row_vector) for i in range(num_cols) for j in range(num_rows)]
+    # Ruota virtualmente i 4 angoli del box per trovare quello in alto a sinistra
+    angle_rad_rot = np.deg2rad(angle_deg)
+    c, s = np.cos(angle_rad_rot), np.sin(angle_rad_rot)
+    rotation_matrix = np.array([[c, s], [-s, c]]) # Matrice per ruotare "indietro"
+    rotated_box_points = np.dot(box - center, rotation_matrix) + center
+    # L'origine è l'angolo del box con le coordinate x e y minimi nel sistema ruotato
+    origin_point = box[np.argmin(rotated_box_points[:, 0] + rotated_box_points[:, 1])]
+
+    # 4. Calcola i vettori di spostamento CORRETTI usando la trigonometria
+    # La distanza è sempre `spacing`, l'orientamento è dato dall'angolo del rettangolo.
+    angle_rad = np.deg2rad(angle_deg)
+    col_vector = np.array([np.cos(angle_rad), np.sin(angle_rad)]) * spacing
+    row_vector = np.array([-np.sin(angle_rad), np.cos(angle_rad)]) * spacing # Vettore perpendicolare
+
+    # 5. Genera la griglia finale partendo dall'origine e usando i vettori corretti
+    final_grid = []
+    for j in range(num_rows):
+        for i in range(num_cols):
+            # La griglia viene costruita riga per riga
+            point = origin_point + i * col_vector + j * row_vector
+            final_grid.append(tuple(point))
+            
     return final_grid, grid_dims
 
 def generate_serpentine_path(nodes, grid_dims):
@@ -490,7 +515,7 @@ def compute_route(request):
             # Calcola i valori
             extruder_val = pos[0] - last_pos[0]
             conveyor_val = pos[1] - last_pos[1]
-        
+
             # SOLUZIONE: Arrotonda E POI converti a float standard
             motor_commands.append({
                 "extruder": float(round(extruder_val, 4)),
