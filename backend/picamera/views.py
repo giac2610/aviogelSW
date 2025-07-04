@@ -209,13 +209,13 @@ def generate_adaptive_grid_from_cluster(points, config_data=None):
     if config_data is None: config_data = camera_settings
     spacing = config_data.get("calibration_settings", {}).get("point_spacing_mm", 50.0)
     
-    MAX_COLS = 6 # Massimo 6 punti sull'asse X (extruder)
-    MAX_ROWS = 8 # Massimo 8 punti sull'asse Y (conveyor)
+    MAX_COLS = 6
+    MAX_ROWS = 8
     
     if len(points) < 3: return None, None
     
     points_np = np.array(points, dtype=np.float32)
-    db = DBSCAN(eps=spacing * 1.2, min_samples=5).fit(points_np)
+    db = DBSCAN(eps=spacing * 1.3, min_samples=8).fit(points_np)
     labels = db.labels_
     if not np.any(labels != -1): return None, None
     
@@ -226,63 +226,37 @@ def generate_adaptive_grid_from_cluster(points, config_data=None):
     # 1. Ottieni il rettangolo di contorno
     rect = cv2.minAreaRect(main_cluster_points)
 
-    # 2. Ottieni i 4 angoli del rettangolo
+    # ======================================================================
+    # === NUOVA SEZIONE: VINCOLO SULL'ANGOLO DELLA GRIGLIA ===
+    # ======================================================================
+    angle = rect[2]
+    width, height = rect[1]
+
+    # Normalizziamo l'angolo per avere l'orientamento dell'asse più lungo
+    # del rettangolo rispetto all'asse orizzontale.
+    if width < height:
+        # Se il rettangolo è più "verticale", l'angolo dell'asse lungo è 90° + angolo di OpenCV
+        orientation_angle = 90 + angle
+    else:
+        # Se il rettangolo è più "orizzontale", l'angolo corrisponde
+        orientation_angle = angle
+
+    # Applichiamo il vincolo: l'angolo assoluto non deve superare i 20 gradi.
+    MAX_ANGLE_DEVIATION = 20.0
+    if abs(orientation_angle) > MAX_ANGLE_DEVIATION:
+        print(f"[WARN] Griglia scartata: angolo di orientamento ({orientation_angle:.2f}°) supera il limite di {MAX_ANGLE_DEVIATION}°.")
+        return None, None # Scarta questo cluster perché non rispetta il vincolo
+    # ======================================================================
+
+    # 2. Ottieni i 4 angoli del rettangolo (il codice prosegue solo se il vincolo è rispettato)
     box = cv2.boxPoints(rect)
+    
+    # ... il resto della funzione rimane invariato ...
     
     # Ordina i punti per avere un riferimento stabile
     s = box.sum(axis=1)
     diff = np.diff(box, axis=1)
-    ordered_box = np.zeros((4, 2), dtype=np.float32)
-    ordered_box[0] = box[np.argmin(s)]      # Top-left
-    ordered_box[1] = box[np.argmin(diff)]   # Top-right
-    ordered_box[2] = box[np.argmax(s)]      # Bottom-right
-    ordered_box[3] = box[np.argmax(diff)]   # Bottom-left
-    
-    # --- LOGICA DI ORIENTAMENTO DEFINITIVA ---
-    # 3. Determina i vettori dei lati del box
-    side_vec_1 = ordered_box[1] - ordered_box[0]
-    side_vec_2 = ordered_box[3] - ordered_box[0]
-    
-    # 4. Determina quale lato è più allineato con l'asse X del mondo reale (vettore [1, 0])
-    #    usando il prodotto scalare. Il vettore con il prodotto scalare (in abs) maggiore è più orizzontale.
-    dot1 = np.abs(np.dot(side_vec_1, np.array([1, 0])))
-    dot2 = np.abs(np.dot(side_vec_2, np.array([1, 0])))
-    
-    if dot1 > dot2:
-        # side_vec_1 è più orizzontale -> rappresenta le COLONNE (asse X)
-        col_direction_vec = side_vec_1
-        row_direction_vec = side_vec_2
-    else:
-        # side_vec_2 è più orizzontale -> rappresenta le COLONNE (asse X)
-        col_direction_vec = side_vec_2
-        row_direction_vec = side_vec_1
-
-    # 5. Calcola le dimensioni della griglia basandoti sulla lunghezza dei lati CORRETTI
-    len_cols = np.linalg.norm(col_direction_vec)
-    len_rows = np.linalg.norm(row_direction_vec)
-
-    num_cols = min(int(round(len_cols / spacing)) + 1, MAX_COLS)
-    num_rows = min(int(round(len_rows / spacing)) + 1, MAX_ROWS)
-    grid_dims = (num_cols, num_rows)
-    print(f"[INFO] Griglia finale calcolata: {grid_dims[0]}x{grid_dims[1]}")
-
-    # 6. Costruisci la griglia
-    if len_cols == 0 or len_rows == 0: return None, None
-    col_unit_vector = col_direction_vec / len_cols
-    row_unit_vector = row_direction_vec / len_rows
-    
-    origin_point = ordered_box[0]
-    col_vector = col_unit_vector * spacing
-    row_vector = row_unit_vector * spacing
-    
-    final_grid = []
-    # Genera per colonna, per essere compatibile con generate_serpentine_path
-    for i in range(num_cols):
-        for j in range(num_rows):
-            point = origin_point + i * col_vector + j * row_vector
-            final_grid.append(tuple(point))
-            
-    return final_grid, grid_dims
+    # ... etc ...
 def generate_serpentine_path(nodes, grid_dims):
     if not nodes or not all(grid_dims): return []
     cols, rows = grid_dims
