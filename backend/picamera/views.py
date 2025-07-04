@@ -27,40 +27,31 @@ import requests #type: ignore
 from sklearn.cluster import DBSCAN
 
 # ==============================================================================
-# CONFIGURAZIONE FILE E AVVIO
+# CONFIGURAZIONE E VARIABILI GLOBALI
 # ==============================================================================
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CONFIG_DIR = os.path.join(BASE_DIR, 'config')
 SETUP_JSON_PATH = os.path.join(CONFIG_DIR, 'setup.json')
-EXAMPLE_JSON_PATH = os.path.join(CONFIG_DIR, 'setup.example.json')
 CALIBRATION_MEDIA_DIR = os.path.join(BASE_DIR, 'calibrationMedia')
 os.makedirs(CALIBRATION_MEDIA_DIR, exist_ok=True)
-
-if not os.path.exists(SETUP_JSON_PATH):
-    from shutil import copyfile
-    os.makedirs(CONFIG_DIR, exist_ok=True)
-    if os.path.exists(EXAMPLE_JSON_PATH):
-        copyfile(EXAMPLE_JSON_PATH, SETUP_JSON_PATH)
-        print(f"[INFO] File di configurazione creato da {EXAMPLE_JSON_PATH}")
-    else:
-        default_config_content = {
-            "camera": {
-                "capture_width": 640,
-                "capture_height": 480,
-                "calibration_settings": {
-                    "point_spacing_mm": 25.0
-                }
-            }
-        }
-        with open(SETUP_JSON_PATH, 'w') as f_default:
-            json.dump(default_config_content, f_default, indent=4)
-        print(f"[INFO] File di configurazione minimale creato in {SETUP_JSON_PATH}.")
 
 # --- Caricamento Configurazione Globale ---
 config = {}
 camera_settings = {}
 
+def save_config_data_to_file(data):
+    """Salva il dizionario di configurazione e ricarica le variabili globali."""
+    try:
+        with open(SETUP_JSON_PATH, 'w') as f:
+            json.dump(data, f, indent=4)
+        _load_global_config_from_file() # Ricarica subito le modifiche
+        return True
+    except Exception as e:
+        print(f"Errore salvataggio {SETUP_JSON_PATH}: {e}")
+        return False
+
 def _load_global_config_from_file():
+    """Carica la configurazione da file o crea un default se non esiste."""
     global config, camera_settings
     try:
         with open(SETUP_JSON_PATH, 'r') as f:
@@ -68,10 +59,16 @@ def _load_global_config_from_file():
         camera_settings = config.get("camera", {})
         camera_settings.setdefault("picamera_config", {}).setdefault("main", {}).setdefault("size", [640, 480])
         print("[INFO] Configurazione globale caricata.")
-    except Exception as e:
-        print(f"Errore critico nel caricamento di setup.json: {e}. Ritorno a configurazione vuota.")
-        config = {"camera": {"picamera_config": {"main": {"size": [640, 480]}}}}
+    except (FileNotFoundError, json.JSONDecodeError) as e:
+        print(f"[WARN] setup.json non trovato o malformato ({e}). Creo configurazione di default.")
+        config = {
+            "camera": {
+                "picamera_config": {"main": {"size": [640, 480]}},
+                "calibration_settings": {"point_spacing_mm": 50.0}
+            }
+        }
         camera_settings = config["camera"]
+        save_config_data_to_file(config)
 
 _load_global_config_from_file()
 
@@ -90,10 +87,8 @@ def _initialize_camera_internally():
         try:
             if hasattr(camera_instance, 'release'): camera_instance.release()
             elif hasattr(camera_instance, 'stop'): camera_instance.stop(); camera_instance.close()
-        except Exception as e:
-            print(f"[WARN] Errore nel rilascio della camera precedente: {e}")
-        camera_instance = None
-
+        except Exception: pass
+    
     cfg = camera_settings
     size = cfg.get("picamera_config", {}).get("main", {}).get("size", [640, 480])
     width, height = size
@@ -101,12 +96,10 @@ def _initialize_camera_internally():
     try:
         if sys.platform == "darwin":
             mac_cam = cv2.VideoCapture(cfg.get("mac_camera_index", 0))
-            if not mac_cam.isOpened():
-                raise IOError("Nessuna webcam disponibile o in uso su macOS.")
+            if not mac_cam.isOpened(): raise IOError("Webcam non trovata.")
             mac_cam.set(cv2.CAP_PROP_FRAME_WIDTH, width)
             mac_cam.set(cv2.CAP_PROP_FRAME_HEIGHT, height)
             camera_instance = mac_cam
-            print("[INFO] Camera macOS inizializzata.")
         else:
             from picamera2 import Picamera2
             picam2 = Picamera2()
@@ -114,23 +107,22 @@ def _initialize_camera_internally():
             picam2.configure(config)
             picam2.start()
             camera_instance = picam2
-            print("[INFO] Picamera2 inizializzata.")
+        print("[INFO] Camera inizializzata.")
     except Exception as e:
         print(f"[ERROR] Inizializzazione camera fallita: {e}")
         camera_instance = None
     return camera_instance
 
-def get_frame(release_after=False):
-    global camera_instance  # <-- LA CORREZIONE È QUESTA RIGA
+def get_frame():
+    global camera_instance
     with camera_lock:
         if camera_instance is None and _initialize_camera_internally() is None:
             size = camera_settings.get("picamera_config", {}).get("main", {}).get("size", [480, 640])
             return np.zeros((size[1], size[0], 3), dtype=np.uint8)
-        
         try:
             if sys.platform == "darwin":
                 ret, frame = camera_instance.read()
-                if not ret: raise IOError("Lettura frame fallita da camera macOS.")
+                if not ret: raise IOError("Lettura frame fallita.")
             else:
                 frame = camera_instance.capture_array()
             return frame
@@ -145,32 +137,41 @@ def get_frame(release_after=False):
             size = camera_settings.get("picamera_config", {}).get("main", {}).get("size", [480, 640])
             return np.zeros((size[1], size[0], 3), dtype=np.uint8)
 
-# --- Utility di Configurazione ---
-def load_config_data_from_file():
-    try:
-        with open(SETUP_JSON_PATH, 'r') as f: return json.load(f)
-    except Exception as e: return {"camera": {}}
+# --- Funzioni Helper di Configurazione e Utilità ---
 
-def save_config_data_to_file(data):
+def load_config_data_from_file():
+    """Carica l'intero dizionario di configurazione dal file JSON."""
     try:
-        with open(SETUP_JSON_PATH, 'w') as f: json.dump(data, f, indent=4)
-        _load_global_config_from_file()
-        return True
-    except Exception as e:
-        print(f"Errore salvataggio {SETUP_JSON_PATH}: {e}")
-        return False
+        with open(SETUP_JSON_PATH, 'r') as f:
+            return json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError):
+        return {}
 
 def get_fixed_perspective_homography_from_config():
     H_list = camera_settings.get("fixed_perspective", {}).get("homography_matrix")
     return np.array(H_list, dtype=np.float32) if H_list else None
 
 def save_fixed_perspective_homography_to_config(H_matrix):
-    config = load_config_data_from_file()
-    config.setdefault("camera", {}).setdefault("fixed_perspective", {})
-    config["camera"]["fixed_perspective"]["homography_matrix"] = H_matrix.tolist() if H_matrix is not None else None
-    return save_config_data_to_file(config)
+    config_data = load_config_data_from_file()
+    config_data.setdefault("camera", {}).setdefault("fixed_perspective", {})
+    if H_matrix is not None:
+        config_data["camera"]["fixed_perspective"]["homography_matrix"] = H_matrix.tolist()
+    else:
+        config_data["camera"]["fixed_perspective"]["homography_matrix"] = None
+    return save_config_data_to_file(config_data)
 
-# --- Logica di Visione e Calcolo ---
+def get_current_motor_speeds():
+    try:
+        resp = requests.get("http://localhost:8000/motors/maxSpeeds/")
+        if resp.status_code == 200:
+            data = resp.json()
+            if data.get("status") == "success":
+                return data["speeds"]
+    except Exception as e:
+        print(f"Errore richiesta velocità motori: {e}")
+    return {"extruder": 4.0, "conveyor": 1.0}
+
+# --- Funzioni di Visione e Calcolo ---
 def detect_blobs_from_params(binary_image, params, scale_x=1.0, scale_y=1.0):
     cv2_params = cv2.SimpleBlobDetector_Params()
     area_scale = scale_x * scale_y
@@ -229,11 +230,10 @@ def get_world_coordinates_data():
     return {"status": "success", "coordinates": world_coords}
 
 def generate_adaptive_grid_from_cluster(points, config=None):
-    if config is None: 
-        config = camera_settings
+    if config is None: config = camera_settings
     spacing = config.get("calibration_settings", {}).get("point_spacing_mm", 50.0)
-    if len(points) < 3: 
-        return None, None
+    
+    if len(points) < 3: return None, None
     
     points_np = np.array(points, dtype=np.float32)
     db = DBSCAN(eps=spacing * 1.5, min_samples=2).fit(points_np)
@@ -303,6 +303,29 @@ def get_board_and_canonical_homography_for_django(undistorted_frame, new_camera_
     H = cv2.getPerspectiveTransform(img_board_pts, canonical_pts)
     return H, (w, h)
 
+
+def _calculate_common_route_data():
+    """
+    Funzione interna che esegue tutti i calcoli pesanti comuni
+    a 'compute_route' e 'plot_graph'.
+    """
+    response = get_world_coordinates_data()
+    if response.get("status") != "success":
+        return None, None, None, response
+
+    coordinates = response.get("coordinates", [])
+    if not coordinates:
+        return None, None, None, {"status": "error", "message": "Nessun punto rilevato per il calcolo."}
+        
+    nodi, grid_dims = generate_adaptive_grid_from_cluster(coordinates, config=config)
+    if not nodi:
+        return None, None, None, {"status": "error", "message": "Impossibile calcolare griglia adattiva."}
+
+    path_indices = generate_serpentine_path(nodi, grid_dims)
+    
+    return nodi, grid_dims, path_indices, {"status": "success"}
+
+
 # ==============================================================================
 # ENDPOINT API DJANGO
 # ==============================================================================
@@ -318,7 +341,6 @@ def stream_context():
         print(f"[STREAM] Stream terminato. Attivi: {active_streams}")
 
 # --- Endpoint di Controllo e Streaming ---
-
 def fixed_perspective_stream(request):
     """Funzione wrapper per mantenere la vecchia API, chiama camera_feed in modalità 'fixed'."""
     request.mode_override = 'fixed'
@@ -334,11 +356,9 @@ def camera_feed(request):
     
     def gen_frames():
         stream_cfg = camera_settings
-        H_ref = None
-        cam_matrix, dist_coeffs, new_cam_matrix_stream = None, None, None
+        H_ref, cam_matrix, dist_coeffs, new_cam_matrix_stream = None, None, None, None
         OUT_W, OUT_H = 0, 0
         
-        # Intervallo per il blob detection (es. ogni 5 frame)
         blob_detection_interval = stream_cfg.get("blob_detection_interval", 5)
         frame_count = 0
         last_keypoints_for_drawing = []
@@ -350,7 +370,7 @@ def camera_feed(request):
             fixed_persp_cfg = stream_cfg.get("fixed_perspective", {})
             OUT_W = fixed_persp_cfg.get("output_width", 1000)
             OUT_H = fixed_persp_cfg.get("output_height", 800)
-            if cam_calib and "camera_matrix" in cam_calib and "distortion_coefficients" in cam_calib:
+            if cam_calib and cam_calib.get("camera_matrix") and cam_calib.get("distortion_coefficients"):
                 cam_matrix = np.array(cam_calib["camera_matrix"], dtype=np.float32)
                 dist_coeffs = np.array(cam_calib["distortion_coefficients"], dtype=np.float32)
                 try:
@@ -392,7 +412,7 @@ def camera_feed(request):
                         display_frame = cv2.drawKeypoints(display_frame, last_keypoints_for_drawing, np.array([]), (0,0,255), cv2.DRAW_MATCHES_FLAGS_DRAW_RICH_KEYPOINTS)
                     
                     elif mode == "fixed":
-                        if H_ref is not None and new_cam_matrix_stream is not None:
+                        if H_ref is not None and new_cam_matrix_stream is not None and cam_matrix is not None and dist_coeffs is not None:
                             undistorted = cv2.undistort(frame_orig, cam_matrix, dist_coeffs, None, new_cam_matrix_stream)
                             display_frame = cv2.warpPerspective(undistorted, H_ref, (OUT_W, OUT_H))
                             if last_keypoints_for_drawing:
@@ -456,13 +476,10 @@ def get_keypoints(request):
 @require_GET
 def compute_route(request):
     try:
-        response = get_world_coordinates_data()
-        if response.get("status") != "success": return JsonResponse(response, status=400)
-        
-        nodi, grid_dims = generate_adaptive_grid_from_cluster(response.get("coordinates", []), config=config)
-        if not nodi: return JsonResponse({"status": "error", "message": "Impossibile calcolare griglia."}, status=500)
+        nodi, grid_dims, path_indices, status = _calculate_common_route_data()
+        if status.get("status") != "success":
+            return JsonResponse(status, status=400)
 
-        path_indices = generate_serpentine_path(nodi, grid_dims)
         path_nodes = [nodi[i] for i in path_indices]
         
         origin_x = camera_settings.get("origin_x", 0.0)
@@ -498,15 +515,9 @@ def compute_route(request):
 @require_GET
 def plot_graph(request):
     try:
-        response = get_world_coordinates_data()
-        if response.get("status") != "success":
-            return HttpResponse(f"Errore: {response.get('message')}", status=400)
-
-        nodi, grid_dims = generate_adaptive_grid_from_cluster(response.get("coordinates", []), config=config)
-        if not nodi:
-            return HttpResponse("Errore: Impossibile calcolare griglia.", status=500)
-
-        path_indices = generate_serpentine_path(nodi, grid_dims)
+        nodi, grid_dims, path_indices, status = _calculate_common_route_data()
+        if status.get("status") != "success":
+            return HttpResponse(f"Errore: {status.get('message')}", status=400)
 
         plt.figure(figsize=(8, 6))
         graph, pos = nx.Graph(), {i: node for i, node in enumerate(nodi)}
@@ -534,9 +545,9 @@ def plot_graph(request):
 def update_camera_settings(request):
     try:
         data = json.loads(request.body)
-        config = load_config_data_from_file()
-        config.setdefault("camera", {}).update(data)
-        if save_config_data_to_file(config):
+        config_data = load_config_data_from_file()
+        config_data.setdefault("camera", {}).update(data)
+        if save_config_data_to_file(config_data):
             return JsonResponse({"status": "success"})
         else:
             return JsonResponse({"status": "error", "message": "Salvataggio fallito."}, status=500)
@@ -548,11 +559,11 @@ def update_camera_settings(request):
 def set_camera_origin(request):
     try:
         data = json.loads(request.body)
-        config = load_config_data_from_file()
-        config.setdefault("camera", {})
-        config["camera"]["origin_x"] = float(data.get("origin_x", 0.0))
-        config["camera"]["origin_y"] = float(data.get("origin_y", 0.0))
-        if save_config_data_to_file(config):
+        config_data = load_config_data_from_file()
+        config_data.setdefault("camera", {})
+        config_data["camera"]["origin_x"] = float(data.get("origin_x", 0.0))
+        config_data["camera"]["origin_y"] = float(data.get("origin_y", 0.0))
+        if save_config_data_to_file(config_data):
             return JsonResponse({"status": "success"})
         else:
             return JsonResponse({"status": "error", "message": "Salvataggio origine fallito."}, status=500)
@@ -578,11 +589,11 @@ def save_frame_calibration(request):
 @require_POST
 def reset_camera_calibration(request):
     try:
-        config = load_config_data_from_file()
-        config.setdefault("camera", {})
-        config["camera"]["calibration"] = None
-        config["camera"]["fixed_perspective"] = None
-        if save_config_data_to_file(config):
+        config_data = load_config_data_from_file()
+        config_data.setdefault("camera", {})
+        config_data["camera"]["calibration"] = None
+        config_data["camera"]["fixed_perspective"] = None
+        if save_config_data_to_file(config_data):
             return JsonResponse({"status": "success"})
         else:
             return JsonResponse({"status": "error", "message": "Salvataggio fallito."}, status=500)
@@ -592,8 +603,8 @@ def reset_camera_calibration(request):
 @csrf_exempt
 @require_POST
 def calibrate_camera_endpoint(request):
-    config = load_config_data_from_file()
-    calib_settings = config.get("camera", {}).get("calibration_settings", {})
+    config_data = load_config_data_from_file()
+    calib_settings = config_data.get("camera", {}).get("calibration_settings", {})
     cs_cols = calib_settings.get("chessboard_cols", 9)
     cs_rows = calib_settings.get("chessboard_rows", 7)
     chessboard_dim = (cs_cols, cs_rows)
@@ -621,8 +632,8 @@ def calibrate_camera_endpoint(request):
     ret, mtx, dist, rvecs, tvecs = cv2.calibrateCamera(objpoints, imgpoints, gray_shape, None, None)
     if not ret: return JsonResponse({"status": "error", "message": "Calibrazione fallita."}, status=500)
 
-    config.setdefault("camera", {})["calibration"] = {"camera_matrix": mtx.tolist(), "distortion_coefficients": dist.tolist()}
-    if save_config_data_to_file(config):
+    config_data.setdefault("camera", {})["calibration"] = {"camera_matrix": mtx.tolist(), "distortion_coefficients": dist.tolist()}
+    if save_config_data_to_file(config_data):
         return JsonResponse({"status": "success"})
     else:
         return JsonResponse({"status": "error", "message": "Salvataggio calibrazione fallito."}, status=500)
