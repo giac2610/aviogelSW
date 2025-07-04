@@ -283,9 +283,8 @@ def generate_adaptive_grid_from_cluster(points, config=None):
 
     # 5. Genera la griglia finale partendo dall'origine e usando i vettori corretti
     final_grid = []
-    for j in range(num_rows):
-        for i in range(num_cols):
-            # La griglia viene costruita riga per riga
+    for i in range(num_cols):      # <-- Ciclo delle colonne all'esterno
+        for j in range(num_rows):  # <-- Ciclo delle righe all'interno
             point = origin_point + i * col_vector + j * row_vector
             final_grid.append(tuple(point))
             
