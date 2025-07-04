@@ -206,23 +206,34 @@ def get_world_coordinates_data():
     return {"status": "success", "coordinates": world_coords}
 
 def generate_adaptive_grid_from_cluster(points, config_data=None):
-    if config_data is None: config_data = camera_settings
+    if config_data is None:
+        config_data = camera_settings
     spacing = config_data.get("calibration_settings", {}).get("point_spacing_mm", 50.0)
-    
+
     MAX_COLS = 6
     MAX_ROWS = 8
-    
-    if len(points) < 2: return None, None  # Permetti anche 2 punti per test
-    
+
+    if len(points) < 2:
+        return None, None  # Permetti anche 2 punti per test
+
     points_np = np.array(points, dtype=np.float32)
-    # Rendi DBSCAN più permissivo
-    db = DBSCAN(eps=spacing * 1.7, min_samples=3).fit(points_np)
+
+    # Parametri DBSCAN più permissivi
+    db = DBSCAN(eps=spacing * 2.5, min_samples=2).fit(points_np)
     labels = db.labels_
-    if not np.any(labels != -1): return None, None
-    
+    print("DBSCAN labels:", labels)
+    print("Numero punti trovati:", len(points_np))
+    print("Cluster unici:", np.unique(labels))
+
+    if not np.any(labels != -1):
+        return None, None
+
+    # Prendi il cluster più numeroso (puoi anche prendere tutti labels != -1 se vuoi)
     unique, counts = np.unique(labels[labels != -1], return_counts=True)
-    main_cluster_points = points_np[labels == unique[np.argmax(counts)]]
-    if len(main_cluster_points) < 2: return None, None
+    main_label = unique[np.argmax(counts)]
+    main_cluster_points = points_np[labels == main_label]
+    if len(main_cluster_points) < 2:
+        return None, None
 
     # 1. Ottieni il rettangolo di contorno
     rect = cv2.minAreaRect(main_cluster_points)
@@ -245,8 +256,39 @@ def generate_adaptive_grid_from_cluster(points, config_data=None):
         return None, None
     # ======================================================================
 
-    # ...resto invariato...
+    # 2. Trova bounding box e allinea i punti
+    box = cv2.boxPoints(rect)
+    box = np.array(box)
 
+    # Trova il centroide
+    centroid = np.mean(main_cluster_points, axis=0)
+
+    # Ruota i punti per allinearli all'asse principale
+    M = cv2.getRotationMatrix2D(tuple(centroid), orientation_angle, 1.0)
+    rotated = cv2.transform(main_cluster_points[None, :, :], M)[0]
+
+    # Trova i limiti della griglia
+    min_x, min_y = np.min(rotated, axis=0)
+    max_x, max_y = np.max(rotated, axis=0)
+
+    # Stima righe e colonne
+    cols = min(MAX_COLS, int(round((max_x - min_x) / spacing)) + 1)
+    rows = min(MAX_ROWS, int(round((max_y - min_y) / spacing)) + 1)
+
+    # Ricostruisci la griglia ideale
+    grid_points = []
+    for c in range(cols):
+        for r in range(rows):
+            x = min_x + c * spacing
+            y = min_y + r * spacing
+            grid_points.append([x, y])
+    grid_points = np.array(grid_points, dtype=np.float32)
+
+    # Ruota indietro la griglia
+    M_inv = cv2.getRotationMatrix2D(tuple(centroid), -orientation_angle, 1.0)
+    grid_points = cv2.transform(grid_points[None, :, :], M_inv)[0]
+
+    return grid_points.tolist(), (cols, rows)
 def generate_serpentine_path(nodes, grid_dims):
     if not nodes or not all(grid_dims): return []
     cols, rows = grid_dims
