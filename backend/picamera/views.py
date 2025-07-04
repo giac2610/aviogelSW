@@ -230,7 +230,7 @@ def get_world_coordinates_data():
 
 def generate_adaptive_grid_from_cluster(points, config=None):
     if config is None: config = camera_settings
-    spacing = config.get("calibration_settings", {}).get("point_spacing_mm")
+    spacing = config.get("calibration_settings", {}).get("point_spacing_mm", 50.0)
     if not spacing: raise ValueError("Manca 'point_spacing_mm' nella configurazione.")
     if len(points) < 3: return None, None
     
