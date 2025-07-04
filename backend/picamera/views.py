@@ -24,7 +24,8 @@ from django.http import StreamingHttpResponse, JsonResponse, HttpResponse
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_POST, require_GET
 import requests #type: ignore
-from sklearn.cluster import DBSCAN
+# Non usiamo più DBSCAN nella versione finale che rispetta la tua struttura originale
+# from sklearn.cluster import DBSCAN
 
 # ==============================================================================
 # CONFIGURAZIONE E VARIABILI GLOBALI
@@ -181,12 +182,9 @@ def get_current_frame_and_keypoints_from_config():
     processing_height_for_single_shot = int(original_height * (processing_width_for_single_shot / original_width))
     scale_x = original_width / processing_width_for_single_shot
     scale_y = original_height / processing_height_for_single_shot
-
     resized_gray = cv2.resize(gray, (processing_width_for_single_shot, processing_height_for_single_shot), interpolation=cv2.INTER_AREA)
-
     _, thresh = cv2.threshold(resized_gray, camera_settings.get("minThreshold", 127), camera_settings.get("maxThreshold", 255), cv2.THRESH_BINARY)
     keypoints_resized = detect_blobs_from_params(thresh, camera_settings, scale_x, scale_y)
-    
     keypoints_original_coords = [cv2.KeyPoint(kp.pt[0] * scale_x, kp.pt[1] * scale_y, kp.size * ((scale_x + scale_y) / 2)) for kp in keypoints_resized]
     return frame, keypoints_original_coords
 
@@ -197,23 +195,18 @@ def get_board_and_canonical_homography_for_django(undistorted_frame, new_camera_
     chessboard_dim_cv = (cs_cols, cs_rows)
     objp_cv = np.zeros((cs_cols * cs_rows, 3), np.float32)
     objp_cv[:,:2] = np.mgrid[0:cs_cols, 0:cs_rows].T.reshape(-1, 2) * sq_size
-    
     criteria_cv = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 30, 0.001)
     gray = cv2.cvtColor(undistorted_frame, cv2.COLOR_BGR2GRAY)
     ret, corners = cv2.findChessboardCorners(gray, chessboard_dim_cv, None)
     if not ret: return None, None
-
     corners2 = cv2.cornerSubPix(gray, corners, (11, 11), (-1, -1), criteria_cv)
     success, rvec, tvec = cv2.solvePnP(objp_cv, corners2, new_camera_matrix_cv, None, flags=cv2.SOLVEPNP_ITERATIVE)
     if not success: return None, None
-    
     obj_board_perimeter_pts = np.float32([[0,0,0], [(cs_cols-1)*sq_size, 0, 0], [(cs_cols-1)*sq_size, (cs_rows-1)*sq_size, 0], [0, (cs_rows-1)*sq_size, 0]])
     img_board_perimeter_pts, _ = cv2.projectPoints(obj_board_perimeter_pts, rvec, tvec, new_camera_matrix_cv, None)
     img_board_perimeter_pts = img_board_perimeter_pts.reshape(-1, 2)
-    
     w, h = int(round((cs_cols-1) * sq_size)), int(round((cs_rows-1) * sq_size))
     canonical_dst_pts = np.float32([[0,0], [w-1,0], [w-1,h-1], [0,h-1]])
-    
     H_canonical = cv2.getPerspectiveTransform(img_board_perimeter_pts, canonical_dst_pts)
     return H_canonical, (w, h)
 
@@ -232,124 +225,50 @@ def get_world_coordinates_data():
     cam_calib_wc = camera_settings.get("calibration", None)
     if not (cam_calib_wc and cam_calib_wc.get("camera_matrix") and cam_calib_wc.get("distortion_coefficients")):
         return {"status": "error", "message": "Dati di calibrazione mancanti."}
-
     cam_matrix = np.array(cam_calib_wc["camera_matrix"], dtype=np.float32)
     dist_coeffs = np.array(cam_calib_wc["distortion_coefficients"], dtype=np.float32)
     frame, keypoints = get_current_frame_and_keypoints_from_config()
     if not keypoints: return {"status": "success", "coordinates": []}
-
     img_pts = np.array([kp.pt for kp in keypoints], dtype=np.float32).reshape(-1,1,2)
     h, w = frame.shape[:2]
     new_cam_matrix, _ = cv2.getOptimalNewCameraMatrix(cam_matrix, dist_coeffs, (w,h), 1.0, (w,h))
     img_pts_undistorted = cv2.undistortPoints(img_pts, cam_matrix, dist_coeffs, P=new_cam_matrix)
     if img_pts_undistorted is None: return {"status": "error", "message": "Undistortion fallita."}
-
     world_coords = cv2.perspectiveTransform(img_pts_undistorted, H_fixed_ref).reshape(-1, 2).tolist() if img_pts_undistorted.size > 0 else []
     return {"status": "success", "coordinates": world_coords}
 
-def construct_graph(nodi):
+def construct_graph(nodi, velocita_x=4.0, velocita_y=1.0):
     G = nx.Graph()
     for i, pos in enumerate(nodi):
         G.add_node(i, pos=pos)
-    # Nota: Non creiamo archi qui, il grafo serve solo per la visualizzazione dei nodi
+    for i in range(len(nodi)):
+        for j in range(i + 1, len(nodi)):
+            dx = nodi[i][0] - nodi[j][0]
+            dy = nodi[i][1] - nodi[j][1]
+            tempo = max(abs(dx) / velocita_x, abs(dy) / velocita_y)
+            G.add_edge(i, j, weight=round(tempo, 4))
     return G
 
-# === LOGICA DI CALCOLO DEL PERCORSO AGGIORNATA ===
-def get_graph_and_path_data():
-    """
-    Nuova funzione centrale che usa la logica di clustering e serpentina.
-    Sostituisce la vecchia logica TSP.
-    """
+def get_graph_and_tsp_path(velocita_x=4.0, velocita_y=1.0):
     response = get_world_coordinates_data()
-    if response.get("status") != "success":
-        return None, None, None, response
-
+    if response.get("status") != "success": return None, None, response
     coordinates = response.get("coordinates", [])
-    if not coordinates:
-        return None, None, None, {"status": "error", "message": "Nessun punto rilevato."}
-    
-    # 1. Clustering e generazione della griglia
-    nodi, grid_dims = generate_adaptive_grid_from_cluster(coordinates)
-    if not nodi:
-        return None, None, None, {"status": "error", "message": "Impossibile calcolare griglia adattiva."}
+    origin_x = camera_settings.get("origin_x", 0.0)
+    filtered_coords = [coord for coord in coordinates if 0 <= (coord[0] - origin_x) <= 250]
+    if len(filtered_coords) > 48:
+        print(f"[INFO] Rilevati {len(filtered_coords)} punti, limitati a 48.")
+        filtered_coords = sorted(filtered_coords, key=lambda p: (p[1], p[0]))[:48]
+    nodi = [tuple(coord) for coord in filtered_coords]
+    if not nodi: return None, None, {"status": "error", "message": "Punti insufficienti per il percorso."}
+    graph = construct_graph(nodi, velocita_x, velocita_y)
+    path = [0] if len(nodi) == 1 else nx.algorithms.approximation.traveling_salesman_problem(graph, cycle=False, method=nx.algorithms.approximation.greedy_tsp)
+    return graph, path, {"status": "success", "nodi": nodi}
 
-    # 2. Calcolo del percorso a serpentina
-    path_indices = generate_serpentine_path(nodi, grid_dims)
-    
-    # 3. Creazione di un grafo per la visualizzazione
-    graph = construct_graph(nodi)
-    
-    # Ritorna i dati in un formato compatibile con le view esistenti
-    return graph, path_indices, {"status": "success", "nodi": nodi, "grid_dims": grid_dims}
-
-# --- Funzioni di generazione griglia e percorso (che ora sono le nuove helper) ---
-def generate_adaptive_grid_from_cluster(points, config_data=None):
-    if config_data is None: config_data = camera_settings
-    spacing = config_data.get("calibration_settings", {}).get("point_spacing_mm", 50.0)
-    MAX_COLS, MAX_ROWS = 6, 8
-    
-    if len(points) < 3: return None, None
-    points_np = np.array(points, dtype=np.float32)
-    db = DBSCAN(eps=spacing * 1.5, min_samples=2).fit(points_np)
-    labels = db.labels_
-    if not np.any(labels != -1): return None, None
-    
-    unique, counts = np.unique(labels[labels != -1], return_counts=True)
-    main_cluster_points = points_np[labels == unique[np.argmax(counts)]]
-    if len(main_cluster_points) < 3: return None, None
-
-    rect = cv2.minAreaRect(main_cluster_points)
-    box = cv2.boxPoints(rect)
-    
-    s = box.sum(axis=1)
-    diff = np.diff(box, axis=1)
-    ordered_box = np.zeros((4, 2), dtype=np.float32)
-    ordered_box[0] = box[np.argmin(s)]
-    ordered_box[2] = box[np.argmax(s)]
-    ordered_box[1] = box[np.argmin(diff)]
-    ordered_box[3] = box[np.argmax(diff)]
-    
-    side_vec_1 = ordered_box[1] - ordered_box[0]
-    side_vec_2 = ordered_box[3] - ordered_box[0]
-    len_side_1, len_side_2 = np.linalg.norm(side_vec_1), np.linalg.norm(side_vec_2)
-
-    if len_side_1 < len_side_2:
-        col_direction_vec, row_direction_vec = side_vec_1, side_vec_2
-    else:
-        col_direction_vec, row_direction_vec = side_vec_2, side_vec_1
-    
-    num_cols = min(int(round(np.linalg.norm(col_direction_vec) / spacing)) + 1, MAX_COLS)
-    num_rows = min(int(round(np.linalg.norm(row_direction_vec) / spacing)) + 1, MAX_ROWS)
-    grid_dims = (num_cols, num_rows)
-    print(f"[INFO] Griglia finale calcolata: {grid_dims[0]}x{grid_dims[1]}")
-
-    col_unit_vector = col_direction_vec / np.linalg.norm(col_direction_vec)
-    row_unit_vector = row_direction_vec / np.linalg.norm(row_direction_vec)
-    
-    origin_point = ordered_box[0]
-    col_vector = col_unit_vector * spacing
-    row_vector = row_unit_vector * spacing
-    
-    final_grid = [tuple(origin_point + i * col_vector + j * row_vector) for j in range(num_rows) for i in range(num_cols)]
-    return final_grid, grid_dims
-
-def generate_serpentine_path(nodes, grid_dims):
-    if not nodes or not all(grid_dims): return []
-    cols, rows = grid_dims
-    indexed_nodes = list(enumerate(nodes))
-    path_indices = []
-    for c in range(cols):
-        current_col_nodes = [indexed_nodes[r * cols + c] for r in range(rows) if (r * cols + c) < len(indexed_nodes)]
-        if c % 2 == 0:
-            current_col_nodes.sort(key=lambda item: item[1][1])
-        else:
-            current_col_nodes.sort(key=lambda item: item[1][1], reverse=True)
-        path_indices.extend([item[0] for item in current_col_nodes])
-    return path_indices
-
+def get_graph_and_tsp_path_with_speeds(velocita_x=4.0, velocita_y=1.0):
+    return get_graph_and_tsp_path(velocita_x, velocita_y)
 
 # ==============================================================================
-# ENDPOINT API DJANGO (MANTENUTI E AGGIORNATI)
+# ENDPOINT API DJANGO
 # ==============================================================================
 
 @contextmanager
@@ -362,10 +281,11 @@ def stream_context():
 def update_camera_settings(request):
     try:
         data = json.loads(request.body)
-        config_data = load_config_data_from_file()
-        config_data.setdefault("camera", {}).update(data)
-        if save_config_data_to_file(config_data):
-            return JsonResponse({"status": "success"})
+        current_disk_config = load_config_data_from_file()
+        current_disk_config.setdefault("camera", {}).update(data)
+        if save_config_data_to_file(current_disk_config):
+            return JsonResponse({"status": "success", "updated_settings": camera_settings})
+        return JsonResponse({"status": "error", "message": "Salvataggio fallito."}, status=500)
     except Exception as e:
         return JsonResponse({"status": "error", "message": str(e)}, status=400)
     
@@ -381,12 +301,20 @@ def camera_feed(request):
                 yield (b'--frame\r\nContent-Type: image/jpeg\r\n\r\n' + buffer.tobytes() + b'\r\n')
     return StreamingHttpResponse(gen_frames(), content_type='multipart/x-mixed-replace; boundary=frame')
 
+# === FUNZIONE API REINTRODOTTA ===
+@csrf_exempt
+@require_GET
+def get_world_coordinates(request):
+    data = get_world_coordinates_data()
+    return JsonResponse(data, status=200 if data.get("status") == "success" else 400)
+
 @csrf_exempt
 @require_GET
 def get_keypoints(request):
     try:
-        _, keypoints = get_current_frame_and_keypoints_from_config()
-        return JsonResponse({"status": "success", "keypoints": [[kp.pt[0], kp.pt[1]] for kp in keypoints]})
+        _, keypoints_data = get_current_frame_and_keypoints_from_config()
+        keypoints_list = [[kp.pt[0], kp.pt[1]] for kp in keypoints_data]
+        return JsonResponse({"status": "success", "keypoints": keypoints_list})
     except Exception as e:
         return JsonResponse({"status": "error", "message": str(e)}, status=500)
 
@@ -401,82 +329,85 @@ def set_camera_origin(request):
         config_data["camera"]["origin_y"] = float(data.get("origin_y", 0.0))
         if save_config_data_to_file(config_data):
             return JsonResponse({"status": "success"})
+        return JsonResponse({"status": "error", "message": "Salvataggio fallito."}, status=500)
     except Exception as e:
         return JsonResponse({"status": "error", "message": str(e)}, status=400)
 
-# --- Endpoint rifattorizzati per includere l'origine nel plot ---
 
 @csrf_exempt
 @require_GET
 def compute_route(request):
     try:
-        graph, path_indices, info = get_graph_and_path_data()
-        if graph is None: return JsonResponse(info, status=500)
+        velocita_x, velocita_y = 4.0, 1.0
+        graph, hamiltonian_path, info = get_graph_and_tsp_path_with_speeds(velocita_x, velocita_y)
         
+        if graph is None: return JsonResponse(info, status=500)
         nodi = info["nodi"]
-        grid_dims = info["grid_dims"]
+        
         origin_x = camera_settings.get("origin_x", 0.0)
         origin_y = camera_settings.get("origin_y", 0.0)
         
         motor_commands = []
-        last_pos = (origin_x, origin_y)
-        path_nodes = [nodi[i] for i in path_indices]
-        for pos in path_nodes:
+        if hamiltonian_path:
+            primo_nodo_pos = nodi[hamiltonian_path[0]]
             motor_commands.append({
-                "extruder": float(round(pos[0] - last_pos[0], 4)),
-                "conveyor": float(round(pos[1] - last_pos[1], 4))
+                "extruder": float(round(primo_nodo_pos[0] - origin_x, 4)),
+                "conveyor": float(round(primo_nodo_pos[1] - origin_y, 4))
             })
-            last_pos = pos
+            for i in range(len(hamiltonian_path) - 1):
+                pos_attuale = nodi[hamiltonian_path[i]]
+                pos_successiva = nodi[hamiltonian_path[i+1]]
+                motor_commands.append({
+                    "extruder": float(round(pos_successiva[0] - pos_attuale[0], 4)),
+                    "conveyor": float(round(pos_successiva[1] - pos_attuale[1], 4))
+                })
 
         plt.figure(figsize=(8, 6))
         pos = nx.get_node_attributes(graph, 'pos')
         graph.add_node('origin'); pos['origin'] = (origin_x, origin_y)
-        
-        nx.draw_networkx_nodes(graph, pos, nodelist=list(range(len(nodi))), node_color='skyblue', node_size=150)
-        nx.draw_networkx_nodes(graph, pos, nodelist=['origin'], node_color='limegreen', node_size=400, node_shape='s')
-
-        if path_indices:
-            edges = [('origin', path_indices[0])] + [(path_indices[i], path_indices[i+1]) for i in range(len(path_indices)-1)]
-            nx.draw_networkx_edges(graph, pos, edgelist=edges, edge_color='red', width=2)
-        
-        plt.title(f"Percorso a Serpentina su Griglia {grid_dims[0]}x{grid_dims[1]}"); plt.axis('equal'); plt.gca().invert_yaxis()
-        buf = BytesIO(); plt.savefig(buf, format='png', bbox_inches='tight'); plt.close()
+        nx.draw_networkx_nodes(graph, pos, nodelist=list(range(len(nodi))), node_color='skyblue', node_size=500)
+        nx.draw_networkx_labels(graph, pos, font_size=10)
+        nx.draw_networkx_nodes(graph, pos, nodelist=['origin'], node_color='limegreen', node_size=700, node_shape='s')
+        if hamiltonian_path:
+            tsp_edges = [('origin', hamiltonian_path[0])] + [(hamiltonian_path[i], hamiltonian_path[i+1]) for i in range(len(hamiltonian_path)-1)]
+            nx.draw_networkx_edges(graph, pos, edgelist=tsp_edges, edge_color='red', width=2)
+        plt.title("Percorso TSP (in rosso) con Origine"); plt.axis('off')
+        buf = BytesIO(); plt.savefig(buf, format='png'); plt.close()
         img_base64 = base64.b64encode(buf.getvalue()).decode('utf-8')
 
         return JsonResponse({
-            "status": "success", "route": path_indices,
+            "status": "success", "route": hamiltonian_path,
             "motor_commands": motor_commands, "plot_graph_base64": img_base64
         })
     except Exception as e:
         traceback.print_exc()
         return JsonResponse({"status": "error", "message": f"Errore interno: {e}"}, status=500)
 
-
 @csrf_exempt
 @require_GET
 def plot_graph(request):
     try:
-        graph, path_indices, info = get_graph_and_path_data()
+        velocita_x, velocita_y = 4.0, 1.0
+        graph, hamiltonian_path, info = get_graph_and_tsp_path(velocita_x, velocita_y)
         if graph is None: return HttpResponse(f"Errore: {info.get('message')}", status=500)
         
         nodi = info["nodi"]
-        grid_dims = info["grid_dims"]
         plt.figure(figsize=(8, 6))
         pos = nx.get_node_attributes(graph, 'pos')
+        if not pos: return HttpResponse("Nessuna posizione nodo trovata.", status=400)
         
         origin_x = camera_settings.get("origin_x", 0.0)
         origin_y = camera_settings.get("origin_y", 0.0)
         graph.add_node('origin'); pos['origin'] = (origin_x, origin_y)
         
-        nx.draw_networkx_nodes(graph, pos, nodelist=list(range(len(nodi))), node_color='skyblue', node_size=150)
-        nx.draw_networkx_nodes(graph, pos, nodelist=['origin'], node_color='limegreen', node_size=400, node_shape='s')
-
-        if path_indices:
-            edges = [('origin', path_indices[0])] + [(path_indices[i], path_indices[i+1]) for i in range(len(path_indices)-1)]
-            nx.draw_networkx_edges(graph, pos, edgelist=edges, edge_color='red', width=2)
-        
-        plt.title(f"Percorso a Serpentina su Griglia {grid_dims[0]}x{grid_dims[1]}"); plt.axis('equal'); plt.gca().invert_yaxis()
-        buf = BytesIO(); plt.savefig(buf, format='png', bbox_inches='tight'); plt.close(); buf.seek(0)
+        nx.draw_networkx_nodes(graph, pos, nodelist=list(range(len(nodi))), node_color='skyblue', node_size=500)
+        nx.draw_networkx_labels(graph, pos, font_size=10)
+        nx.draw_networkx_nodes(graph, pos, nodelist=['origin'], node_color='limegreen', node_size=700, node_shape='s')
+        if hamiltonian_path:
+            tsp_edges = [('origin', hamiltonian_path[0])] + [(hamiltonian_path[i], hamiltonian_path[i+1]) for i in range(len(hamiltonian_path)-1)]
+            nx.draw_networkx_edges(graph, pos, edgelist=tsp_edges, edge_color='red', width=2)
+        plt.title("Percorso TSP (in rosso) con Origine"); plt.axis('off')
+        buf = BytesIO(); plt.savefig(buf, format='png'); plt.close(); buf.seek(0)
         return HttpResponse(buf.getvalue(), content_type='image/png')
     except Exception as e:
         traceback.print_exc()
@@ -487,7 +418,6 @@ def fixed_perspective_stream(request):
     request.mode_override = 'fixed'
     return camera_feed(request) 
 
-# Tutte le altre view di setup e calibrazione vengono mantenute
 @csrf_exempt
 @require_POST
 def initialize_camera_endpoint(request):
@@ -530,6 +460,7 @@ def reset_camera_calibration(request):
         config_data["camera"]["fixed_perspective"] = None
         if save_config_data_to_file(config_data):
             return JsonResponse({"status": "success"})
+        return JsonResponse({"status": "error", "message": "Salvataggio fallito."}, status=500)
     except Exception as e:
         return JsonResponse({"status": "error", "message": str(e)}, status=500)
 
@@ -543,11 +474,9 @@ def calibrate_camera_endpoint(request):
     chessboard_dim = (cs_cols, cs_rows)
     objp = np.zeros((cs_cols * cs_rows, 3), np.float32)
     objp[:,:2] = np.mgrid[0:cs_cols, 0:cs_rows].T.reshape(-1,2) * calib_settings.get("square_size_mm", 15.0)
-    
     objpoints, imgpoints = [], []
     images = glob.glob(os.path.join(CALIBRATION_MEDIA_DIR, '*.jpg'))
     if not images: return JsonResponse({"status": "error", "message": "Nessuna immagine trovata."}, status=400)
-    
     gray_shape = None
     for fname in images:
         img = cv2.imread(fname)
@@ -558,16 +487,13 @@ def calibrate_camera_endpoint(request):
             objpoints.append(objp)
             corners2 = cv2.cornerSubPix(gray, corners, (11,11), (-1,-1), (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 30, 0.001))
             imgpoints.append(corners2)
-    
     if not objpoints: return JsonResponse({"status": "error", "message": "Nessun pattern trovato."}, status=400)
     ret, mtx, dist, _, _ = cv2.calibrateCamera(objpoints, imgpoints, gray_shape, None, None)
     if not ret: return JsonResponse({"status": "error", "message": "Calibrazione fallita."}, status=500)
-
     config_data.setdefault("camera", {})["calibration"] = {"camera_matrix": mtx.tolist(), "distortion_coefficients": dist.tolist()}
     if save_config_data_to_file(config_data):
         return JsonResponse({"status": "success"})
-    else:
-        return JsonResponse({"status": "error", "message": "Salvataggio calibrazione fallito."}, status=500)
+    return JsonResponse({"status": "error", "message": "Salvataggio calibrazione fallito."}, status=500)
 
 @csrf_exempt
 @require_POST
@@ -575,27 +501,20 @@ def set_fixed_perspective_view(request):
     cam_calib = camera_settings.get("calibration")
     if not (cam_calib and "camera_matrix" in cam_calib and "distortion_coefficients" in cam_calib):
         return JsonResponse({"status": "error", "message": "Calibrazione non trovata."}, status=400)
-    
     mtx, dist = np.array(cam_calib["camera_matrix"]), np.array(cam_calib["distortion_coefficients"])
     frame = get_frame()
     if frame.size == 0: return JsonResponse({"status": "error", "message": "Frame non valido."}, status=500)
-    
     h, w = frame.shape[:2]
     new_mtx, _ = cv2.getOptimalNewCameraMatrix(mtx, dist, (w,h), 1, (w,h))
     undistorted = cv2.undistort(frame, mtx, dist, None, new_mtx)
-    
     calib_settings = camera_settings.get("calibration_settings", {})
     H, dims = get_board_and_canonical_homography_for_django(undistorted, new_mtx, calib_settings)
-    
     if H is None: return JsonResponse({"status": "error", "message": "Pattern scacchiera non rilevato."}, status=400)
-    
     out_w = camera_settings.get("fixed_perspective", {}).get("output_width", 1000)
     out_h = camera_settings.get("fixed_perspective", {}).get("output_height", 800)
     offset_x = max(0, (out_w - dims[0]) / 2.0)
     offset_y = max(0, (out_h - dims[1]) / 2.0)
     H_final = np.float32([[1,0,offset_x],[0,1,offset_y],[0,0,1]]) @ H
-    
     if save_fixed_perspective_homography_to_config(H_final):
         return JsonResponse({"status": "success"})
-    else:
-        return JsonResponse({"status": "error", "message": "Salvataggio vista fallito."}, status=500)
+    return JsonResponse({"status": "error", "message": "Salvataggio vista fallito."}, status=500)
