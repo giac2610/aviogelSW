@@ -458,7 +458,7 @@ def set_camera_origin(request):
 def compute_route(request):
     """Calcola un percorso a serpentina, partendo dal punto più vicino all'origine."""
     try:
-        graph, path_indices, info = _calculate_serpentine_path_data()
+        graph, path_indices, info, response = _calculate_serpentine_path_data()
         if graph is None:
             return JsonResponse(info, status=400)
         
@@ -491,7 +491,7 @@ def compute_route(request):
 def plot_graph(request):
     """Genera un'immagine del percorso a serpentina."""
     try:
-        graph, path_indices, info = _calculate_serpentine_path_data()
+        graph, path_indices, info, response = _calculate_serpentine_path_data()
         if graph is None:
             return HttpResponse(f"Errore: {info.get('message')}", status=400)
         
@@ -627,7 +627,7 @@ def get_frame_with_world_grid():
     undistorted_frame = cv2.undistort(frame, cam_matrix, dist_coeffs, None, new_cam_matrix)
 
     # 3. Calcola la griglia e il percorso
-    graph, path_indices, info = _calculate_serpentine_path_data()
+    graph, path_indices, info, response = _calculate_serpentine_path_data()
     if graph is None:
         return undistorted_frame
     
