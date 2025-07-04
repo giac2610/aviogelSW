@@ -249,20 +249,47 @@ def construct_graph(nodi, velocita_x=4.0, velocita_y=1.0):
             G.add_edge(i, j, weight=round(tempo, 4))
     return G
 
+# SOSTITUISCI LA VECCHIA FUNZIONE CON QUESTA
 def get_graph_and_tsp_path(velocita_x=4.0, velocita_y=1.0):
     response = get_world_coordinates_data()
     if response.get("status") != "success": return None, None, response
+    
     coordinates = response.get("coordinates", [])
     origin_x = camera_settings.get("origin_x", 0.0)
+    
     filtered_coords = [coord for coord in coordinates if 0 <= (coord[0] - origin_x) <= 250]
+    
     if len(filtered_coords) > 48:
         print(f"[INFO] Rilevati {len(filtered_coords)} punti, limitati a 48.")
         filtered_coords = sorted(filtered_coords, key=lambda p: (p[1], p[0]))[:48]
+
     nodi = [tuple(coord) for coord in filtered_coords]
+
     if not nodi: return None, None, {"status": "error", "message": "Punti insufficienti per il percorso."}
+    
+    # --- NUOVA LOGICA: Trova il punto di partenza più vicino ---
+    # 1. Recupera le coordinate dell'origine
+    origin_pos = np.array([origin_x, camera_settings.get("origin_y", 0.0)])
+    
+    # 2. Calcola la distanza di ogni nodo dall'origine
+    # Usiamo il quadrato della distanza Euclidea per efficienza (evita radici quadrate)
+    distances_sq = [((node[0] - origin_pos[0])**2 + (node[1] - origin_pos[1])**2) for node in nodi]
+    
+    # 3. Trova l'indice del nodo con la distanza minima
+    closest_node_index = np.argmin(distances_sq)
+    print(f"[INFO] Punto di partenza più vicino trovato: nodo #{closest_node_index} in posizione {nodi[closest_node_index]}")
+    # --- FINE NUOVA LOGICA ---
+    
     graph = construct_graph(nodi, velocita_x, velocita_y)
-    path = [0] if len(nodi) == 1 else nx.algorithms.approximation.traveling_salesman_problem(graph, cycle=False, method=nx.algorithms.approximation.greedy_tsp)
-    return graph, path, {"status": "success", "nodi": nodi}
+    
+    # MODIFICA: Usa il nodo più vicino come punto di partenza esplicito per il TSP
+    hamiltonian_path = [closest_node_index] if len(nodi) == 1 else nx.algorithms.approximation.traveling_salesman_problem(
+        graph, 
+        cycle=False, 
+        method=nx.algorithms.approximation.greedy_tsp,
+        source=closest_node_index  # <-- Passiamo il nostro punto di partenza!
+    )
+    return graph, hamiltonian_path, {"status": "success", "nodi": nodi}
 
 def get_graph_and_tsp_path_with_speeds(velocita_x=4.0, velocita_y=1.0):
     return get_graph_and_tsp_path(velocita_x, velocita_y)
