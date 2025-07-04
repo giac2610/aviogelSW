@@ -599,3 +599,78 @@ def set_fixed_perspective_view(request):
     if save_fixed_perspective_homography_to_config(H_final):
         return JsonResponse({"status": "success"})
     return JsonResponse({"status": "error", "message": "Salvataggio vista fallito."}, status=500)
+
+def get_frame_with_world_grid():
+    """
+    Cattura un frame, lo corregge e vi disegna sopra la griglia del mondo.
+    """
+    # 1. Recupera i dati di calibrazione e omografia dalla configurazione
+    cam_calib = camera_settings.get("calibration")
+    H_fixed = get_fixed_perspective_homography_from_config()
+    
+    if H_fixed is None or not cam_calib:
+        # Se non c'è calibrazione, restituisci il frame normale
+        return get_frame()
+
+    # 2. Cattura un nuovo frame e correggi la distorsione
+    frame = get_frame()
+    cam_matrix = np.array(cam_calib["camera_matrix"])
+    dist_coeffs = np.array(cam_calib["distortion_coefficients"])
+    h, w = frame.shape[:2]
+    new_cam_matrix, _ = cv2.getOptimalNewCameraMatrix(cam_matrix, dist_coeffs, (w, h), 1.0, (w, h))
+    undistorted_frame = cv2.undistort(frame, cam_matrix, dist_coeffs, None, new_cam_matrix)
+
+    # 3. Calcola la griglia e il percorso
+    graph, path_indices, info = _calculate_serpentine_path_data()
+    if graph is None:
+        # Se non si può calcolare la griglia, restituisci il frame corretto
+        return undistorted_frame
+    
+    nodi_mondo = info.get("nodi", [])
+    if not nodi_mondo:
+        return undistorted_frame
+
+    # 4. Esegui la trasformazione INVERSA
+    H_inversa = np.linalg.inv(H_fixed)
+    
+    # Prepara i punti per la trasformazione (devono essere in un array float32 con una dimensione extra)
+    nodi_mondo_np = np.array(nodi_mondo, dtype=np.float32).reshape(-1, 1, 2)
+    
+    # Applica la trasformazione prospettica inversa
+    nodi_immagine = cv2.perspectiveTransform(nodi_mondo_np, H_inversa)
+    nodi_immagine = nodi_immagine.reshape(-1, 2).astype(int) # Riconverti in una lista di punti (x, y) interi
+
+    # 5. Disegna la griglia sull'immagine corretta
+    # Disegna i nodi del percorso
+    for i in range(len(path_indices) - 1):
+        start_point = tuple(nodi_immagine[path_indices[i]])
+        end_point = tuple(nodi_immagine[path_indices[i+1]])
+        cv2.line(undistorted_frame, start_point, end_point, (0, 255, 0), 2) # Linee verdi per il percorso
+
+    # Disegna un cerchio su ogni nodo
+    for point in nodi_immagine:
+        cv2.circle(undistorted_frame, tuple(point), 5, (0, 0, 255), -1) # Cerchi rossi per i nodi
+
+    return undistorted_frame
+
+@csrf_exempt
+@require_GET
+def debug_camera_feed(request):
+    """
+    Fornisce uno streaming video di debug con la griglia del mondo disegnata sopra.
+    """
+    def gen_debug_frames():
+        with stream_context():
+            while True:
+                # Usa la funzione che genera il frame con la griglia
+                frame = get_frame_with_world_grid() 
+                if frame.size == 0:
+                    time.sleep(0.1)
+                    continue
+                
+                _, buffer = cv2.imencode('.jpg', frame)
+                yield (b'--frame\r\n'
+                       b'Content-Type: image/jpeg\r\n\r\n' + buffer.tobytes() + b'\r\n')
+
+    return StreamingHttpResponse(gen_debug_frames(), 
+                                 content_type='multipart/x-mixed-replace; boundary=frame')
