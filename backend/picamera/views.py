@@ -120,7 +120,8 @@ def _initialize_camera_internally():
         camera_instance = None
     return camera_instance
 
-def get_frame():
+def get_frame(release_after=False):
+    global camera_instance  # <-- LA CORREZIONE È QUESTA RIGA
     with camera_lock:
         if camera_instance is None and _initialize_camera_internally() is None:
             size = camera_settings.get("picamera_config", {}).get("main", {}).get("size", [480, 640])
