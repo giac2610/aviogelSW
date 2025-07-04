@@ -24,8 +24,7 @@ from django.http import StreamingHttpResponse, JsonResponse, HttpResponse
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_POST, require_GET
 import requests #type: ignore
-# Rimuoviamo DBSCAN perché non usato nella versione finale del tuo codice
-# from sklearn.cluster import DBSCAN 
+from sklearn.cluster import DBSCAN
 
 # ==============================================================================
 # CONFIGURAZIONE E VARIABILI GLOBALI
@@ -86,11 +85,9 @@ def _initialize_camera_internally():
             if hasattr(camera_instance, 'release'): camera_instance.release()
             elif hasattr(camera_instance, 'stop'): camera_instance.stop(); camera_instance.close()
         except Exception: pass
-    
     cfg = camera_settings
     size = cfg.get("picamera_config", {}).get("main", {}).get("size", [640, 480])
     width, height = size
-
     try:
         if sys.platform == "darwin":
             mac_cam = cv2.VideoCapture(cfg.get("mac_camera_index", 0))
@@ -111,7 +108,7 @@ def _initialize_camera_internally():
         camera_instance = None
     return camera_instance
 
-def get_frame():
+def get_frame(release_after=False):
     global camera_instance
     with camera_lock:
         if camera_instance is None and _initialize_camera_internally() is None:
@@ -141,7 +138,7 @@ def load_config_data_from_file():
             return json.load(f)
     except Exception as e:
         return {"camera": {}}
-    
+
 def get_fixed_perspective_homography_from_config():
     H_list = camera_settings.get("fixed_perspective", {}).get("homography_matrix", None)
     if H_list and isinstance(H_list, list):
@@ -193,7 +190,6 @@ def get_current_frame_and_keypoints_from_config():
     keypoints_original_coords = [cv2.KeyPoint(kp.pt[0] * scale_x, kp.pt[1] * scale_y, kp.size * ((scale_x + scale_y) / 2)) for kp in keypoints_resized]
     return frame, keypoints_original_coords
 
-# === FUNZIONE REINTRODOTTA ===
 def get_board_and_canonical_homography_for_django(undistorted_frame, new_camera_matrix_cv, calibration_cfg_dict):
     cs_cols = calibration_cfg_dict.get("chessboard_cols", 9)
     cs_rows = calibration_cfg_dict.get("chessboard_rows", 7)
@@ -251,45 +247,109 @@ def get_world_coordinates_data():
     world_coords = cv2.perspectiveTransform(img_pts_undistorted, H_fixed_ref).reshape(-1, 2).tolist() if img_pts_undistorted.size > 0 else []
     return {"status": "success", "coordinates": world_coords}
 
-def construct_graph(nodi, velocita_x=4.0, velocita_y=1.0):
+def construct_graph(nodi):
     G = nx.Graph()
     for i, pos in enumerate(nodi):
         G.add_node(i, pos=pos)
-    for i in range(len(nodi)):
-        for j in range(i + 1, len(nodi)):
-            dx = nodi[i][0] - nodi[j][0]
-            dy = nodi[i][1] - nodi[j][1]
-            tempo = max(abs(dx) / velocita_x, abs(dy) / velocita_y)
-            G.add_edge(i, j, weight=round(tempo, 4))
+    # Nota: Non creiamo archi qui, il grafo serve solo per la visualizzazione dei nodi
     return G
 
-def get_graph_and_tsp_path(velocita_x=4.0, velocita_y=1.0):
+# === LOGICA DI CALCOLO DEL PERCORSO AGGIORNATA ===
+def get_graph_and_path_data():
+    """
+    Nuova funzione centrale che usa la logica di clustering e serpentina.
+    Sostituisce la vecchia logica TSP.
+    """
     response = get_world_coordinates_data()
-    if response.get("status") != "success": return None, None, response
-    
+    if response.get("status") != "success":
+        return None, None, None, response
+
     coordinates = response.get("coordinates", [])
-    origin_x = camera_settings.get("origin_x", 0.0)
+    if not coordinates:
+        return None, None, None, {"status": "error", "message": "Nessun punto rilevato."}
     
-    filtered_coords = [coord for coord in coordinates if 0 <= (coord[0] - origin_x) <= 250]
+    # 1. Clustering e generazione della griglia
+    nodi, grid_dims = generate_adaptive_grid_from_cluster(coordinates)
+    if not nodi:
+        return None, None, None, {"status": "error", "message": "Impossibile calcolare griglia adattiva."}
+
+    # 2. Calcolo del percorso a serpentina
+    path_indices = generate_serpentine_path(nodi, grid_dims)
     
-    if len(filtered_coords) > 48:
-        print(f"[INFO] Rilevati {len(filtered_coords)} punti, limitati a 48.")
-        filtered_coords = sorted(filtered_coords, key=lambda p: (p[1], p[0]))[:48]
-
-    nodi = [tuple(coord) for coord in filtered_coords]
-
-    if not nodi: return None, None, {"status": "error", "message": "Punti insufficienti per il percorso."}
+    # 3. Creazione di un grafo per la visualizzazione
+    graph = construct_graph(nodi)
     
-    graph = construct_graph(nodi, velocita_x, velocita_y)
-    hamiltonian_path = [0] if len(nodi) == 1 else nx.algorithms.approximation.traveling_salesman_problem(graph, cycle=False, method=nx.algorithms.approximation.greedy_tsp)
-    return graph, hamiltonian_path, {"status": "success", "nodi": nodi}
+    # Ritorna i dati in un formato compatibile con le view esistenti
+    return graph, path_indices, {"status": "success", "nodi": nodi, "grid_dims": grid_dims}
 
-def get_graph_and_tsp_path_with_speeds(velocita_x=4.0, velocita_y=1.0):
-    return get_graph_and_tsp_path(velocita_x, velocita_y)
+# --- Funzioni di generazione griglia e percorso (che ora sono le nuove helper) ---
+def generate_adaptive_grid_from_cluster(points, config_data=None):
+    if config_data is None: config_data = camera_settings
+    spacing = config_data.get("calibration_settings", {}).get("point_spacing_mm", 50.0)
+    MAX_COLS, MAX_ROWS = 6, 8
+    
+    if len(points) < 3: return None, None
+    points_np = np.array(points, dtype=np.float32)
+    db = DBSCAN(eps=spacing * 1.5, min_samples=2).fit(points_np)
+    labels = db.labels_
+    if not np.any(labels != -1): return None, None
+    
+    unique, counts = np.unique(labels[labels != -1], return_counts=True)
+    main_cluster_points = points_np[labels == unique[np.argmax(counts)]]
+    if len(main_cluster_points) < 3: return None, None
+
+    rect = cv2.minAreaRect(main_cluster_points)
+    box = cv2.boxPoints(rect)
+    
+    s = box.sum(axis=1)
+    diff = np.diff(box, axis=1)
+    ordered_box = np.zeros((4, 2), dtype=np.float32)
+    ordered_box[0] = box[np.argmin(s)]
+    ordered_box[2] = box[np.argmax(s)]
+    ordered_box[1] = box[np.argmin(diff)]
+    ordered_box[3] = box[np.argmax(diff)]
+    
+    side_vec_1 = ordered_box[1] - ordered_box[0]
+    side_vec_2 = ordered_box[3] - ordered_box[0]
+    len_side_1, len_side_2 = np.linalg.norm(side_vec_1), np.linalg.norm(side_vec_2)
+
+    if len_side_1 < len_side_2:
+        col_direction_vec, row_direction_vec = side_vec_1, side_vec_2
+    else:
+        col_direction_vec, row_direction_vec = side_vec_2, side_vec_1
+    
+    num_cols = min(int(round(np.linalg.norm(col_direction_vec) / spacing)) + 1, MAX_COLS)
+    num_rows = min(int(round(np.linalg.norm(row_direction_vec) / spacing)) + 1, MAX_ROWS)
+    grid_dims = (num_cols, num_rows)
+    print(f"[INFO] Griglia finale calcolata: {grid_dims[0]}x{grid_dims[1]}")
+
+    col_unit_vector = col_direction_vec / np.linalg.norm(col_direction_vec)
+    row_unit_vector = row_direction_vec / np.linalg.norm(row_direction_vec)
+    
+    origin_point = ordered_box[0]
+    col_vector = col_unit_vector * spacing
+    row_vector = row_unit_vector * spacing
+    
+    final_grid = [tuple(origin_point + i * col_vector + j * row_vector) for j in range(num_rows) for i in range(num_cols)]
+    return final_grid, grid_dims
+
+def generate_serpentine_path(nodes, grid_dims):
+    if not nodes or not all(grid_dims): return []
+    cols, rows = grid_dims
+    indexed_nodes = list(enumerate(nodes))
+    path_indices = []
+    for c in range(cols):
+        current_col_nodes = [indexed_nodes[r * cols + c] for r in range(rows) if (r * cols + c) < len(indexed_nodes)]
+        if c % 2 == 0:
+            current_col_nodes.sort(key=lambda item: item[1][1])
+        else:
+            current_col_nodes.sort(key=lambda item: item[1][1], reverse=True)
+        path_indices.extend([item[0] for item in current_col_nodes])
+    return path_indices
 
 
 # ==============================================================================
-# ENDPOINT API DJANGO
+# ENDPOINT API DJANGO (MANTENUTI E AGGIORNATI)
 # ==============================================================================
 
 @contextmanager
@@ -302,12 +362,10 @@ def stream_context():
 def update_camera_settings(request):
     try:
         data = json.loads(request.body)
-        current_disk_config = load_config_data_from_file()
-        current_disk_config.setdefault("camera", {}).update(data)
-        if save_config_data_to_file(current_disk_config):
-            return JsonResponse({"status": "success", "updated_settings": camera_settings})
-        else:
-            return JsonResponse({"status": "error", "message": "Salvataggio fallito."}, status=500)
+        config_data = load_config_data_from_file()
+        config_data.setdefault("camera", {}).update(data)
+        if save_config_data_to_file(config_data):
+            return JsonResponse({"status": "success"})
     except Exception as e:
         return JsonResponse({"status": "error", "message": str(e)}, status=400)
     
@@ -327,9 +385,8 @@ def camera_feed(request):
 @require_GET
 def get_keypoints(request):
     try:
-        _, keypoints_data = get_current_frame_and_keypoints_from_config()
-        keypoints_list = [[kp.pt[0], kp.pt[1]] for kp in keypoints_data]
-        return JsonResponse({"status": "success", "keypoints": keypoints_list})
+        _, keypoints = get_current_frame_and_keypoints_from_config()
+        return JsonResponse({"status": "success", "keypoints": [[kp.pt[0], kp.pt[1]] for kp in keypoints]})
     except Exception as e:
         return JsonResponse({"status": "error", "message": str(e)}, status=500)
 
@@ -344,63 +401,50 @@ def set_camera_origin(request):
         config_data["camera"]["origin_y"] = float(data.get("origin_y", 0.0))
         if save_config_data_to_file(config_data):
             return JsonResponse({"status": "success"})
-        else:
-            return JsonResponse({"status": "error", "message": "Salvataggio fallito."}, status=500)
     except Exception as e:
         return JsonResponse({"status": "error", "message": str(e)}, status=400)
 
+# --- Endpoint rifattorizzati per includere l'origine nel plot ---
 
 @csrf_exempt
 @require_GET
 def compute_route(request):
     try:
-        velocita_x, velocita_y = 4.0, 1.0
-        graph, hamiltonian_path, info = get_graph_and_tsp_path_with_speeds(velocita_x, velocita_y)
-        
+        graph, path_indices, info = get_graph_and_path_data()
         if graph is None: return JsonResponse(info, status=500)
-        nodi = info["nodi"]
         
+        nodi = info["nodi"]
+        grid_dims = info["grid_dims"]
         origin_x = camera_settings.get("origin_x", 0.0)
         origin_y = camera_settings.get("origin_y", 0.0)
         
-        # ## MODIFICA: Logica di calcolo dei comandi motore resa più chiara e corretta
         motor_commands = []
-        if hamiltonian_path:
-            # Primo comando: dall'origine al primo punto del percorso
-            primo_nodo_pos = nodi[hamiltonian_path[0]]
+        last_pos = (origin_x, origin_y)
+        path_nodes = [nodi[i] for i in path_indices]
+        for pos in path_nodes:
             motor_commands.append({
-                "extruder": float(round(primo_nodo_pos[0] - origin_x, 4)),
-                "conveyor": float(round(primo_nodo_pos[1] - origin_y, 4))
+                "extruder": float(round(pos[0] - last_pos[0], 4)),
+                "conveyor": float(round(pos[1] - last_pos[1], 4))
             })
-            # Comandi successivi tra i punti del percorso
-            for i in range(len(hamiltonian_path) - 1):
-                pos_attuale = nodi[hamiltonian_path[i]]
-                pos_successiva = nodi[hamiltonian_path[i+1]]
-                motor_commands.append({
-                    "extruder": float(round(pos_successiva[0] - pos_attuale[0], 4)),
-                    "conveyor": float(round(pos_successiva[1] - pos_attuale[1], 4))
-                })
+            last_pos = pos
 
-        # --- MODIFICA: Genera il plot come immagine base64 CON L'ORIGINE ---
         plt.figure(figsize=(8, 6))
         pos = nx.get_node_attributes(graph, 'pos')
-        
         graph.add_node('origin'); pos['origin'] = (origin_x, origin_y)
         
-        nx.draw_networkx_nodes(graph, pos, nodelist=list(range(len(nodi))), node_color='skyblue', node_size=500)
-        nx.draw_networkx_labels(graph, pos, font_size=10)
-        nx.draw_networkx_nodes(graph, pos, nodelist=['origin'], node_color='limegreen', node_size=700, node_shape='s')
+        nx.draw_networkx_nodes(graph, pos, nodelist=list(range(len(nodi))), node_color='skyblue', node_size=150)
+        nx.draw_networkx_nodes(graph, pos, nodelist=['origin'], node_color='limegreen', node_size=400, node_shape='s')
 
-        if hamiltonian_path:
-            tsp_edges = [('origin', hamiltonian_path[0])] + [(hamiltonian_path[i], hamiltonian_path[i+1]) for i in range(len(hamiltonian_path)-1)]
-            nx.draw_networkx_edges(graph, pos, edgelist=tsp_edges, edge_color='red', width=2)
+        if path_indices:
+            edges = [('origin', path_indices[0])] + [(path_indices[i], path_indices[i+1]) for i in range(len(path_indices)-1)]
+            nx.draw_networkx_edges(graph, pos, edgelist=edges, edge_color='red', width=2)
         
-        plt.title("Percorso TSP (in rosso) con Origine"); plt.axis('off')
-        buf = BytesIO(); plt.savefig(buf, format='png'); plt.close()
+        plt.title(f"Percorso a Serpentina su Griglia {grid_dims[0]}x{grid_dims[1]}"); plt.axis('equal'); plt.gca().invert_yaxis()
+        buf = BytesIO(); plt.savefig(buf, format='png', bbox_inches='tight'); plt.close()
         img_base64 = base64.b64encode(buf.getvalue()).decode('utf-8')
 
         return JsonResponse({
-            "status": "success", "route": hamiltonian_path,
+            "status": "success", "route": path_indices,
             "motor_commands": motor_commands, "plot_graph_base64": img_base64
         })
     except Exception as e:
@@ -412,41 +456,38 @@ def compute_route(request):
 @require_GET
 def plot_graph(request):
     try:
-        velocita_x, velocita_y = 4.0, 1.0
-        graph, hamiltonian_path, info = get_graph_and_tsp_path(velocita_x, velocita_y)
+        graph, path_indices, info = get_graph_and_path_data()
         if graph is None: return HttpResponse(f"Errore: {info.get('message')}", status=500)
         
         nodi = info["nodi"]
+        grid_dims = info["grid_dims"]
         plt.figure(figsize=(8, 6))
         pos = nx.get_node_attributes(graph, 'pos')
-        if not pos: return HttpResponse("Nessuna posizione nodo trovata.", status=400)
         
-        # --- MODIFICA: Aggiungi l'origine al grafico ---
         origin_x = camera_settings.get("origin_x", 0.0)
         origin_y = camera_settings.get("origin_y", 0.0)
         graph.add_node('origin'); pos['origin'] = (origin_x, origin_y)
         
-        nx.draw_networkx_nodes(graph, pos, nodelist=list(range(len(nodi))), node_color='skyblue', node_size=500)
-        nx.draw_networkx_labels(graph, pos, font_size=10)
-        nx.draw_networkx_nodes(graph, pos, nodelist=['origin'], node_color='limegreen', node_size=700, node_shape='s')
+        nx.draw_networkx_nodes(graph, pos, nodelist=list(range(len(nodi))), node_color='skyblue', node_size=150)
+        nx.draw_networkx_nodes(graph, pos, nodelist=['origin'], node_color='limegreen', node_size=400, node_shape='s')
 
-        if hamiltonian_path:
-            tsp_edges = [('origin', hamiltonian_path[0])] + [(hamiltonian_path[i], hamiltonian_path[i+1]) for i in range(len(hamiltonian_path)-1)]
-            nx.draw_networkx_edges(graph, pos, edgelist=tsp_edges, edge_color='red', width=2)
+        if path_indices:
+            edges = [('origin', path_indices[0])] + [(path_indices[i], path_indices[i+1]) for i in range(len(path_indices)-1)]
+            nx.draw_networkx_edges(graph, pos, edgelist=edges, edge_color='red', width=2)
         
-        plt.title("Percorso TSP (in rosso) con Origine"); plt.axis('off')
-        buf = BytesIO(); plt.savefig(buf, format='png'); plt.close(); buf.seek(0)
+        plt.title(f"Percorso a Serpentina su Griglia {grid_dims[0]}x{grid_dims[1]}"); plt.axis('equal'); plt.gca().invert_yaxis()
+        buf = BytesIO(); plt.savefig(buf, format='png', bbox_inches='tight'); plt.close(); buf.seek(0)
         return HttpResponse(buf.getvalue(), content_type='image/png')
     except Exception as e:
         traceback.print_exc()
         return HttpResponse(f"Errore interno: {e}", status=500)
-
 
 @csrf_exempt
 def fixed_perspective_stream(request):
     request.mode_override = 'fixed'
     return camera_feed(request) 
 
+# Tutte le altre view di setup e calibrazione vengono mantenute
 @csrf_exempt
 @require_POST
 def initialize_camera_endpoint(request):
@@ -489,8 +530,6 @@ def reset_camera_calibration(request):
         config_data["camera"]["fixed_perspective"] = None
         if save_config_data_to_file(config_data):
             return JsonResponse({"status": "success"})
-        else:
-            return JsonResponse({"status": "error", "message": "Salvataggio fallito."}, status=500)
     except Exception as e:
         return JsonResponse({"status": "error", "message": str(e)}, status=500)
 
