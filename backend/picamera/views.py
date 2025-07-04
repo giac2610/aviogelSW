@@ -306,15 +306,39 @@ def generate_adaptive_grid_from_cluster(points, config=None):
     return final_grid, grid_dims
 
 def generate_serpentine_path(nodes, grid_dims):
+    """
+    Versione Corretta:
+    Gestisce correttamente una lista di nodi ordinata per righe (row-major)
+    per creare un percorso a serpentina per colonne.
+    """
     if not nodes or not all(grid_dims): return []
+    
     cols, rows = grid_dims
+    # Crea una lista di nodi con il loro indice originale per non perderlo
     indexed_nodes = list(enumerate(nodes))
+    
     path_indices = []
+    
+    # Itera attraverso le colonne che vogliamo nel percorso finale
     for c in range(cols):
-        column_nodes = indexed_nodes[c * rows : (c + 1) * rows]
-        if not column_nodes: continue
-        column_nodes.sort(key=lambda item: item[1][1], reverse=(c % 2 != 0))
-        path_indices.extend([item[0] for item in column_nodes])
+        # Ricostruisce la colonna 'c' dalla lista ordinata per righe
+        current_col_nodes = []
+        for r in range(rows):
+            # La formula per trovare un elemento in una griglia row-major è: indice = riga * num_colonne + colonna
+            index = r * cols + c
+            if index < len(indexed_nodes):
+                current_col_nodes.append(indexed_nodes[index])
+
+        # Ora che abbiamo la colonna corretta, la ordiniamo per il percorso a serpentina
+        # La coordinata Y è l'elemento item[1][1] -> (indice, (x, y))
+        if c % 2 == 0:  # Colonne pari (0, 2, ...): dal basso verso l'alto (Y crescente)
+            current_col_nodes.sort(key=lambda item: item[1][1])
+        else:  # Colonne dispari (1, 3, ...): dall'alto verso il basso (Y decrescente)
+            current_col_nodes.sort(key=lambda item: item[1][1], reverse=True)
+        
+        # Aggiunge gli indici dei nodi della colonna ordinata al percorso finale
+        path_indices.extend([item[0] for item in current_col_nodes])
+            
     return path_indices
 
 def get_board_and_canonical_homography_for_django(undistorted_frame, new_camera_matrix, calib_cfg):
