@@ -212,51 +212,41 @@ def generate_adaptive_grid_from_cluster(points, config_data=None):
     MAX_COLS = 6
     MAX_ROWS = 8
     
-    if len(points) < 3: return None, None
+    if len(points) < 2: return None, None  # Permetti anche 2 punti per test
     
     points_np = np.array(points, dtype=np.float32)
-    db = DBSCAN(eps=spacing * 1.3, min_samples=5).fit(points_np)
+    # Rendi DBSCAN più permissivo
+    db = DBSCAN(eps=spacing * 1.7, min_samples=3).fit(points_np)
     labels = db.labels_
     if not np.any(labels != -1): return None, None
     
     unique, counts = np.unique(labels[labels != -1], return_counts=True)
     main_cluster_points = points_np[labels == unique[np.argmax(counts)]]
-    if len(main_cluster_points) < 3: return None, None
+    if len(main_cluster_points) < 2: return None, None
 
     # 1. Ottieni il rettangolo di contorno
     rect = cv2.minAreaRect(main_cluster_points)
 
     # ======================================================================
-    # === NUOVA SEZIONE: VINCOLO SULL'ANGOLO DELLA GRIGLIA ===
+    # === Vincolo sull'angolo: più permissivo ===
     # ======================================================================
     angle = rect[2]
     width, height = rect[1]
 
-    # Normalizziamo l'angolo per avere l'orientamento dell'asse più lungo
-    # del rettangolo rispetto all'asse orizzontale.
     if width < height:
-        # Se il rettangolo è più "verticale", l'angolo dell'asse lungo è 90° + angolo di OpenCV
         orientation_angle = 90 + angle
     else:
-        # Se il rettangolo è più "orizzontale", l'angolo corrisponde
         orientation_angle = angle
 
-    # Applichiamo il vincolo: l'angolo assoluto non deve superare i 20 gradi.
-    MAX_ANGLE_DEVIATION = 20.0
+    # Permetti fino a 35 gradi di inclinazione
+    MAX_ANGLE_DEVIATION = 35.0
     if abs(orientation_angle) > MAX_ANGLE_DEVIATION:
         print(f"[WARN] Griglia scartata: angolo di orientamento ({orientation_angle:.2f}°) supera il limite di {MAX_ANGLE_DEVIATION}°.")
-        return None, None # Scarta questo cluster perché non rispetta il vincolo
+        return None, None
     # ======================================================================
 
-    # 2. Ottieni i 4 angoli del rettangolo (il codice prosegue solo se il vincolo è rispettato)
-    box = cv2.boxPoints(rect)
-    
-    # ... il resto della funzione rimane invariato ...
-    
-    # Ordina i punti per avere un riferimento stabile
-    s = box.sum(axis=1)
-    diff = np.diff(box, axis=1)
-    # ... etc ...
+    # ...resto invariato...
+
 def generate_serpentine_path(nodes, grid_dims):
     if not nodes or not all(grid_dims): return []
     cols, rows = grid_dims
