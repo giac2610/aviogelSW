@@ -205,12 +205,14 @@ def get_world_coordinates_data():
     world_coords = cv2.perspectiveTransform(img_pts_undistorted, H_fixed).reshape(-1, 2).tolist() if img_pts_undistorted.size > 0 else []
     return {"status": "success", "coordinates": world_coords}
 
+# SOSTITUISCI LA VECCHIA FUNZIONE CON QUESTA VERSIONE DEFINITIVA
 def generate_adaptive_grid_from_cluster(points, config_data=None):
     if config_data is None: config_data = camera_settings
     spacing = config_data.get("calibration_settings", {}).get("point_spacing_mm", 50.0)
     MAX_COLS, MAX_ROWS = 6, 8
     
     if len(points) < 3: return None, None
+    
     points_np = np.array(points, dtype=np.float32)
     db = DBSCAN(eps=spacing * 1.5, min_samples=2).fit(points_np)
     labels = db.labels_
@@ -220,9 +222,11 @@ def generate_adaptive_grid_from_cluster(points, config_data=None):
     main_cluster_points = points_np[labels == unique[np.argmax(counts)]]
     if len(main_cluster_points) < 3: return None, None
 
+    # 1. Ottieni il rettangolo di contorno solo per avere le dimensioni e l'angolo
     rect = cv2.minAreaRect(main_cluster_points)
     (center, (width, height), angle_deg) = rect
     
+    # 2. Determina l'orientamento e calcola le dimensioni corrette
     if width < height:
         long_side, short_side = height, width
         angle_deg += 90
@@ -234,22 +238,33 @@ def generate_adaptive_grid_from_cluster(points, config_data=None):
     grid_dims = (num_cols, num_rows)
     print(f"[INFO] Griglia finale calcolata: {grid_dims[0]}x{grid_dims[1]}")
 
-    box = cv2.boxPoints(rect)
-    angle_rad_rot = np.deg2rad(angle_deg)
-    c, s = np.cos(angle_rad_rot), np.sin(angle_rad_rot)
-    rotation_matrix = np.array([[c, s], [-s, c]])
-    rotated_box_points = np.dot(box - center, rotation_matrix) + center
-    origin_point = box[np.argmin(rotated_box_points[:, 0] + rotated_box_points[:, 1])]
-
+    # --- NUOVA LOGICA PER TROVARE L'ORIGINE REALE ---
+    # 3. Trova il vero punto di origine all'interno del CLUSTER, non dal box
     angle_rad = np.deg2rad(angle_deg)
+    c, s = np.cos(angle_rad), np.sin(angle_rad)
+    
+    # Matrice per ruotare i punti e allinearli agli assi
+    rotation_matrix = np.array([[c, s], [-s, c]])
+    
+    # Centra i punti del cluster e li ruota
+    rotated_cluster_points = np.dot(main_cluster_points - np.mean(main_cluster_points, axis=0), rotation_matrix.T)
+    
+    # Trova l'indice del punto con la somma x+y minima nello spazio ruotato (il vero top-left)
+    top_left_index_in_cluster = np.argmin(rotated_cluster_points.sum(axis=1))
+    
+    # Usa QUEL punto reale come origine della griglia
+    grid_origin_point = main_cluster_points[top_left_index_in_cluster]
+    # --- FINE NUOVA LOGICA ---
+
+    # 4. Calcola i vettori di spostamento usando la trigonometria
     col_vector = np.array([np.cos(angle_rad), np.sin(angle_rad)]) * spacing
     row_vector = np.array([-np.sin(angle_rad), np.cos(angle_rad)]) * spacing
     
+    # 5. Genera la griglia finale partendo dall'origine CORRETTA
     final_grid = []
-    # Generazione Column-Major per compatibilità con l'algoritmo di serpentina
-    for i in range(num_cols):
-        for j in range(num_rows):
-            point = origin_point + i * col_vector + j * row_vector
+    for j in range(num_rows):
+        for i in range(num_cols):
+            point = grid_origin_point + i * col_vector + j * row_vector
             final_grid.append(tuple(point))
             
     return final_grid, grid_dims
