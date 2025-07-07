@@ -244,16 +244,20 @@ def generate_adaptive_grid_from_cluster(points, config_data=None):
     angle = rect[2]
     width, height = rect[1]
 
+    # Calcola l'angolo di orientamento (stessa logica di prima)
     if width < height:
         orientation_angle = 90 + angle
     else:
         orientation_angle = angle
 
-    # Permetti fino a 35 gradi di inclinazione
-    MAX_ANGLE_DEVIATION = 35.0
-    if abs(orientation_angle) > MAX_ANGLE_DEVIATION:
-        print(f"[WARN] Griglia scartata: angolo di orientamento ({orientation_angle:.2f}°) supera il limite di {MAX_ANGLE_DEVIATION}°.")
-        return None, None
+    # Definisci i limiti dell'angolo accettabile
+    MIN_ANGLE = 89.0
+    MAX_ANGLE = 91.0
+
+    # Applica il vincolo: l'angolo deve essere DENTRO l'intervallo definito
+    if not (MIN_ANGLE <= orientation_angle <= MAX_ANGLE):
+        print(f"[WARN] Griglia scartata: angolo di orientamento ({orientation_angle:.2f}°) è fuori dal range [{MIN_ANGLE}°, {MAX_ANGLE}°].")
+        return None, None # Scarta il cluster perché non rispetta il vincolo
     # ======================================================================
 
     # 2. Trova bounding box e allinea i punti
@@ -460,7 +464,7 @@ def compute_route(request):
     try:
         graph, path_indices, info, response = _calculate_serpentine_path_data()
         if graph is None:
-            return JsonResponse(info, status=400)
+            return JsonResponse(info, status=400, safe=False)
         
         nodi, grid_dims = info["nodi"], info["grid_dims"]
         origin_x = camera_settings.get("origin_x", 0.0)
