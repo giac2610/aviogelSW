@@ -59,7 +59,7 @@ def _load_global_config_from_file():
         camera_settings.setdefault("picamera_config", {}).setdefault("main", {}).setdefault("size", [640, 480])
         # === NUOVI PARAMETRI PER ADAPTIVE THRESHOLD ===
         # Aggiungili al tuo file setup.json se vuoi renderli configurabili
-        camera_settings.setdefault("adaptive_thresh_block_size", 25)
+        camera_settings.setdefault("adaptive_thresh_block_size", 40)
         camera_settings.setdefault("adaptive_thresh_C", 7)
     except (FileNotFoundError, json.JSONDecodeError) as e:
         print(f"[WARN] setup.json non trovato o malformato ({e}). Creo configurazione di default.")
@@ -69,7 +69,7 @@ def _load_global_config_from_file():
                 "calibration_settings": {"point_spacing_mm": 50.0},
                 "origin_x": 0.0,
                 "origin_y": 0.0,
-                "adaptive_thresh_block_size": 25, # Valore di default
+                "adaptive_thresh_block_size": 40, # Valore di default
                 "adaptive_thresh_C": 7            # Valore di default
             }
         }
