@@ -1227,8 +1227,8 @@ def compute_route(request):
 
 def get_graph_and_tsp_path_with_speeds(velocita_x=4.0, velocita_y=1.0):
     # --- 1. Parametri della griglia HARDCODED ---
-    GRID_ROWS = 5
-    GRID_COLS = 8
+    GRID_ROWS = 8
+    GRID_COLS = 6
     SPACING_X_MM = 50.0 
     SPACING_Y_MM = 50.0 
     # -----------------------------------------
