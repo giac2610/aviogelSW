@@ -771,3 +771,142 @@ def set_fixed_perspective_view(request):
         traceback.print_exc()
         return JsonResponse({"status": "error", "message": str(e)}, status=500)
     
+@csrf_exempt
+@require_GET
+def fixed_perspective_stream(request):
+    def gen_frames():
+        stream_cfg = camera_settings 
+        
+        H_ref = get_fixed_perspective_homography_from_config()
+        
+        cam_calib = stream_cfg.get("calibration", None)
+        fixed_persp_cfg = stream_cfg.get("fixed_perspective", {})
+        blob_params_for_stream = stream_cfg
+        
+        OUT_W = fixed_persp_cfg.get("output_width", 1000)
+        OUT_H = fixed_persp_cfg.get("output_height", 800)
+        error_template_frame = np.zeros((OUT_H, OUT_W, 3), dtype=np.uint8)
+
+        blob_detection_interval = stream_cfg.get("blob_detection_interval", 5)
+        frame_count = 0
+        last_keypoints_undistorted_for_drawing = [] # Keypoint nell'immagine undistorta, prima di essere warpatati
+
+        blob_processing_width = stream_cfg.get("blob_processing_width", 640)
+
+        if not (cam_calib and cam_calib.get("camera_matrix") and cam_calib.get("distortion_coefficients")):
+            error_msg = "Camera calibration missing"
+            print(f"fixed_perspective_stream: {error_msg}")
+            encode_param = [int(cv2.IMWRITE_JPEG_QUALITY), 80]
+            while True:
+                err_f = error_template_frame.copy()
+                cv2.putText(err_f, error_msg, (30,30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0,0,255),2)
+                _, buf = cv2.imencode('.jpg', err_f, encode_param)
+                yield (b'--frame\r\nContent-Type: image/jpeg\r\n\r\n' + buf.tobytes() + b'\r\n') 
+                time.sleep(1)
+        cam_matrix = np.array(cam_calib["camera_matrix"], dtype=np.float32)
+        dist_coeffs = np.array(cam_calib["distortion_coefficients"], dtype=np.float32)
+        
+        new_cam_matrix_stream = None
+        try:
+            sample_frame_for_dims = get_frame(release_after=False) 
+            if sample_frame_for_dims is not None and sample_frame_for_dims.size > 0:
+                h_str, w_str = sample_frame_for_dims.shape[:2]
+                new_cam_matrix_stream, _ = cv2.getOptimalNewCameraMatrix(cam_matrix, dist_coeffs, (w_str,h_str), 1.0, (w_str,h_str))
+            else:
+                 raise ValueError("Could not get valid sample frame dimensions for new_camera_matrix")
+        except Exception as e_stream_setup:
+            error_msg = f"Stream setup failed: {e_stream_setup}"
+            print(f"fixed_perspective_stream: {error_msg}")
+            while True:
+                err_f = error_template_frame.copy()
+                cv2.putText(err_f, error_msg[:70], (30,30), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0,0,255),2)
+                
+                _, buf = cv2.imencode('.jpg', err_f)
+                yield (b'--frame\r\nContent-Type: image/jpeg\r\n\r\n' + buf.tobytes() + b'\r\n')
+                time.sleep(1)
+        
+        with stream_context():
+            while True:
+                try:
+                    frame_live = get_frame()
+                    if frame_live is None or frame_live.size == 0: 
+                        err_f_loop = error_template_frame.copy()
+                        cv2.putText(err_f_loop, "Frame lost", (30,60), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0,100,255),2)
+                        if H_ref is None: cv2.putText(err_f_loop, "Fixed View Not Set", (30,30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255,255,0),1)
+                        _, buf_err = cv2.imencode('.jpg', err_f_loop)
+                        yield (b'--frame\r\nContent-Type: image/jpeg\r\n\r\n' + buf_err.tobytes() + b'\r\n')
+                        # time.sleep(0.1)
+                        continue
+
+                    undistorted_live = cv2.undistort(frame_live, cam_matrix, dist_coeffs, None, new_cam_matrix_stream)
+                    output_img = error_template_frame.copy()
+                    
+                    if H_ref is not None:
+                        output_img = cv2.warpPerspective(undistorted_live, H_ref, (OUT_W, OUT_H))
+                        
+                        # LOGICA BLOB DETECTION A INTERVALLI (MODO FIXED)
+                        if frame_count % blob_detection_interval == 0:
+                            original_height_undistorted, original_width_undistorted = undistorted_live.shape[:2]
+                            blob_processing_height = int(original_height_undistorted * (blob_processing_width / original_width_undistorted))
+                            
+                            scale_x = original_width_undistorted / blob_processing_width
+                            scale_y = original_height_undistorted / blob_processing_height
+
+                            gray_for_blobs = cv2.cvtColor(undistorted_live, cv2.COLOR_BGR2GRAY)
+                            resized_gray_for_blobs = cv2.resize(gray_for_blobs, (blob_processing_width, blob_processing_height), interpolation=cv2.INTER_AREA)
+
+                            _, thresh_for_blobs = cv2.threshold(
+                                resized_gray_for_blobs,
+                                blob_params_for_stream.get("minThreshold", 127),
+                                blob_params_for_stream.get("maxThreshold", 255),
+                                cv2.THRESH_BINARY
+                            )
+                            # Passiamo i fattori di scala a detect_blobs_from_params
+                            keypoints_resized = detect_blobs_from_params(thresh_for_blobs, blob_params_for_stream, scale_x, scale_y)
+                            
+                            # Riscala i keypoint alle coordinate dell'immagine undistorta originale
+                            last_keypoints_undistorted_for_drawing = []
+                            for kp in keypoints_resized:
+                                new_x = kp.pt[0] * scale_x
+                                new_y = kp.pt[1] * scale_y
+                                new_size = kp.size * ((scale_x + scale_y) / 2)
+                                last_keypoints_undistorted_for_drawing.append(cv2.KeyPoint(new_x, new_y, new_size, kp.angle, kp.response, kp.octave, kp.class_id))
+                        
+                        # Usa gli ultimi keypoint rilevati (o i nuovi) per disegnare
+                        if last_keypoints_undistorted_for_drawing:
+                            # Questi keypoint sono già nelle coordinate dell'immagine undistorta.
+                            # Quindi non serve undistortPoints su di essi. Basta trasformarli con H_ref.
+                            pts_undist = np.array([kp.pt for kp in last_keypoints_undistorted_for_drawing], dtype=np.float32).reshape(-1,1,2)
+                            pts_warped = cv2.perspectiveTransform(pts_undist, H_ref)
+                            
+                            if pts_warped is not None:
+                                for i, pt_w in enumerate(pts_warped.reshape(-1,2)):
+                                    x, y = pt_w[0], pt_w[1]
+                                    cv2.circle(output_img, (int(round(x)), int(round(y))), 8, (0,0,255), 2)
+                                    cv2.putText(
+                                        output_img, f"{x:.1f},{y:.1f}",
+                                        (int(round(x))+10, int(round(y))-10),
+                                        cv2.FONT_HERSHEY_SIMPLEX, 0.4, (0,255,0), 1
+                                    )
+                        
+                        frame_count += 1
+
+                    else: # H_ref is None
+                        cv2.putText(output_img, "Fixed View Not Set", (30,30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255,255,0),1)
+                        cv2.putText(output_img, "Use endpoint to set it", (30,60), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255,255,0),1)
+                    
+                    encode_param = [int(cv2.IMWRITE_JPEG_QUALITY), 80]
+                    _, buffer_ok = cv2.imencode('.jpg', output_img, encode_param)
+                    frame_bytes_ok = buffer_ok.tobytes()
+                    yield (b'--frame\r\nContent-Type: image/jpeg\r\n\r\n' + frame_bytes_ok + b'\r\n')
+                    # time.sleep(0.03) # Commentato per massimizzare il framerate, se rallenta decommenta con valore > 0.03
+                except Exception as e_loop_stream:
+                    print(f"Error in fixed_perspective_stream loop: {e_loop_stream}")
+                    traceback.print_exc()
+                    err_f_loop = error_template_frame.copy()
+                    cv2.putText(err_f_loop, f"Stream Loop Err: {str(e_loop_stream)[:50]}", (30,60), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0,100,255),2)
+                    if H_ref is None: cv2.putText(err_f_loop, "Fixed View Not Set", (30,30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255,255,0),1)
+                    _, buf_err = cv2.imencode('.jpg', err_f_loop)
+                    yield (b'--frame\r\nContent-Type: image/jpeg\r\n\r\n' + buf_err.tobytes() + b'\r\n')
+                    time.sleep(1)
+    return StreamingHttpResponse(gen_frames(), content_type='multipart/x-mixed-replace; boundary=frame')
