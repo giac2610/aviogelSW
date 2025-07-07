@@ -1229,8 +1229,8 @@ def get_graph_and_tsp_path_with_speeds(velocita_x=4.0, velocita_y=1.0):
     # --- 1. Parametri della griglia HARDCODED ---
     GRID_ROWS = 5
     GRID_COLS = 8
-    SPACING_X_MM = 50.0 # NOTA: Ho aumentato questo valore, 25 sembrava poco
-    SPACING_Y_MM = 50.0 # NOTA: Ho aumentato questo valore, 25 sembrava poco
+    SPACING_X_MM = 50.0 
+    SPACING_Y_MM = 50.0 
     # -----------------------------------------
 
     response = get_world_coordinates_data()
@@ -1246,25 +1246,19 @@ def get_graph_and_tsp_path_with_speeds(velocita_x=4.0, velocita_y=1.0):
     else:
         points = np.array(coordinates)
         
-        # TROVA IL VERO ANGOLO IN ALTO A SINISTRA del cluster di punti
         min_x = np.min(points[:, 0])
         min_y = np.min(points[:, 1])
         anchor_point = np.array([min_x, min_y])
         print("Ancoraggio griglia calcolato: %s", anchor_point)
 
-        # Genera la griglia ideale partendo dall'ancora corretta
         ideal_grid = []
         for r in range(GRID_ROWS):
             for c in range(GRID_COLS):
-                # NOTA: Ora sottraiamo per allineare correttamente la griglia
-                # a seconda di come è orientato il tuo sistema di coordinate.
-                # Se il percorso è invertito, rimuovi i segni meno.
                 x = anchor_point[0] - c * SPACING_X_MM 
                 y = anchor_point[1] + r * SPACING_Y_MM
                 ideal_grid.append([x, y])
         completed_coordinates = ideal_grid
         print("Generata griglia %dx%d hardcoded e ancorata correttamente.", GRID_ROWS, GRID_COLS)
-    # ------------------------------------
     
     origin_x = camera_settings.get("origin_x", 0.0)
     origin_y = camera_settings.get("origin_y", 0.0)
@@ -1274,7 +1268,6 @@ def get_graph_and_tsp_path_with_speeds(velocita_x=4.0, velocita_y=1.0):
     filtered_coords = []
     for coord in coordinates_with_origin:
         x_rel = coord[0] - origin_x
-        # Aumentato il range per sicurezza
         if -500 <= x_rel <= 500:
             filtered_coords.append(coord)
     nodi = [tuple(coord) for coord in filtered_coords]
@@ -1284,12 +1277,12 @@ def get_graph_and_tsp_path_with_speeds(velocita_x=4.0, velocita_y=1.0):
     
     graph = construct_graph(nodi, velocita_x, velocita_y)
     source = 0
-    # Usiamo l'algoritmo nearest_neighbor che è più intuitivo per le griglie
-    hamiltonian_path = nx.algorithms.approximation.traveling_salesman_problem(
-        graph, cycle=False, method=nx.algorithms.approximation.nearest_neighbor, source=source
-    )
-    return graph, hamiltonian_path, {"status": "success", "nodi": nodi}
 
+    ### RIGA CORRETTA ###
+    # Si chiama direttamente l'algoritmo greedy_tsp
+    hamiltonian_path = nx.algorithms.approximation.greedy_tsp(graph, source=source)
+    
+    return graph, hamiltonian_path, {"status": "success", "nodi": nodi}
 @csrf_exempt
 @require_GET
 def plot_graph(request):
