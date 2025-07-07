@@ -167,12 +167,16 @@ def detect_blobs_from_params(binary_image, blob_params, scale_x=1.0, scale_y=1.0
     params.minInertiaRatio = blob_params.get("minInertia", 0.01)
     return cv2.SimpleBlobDetector_create(params).detect(binary_image)
 
-def get_current_frame_and_keypoints_from_config():
-    frame = get_frame()
+# ==============================================================================
+# ==== SEZIONE DI FUNZIONI REFACTORIZZATE PER RISOLVERE IL DEADLOCK ====
+# ==============================================================================
+
+def get_current_frame_and_keypoints_from_config(frame):
+    """Elabora un frame esistente per trovare i keypoint, non ne cattura uno nuovo."""
     if frame.size == 0:
         size = camera_settings.get("picamera_config", {}).get("main", {}).get("size", [480, 640])
         return np.zeros((size[1], size[0], 3), dtype=np.uint8), []
-
+    
     gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
     proc_w = 640
     orig_h, orig_w = frame.shape[:2]
@@ -184,16 +188,19 @@ def get_current_frame_and_keypoints_from_config():
     kps_orig = [cv2.KeyPoint(kp.pt[0] * scale_x, kp.pt[1] * scale_y, kp.size * ((scale_x + scale_y) / 2)) for kp in kps_resized]
     return frame, kps_orig
 
-def get_world_coordinates_data():
+def get_world_coordinates_data(frame):
+    """Calcola le coordinate mondo a partire da un frame esistente."""
     H_fixed = get_fixed_perspective_homography_from_config()
     if H_fixed is None: return {"status": "error", "message": "Omografia non disponibile."}
     cam_calib = camera_settings.get("calibration")
     if not (cam_calib and "camera_matrix" in cam_calib and "distortion_coefficients" in cam_calib):
         return {"status": "error", "message": "Dati di calibrazione mancanti."}
-
+    
     cam_matrix = np.array(cam_calib["camera_matrix"])
     dist_coeffs = np.array(cam_calib["distortion_coefficients"])
-    frame, keypoints = get_current_frame_and_keypoints_from_config()
+    
+    _, keypoints = get_current_frame_and_keypoints_from_config(frame) 
+    
     if not keypoints: return {"status": "success", "coordinates": []}
 
     img_pts = np.array([kp.pt for kp in keypoints], dtype=np.float32).reshape(-1, 1, 2)
@@ -201,9 +208,52 @@ def get_world_coordinates_data():
     new_cam_matrix, _ = cv2.getOptimalNewCameraMatrix(cam_matrix, dist_coeffs, (w, h), 1.0, (w, h))
     img_pts_undistorted = cv2.undistortPoints(img_pts, cam_matrix, dist_coeffs, P=new_cam_matrix)
     if img_pts_undistorted is None: return {"status": "error", "message": "Undistortion fallita."}
-
+    
     world_coords = cv2.perspectiveTransform(img_pts_undistorted, H_fixed).reshape(-1, 2).tolist() if img_pts_undistorted.size > 0 else []
     return {"status": "success", "coordinates": world_coords}
+
+def _calculate_serpentine_path_data(frame):
+    """Funzione helper che centralizza la logica di calcolo del percorso a partire da un frame."""
+    response = get_world_coordinates_data(frame) 
+    
+    if response.get("status") != "success":
+        return None, None, response
+
+    coordinates = response.get("coordinates", [])
+    if len(coordinates) > 48:
+        print(f"[INFO] Rilevati {len(coordinates)} punti, limitati a 48.")
+        coordinates = sorted(coordinates, key=lambda p: (p[1], p[0]))[:48]
+
+    if not coordinates:
+        return None, None, {"status": "error", "message": "Nessun punto rilevato per il calcolo."}
+        
+    nodi, grid_dims = generate_adaptive_grid_from_cluster(coordinates, config_data=camera_settings)
+    if not nodi:
+        return None, None, {"status": "error", "message": "Impossibile calcolare griglia adattiva."}
+
+    path_indices = generate_serpentine_path(nodi, grid_dims)
+    
+    graph = nx.Graph()
+    for i, pos in enumerate(nodi):
+        graph.add_node(i, pos=pos)
+
+    origin_x = camera_settings.get("origin_x", 0.0)
+    origin_y = camera_settings.get("origin_y", 0.0)
+    origin_pos = np.array([origin_x, origin_y])
+    
+    if path_indices:
+        path_nodes = [nodi[i] for i in path_indices]
+        distances_sq = [((node[0] - origin_pos[0])**2 + (node[1] - origin_pos[1])**2) for node in path_nodes]
+        start_index_in_path = np.argmin(distances_sq)
+        final_path_indices = path_indices[start_index_in_path:] + path_indices[:start_index_in_path]
+    else:
+        final_path_indices = []
+        
+    return graph, final_path_indices, {"status": "success", "nodi": nodi, "grid_dims": grid_dims}
+
+# ==============================================================================
+# ==== FINE SEZIONE REFACTORIZZATA ====
+# ==============================================================================
 
 def generate_adaptive_grid_from_cluster(points, config_data=None):
     if config_data is None:
@@ -278,44 +328,6 @@ def generate_serpentine_path(nodes, grid_dims):
 
     return path_indices
 
-def _calculate_serpentine_path_data():
-    """Funzione helper che centralizza la logica di calcolo del percorso a serpentina."""
-    response = get_world_coordinates_data()
-    if response.get("status") != "success":
-        return None, None, response
-
-    coordinates = response.get("coordinates", [])
-    if len(coordinates) > 48:
-        print(f"[INFO] Rilevati {len(coordinates)} punti, limitati a 48.")
-        coordinates = sorted(coordinates, key=lambda p: (p[1], p[0]))[:48]
-
-    if not coordinates:
-        return None, None, {"status": "error", "message": "Nessun punto rilevato per il calcolo."}
-
-    nodi, grid_dims = generate_adaptive_grid_from_cluster(coordinates, config_data=camera_settings)
-    if not nodi:
-        return None, None, {"status": "error", "message": "Impossibile calcolare griglia adattiva."}
-
-    path_indices = generate_serpentine_path(nodi, grid_dims)
-
-    graph = nx.Graph()
-    for i, pos in enumerate(nodi):
-        graph.add_node(i, pos=pos)
-
-    origin_x = camera_settings.get("origin_x", 0.0)
-    origin_y = camera_settings.get("origin_y", 0.0)
-    origin_pos = np.array([origin_x, origin_y])
-
-    if path_indices:
-        path_nodes = [nodi[i] for i in path_indices]
-        distances_sq = [((node[0] - origin_pos[0])**2 + (node[1] - origin_pos[1])**2) for node in path_nodes]
-        start_index_in_path = np.argmin(distances_sq)
-        final_path_indices = path_indices[start_index_in_path:] + path_indices[:start_index_in_path]
-    else:
-        final_path_indices = []
-
-    return graph, final_path_indices, {"status": "success", "nodi": nodi, "grid_dims": grid_dims}
-
 def _generate_plot_image(graph, nodi, grid_dims, path_indices):
     """Funzione helper che genera l'immagine del grafico."""
     plt.figure(figsize=(8, 6))
@@ -362,54 +374,53 @@ def get_board_and_canonical_homography_for_django(undistorted_frame, new_camera_
     H_canonical = cv2.getPerspectiveTransform(img_board_perimeter_pts, canonical_dst_pts)
     return H_canonical, (w, h)
 
-# ========== NUOVA FUNZIONE DI DISEGNO ==========
 def get_frame_with_world_grid():
     """
     Cattura un frame, lo corregge e vi disegna sopra la griglia del mondo
     e il percorso a serpentina dell'estrusore.
     """
-    # 1. Recupera i dati di calibrazione e omografia
+    # 1. Cattura il frame UNA SOLA VOLTA
+    frame = get_frame()
+
+    # 2. Recupera i dati di calibrazione e omografia
     cam_calib = camera_settings.get("calibration")
     H_fixed = get_fixed_perspective_homography_from_config()
 
-    # Se non abbiamo i dati per la trasformazione, restituisci il frame normale
     if H_fixed is None or not cam_calib:
-        return get_frame()
+        return frame # Restituisci il frame raw se non calibrato
 
-    # 2. Cattura un nuovo frame e correggi la distorsione
-    frame = get_frame()
+    # 3. Correggi la distorsione del frame catturato
     cam_matrix = np.array(cam_calib["camera_matrix"])
     dist_coeffs = np.array(cam_calib["distortion_coefficients"])
     h, w = frame.shape[:2]
     new_cam_matrix, _ = cv2.getOptimalNewCameraMatrix(cam_matrix, dist_coeffs, (w, h), 1.0, (w, h))
     undistorted_frame = cv2.undistort(frame, cam_matrix, dist_coeffs, None, new_cam_matrix)
 
-    # 3. Calcola la griglia e il percorso usando la logica esistente
-    graph, path_indices, info = _calculate_serpentine_path_data()
-
-    # Se il calcolo fallisce, restituisci il frame corretto ma senza disegni
+    # 4. Calcola la griglia e il percorso usando il frame appena catturato
+    graph, path_indices, info = _calculate_serpentine_path_data(frame) 
+    
     if graph is None:
         return undistorted_frame
-
+    
     nodi_mondo = info.get("nodi", [])
     if not nodi_mondo:
         return undistorted_frame
 
-    # 4. Esegui la trasformazione INVERSA per ottenere i punti sull'immagine
+    # 5. Esegui la trasformazione INVERSA per ottenere i punti sull'immagine
     try:
         H_inversa = np.linalg.inv(H_fixed)
     except np.linalg.LinAlgError:
-        return undistorted_frame # Matrice non invertibile
-
+        return undistorted_frame
+        
     nodi_mondo_np = np.array(nodi_mondo, dtype=np.float32).reshape(-1, 1, 2)
     nodi_immagine = cv2.perspectiveTransform(nodi_mondo_np, H_inversa)
-
+    
     if nodi_immagine is None:
-        return undistorted_frame # Trasformazione fallita
-
+        return undistorted_frame
+        
     nodi_immagine = nodi_immagine.reshape(-1, 2).astype(int)
 
-    # 5. Disegna la griglia e il percorso
+    # 6. Disegna la griglia e il percorso
     if path_indices:
         for i in range(len(path_indices) - 1):
             start_node_index = path_indices[i]
@@ -417,12 +428,11 @@ def get_frame_with_world_grid():
             if start_node_index < len(nodi_immagine) and end_node_index < len(nodi_immagine):
                 start_point = tuple(nodi_immagine[start_node_index])
                 end_point = tuple(nodi_immagine[end_node_index])
-                cv2.line(undistorted_frame, start_point, end_point, (0, 255, 0), 2) # Linea verde
+                cv2.line(undistorted_frame, start_point, end_point, (0, 255, 0), 2)
 
-    # Disegna un cerchio su ogni nodo della griglia
     for point in nodi_immagine:
-        cv2.circle(undistorted_frame, tuple(point), 5, (0, 0, 255), -1) # Cerchio rosso
-
+        cv2.circle(undistorted_frame, tuple(point), 5, (0, 0, 255), -1)
+        
     return undistorted_frame
 
 # ==============================================================================
@@ -460,14 +470,20 @@ def camera_feed(request):
 @csrf_exempt
 @require_GET
 def get_world_coordinates(request):
-    data = get_world_coordinates_data()
+    # NOTA: Questa funzione ora richiede un frame.
+    # Per una chiamata API singola, catturiamo un frame qui.
+    # Questo non causa deadlock perché non è in un loop di streaming che detiene già il lock.
+    frame = get_frame()
+    data = get_world_coordinates_data(frame)
     return JsonResponse(data, status=200 if data.get("status") == "success" else 400)
 
 @csrf_exempt
 @require_GET
 def get_keypoints(request):
     try:
-        _, keypoints = get_current_frame_and_keypoints_from_config()
+        # Anche qui, catturiamo un frame per la singola elaborazione.
+        frame = get_frame()
+        _, keypoints = get_current_frame_and_keypoints_from_config(frame)
         return JsonResponse({"status": "success", "keypoints": [[kp.pt[0], kp.pt[1]] for kp in keypoints]})
     except Exception as e:
         return JsonResponse({"status": "error", "message": str(e)}, status=500)
@@ -491,7 +507,9 @@ def set_camera_origin(request):
 def compute_route(request):
     """Calcola un percorso a serpentina, partendo dal punto più vicino all'origine."""
     try:
-        graph, path_indices, info = _calculate_serpentine_path_data()
+        # Per una singola computazione, cattura un frame.
+        frame = get_frame()
+        graph, path_indices, info = _calculate_serpentine_path_data(frame)
         if graph is None:
             return JsonResponse(info, status=400, safe=False)
 
@@ -524,7 +542,8 @@ def compute_route(request):
 def plot_graph(request):
     """Genera un'immagine del percorso a serpentina."""
     try:
-        graph, path_indices, info = _calculate_serpentine_path_data()
+        frame = get_frame()
+        graph, path_indices, info = _calculate_serpentine_path_data(frame)
         if graph is None:
             return HttpResponse(f"Errore: {info.get('message')}", status=400)
 
@@ -639,7 +658,6 @@ def set_fixed_perspective_view(request):
         return JsonResponse({"status": "success"})
     return JsonResponse({"status": "error", "message": "Salvataggio vista fallito."}, status=500)
 
-# ========== NUOVO ENDPOINT DI DEBUG ==========
 @csrf_exempt
 @require_GET
 def debug_camera_feed(request):
@@ -649,7 +667,6 @@ def debug_camera_feed(request):
     def gen_debug_frames():
         with stream_context():
             while True:
-                # Usa la funzione che genera il frame con la griglia
                 frame = get_frame_with_world_grid()
                 if frame.size == 0:
                     time.sleep(0.1)
