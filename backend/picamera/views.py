@@ -17,7 +17,7 @@ from django.http import StreamingHttpResponse, JsonResponse, HttpResponse
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_POST, require_GET
 import traceback
-import requests #type: ignore[import-untyped]
+import requests #type: ignore
 
 # --- File Configuration ---
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -79,7 +79,6 @@ def _initialize_camera_internally():
     if not isinstance(picam_main_size, list) or len(picam_main_size) != 2:
         print(f"[WARN] picamera_config.main.size malformed: {picam_main_size}. Using default [640, 480].")
         picam_main_size = [640, 480]
-
     capture_width, capture_height = picam_main_size
 
     if sys.platform == "darwin":
@@ -128,17 +127,14 @@ def get_frame(release_after=False):
         frame = None
         try:
             if sys.platform == "darwin":
-                if not camera_instance.isOpened():
-                    raise IOError("macOS camera failed to open.")
+                if not camera_instance.isOpened(): raise IOError("macOS camera failed to open.")
                 ret, frame = camera_instance.read()
                 if not ret: raise IOError("macOS camera failed to read frame.")
             else:
-                if not hasattr(camera_instance, 'capture_array'):
-                    raise IOError("Picamera2 not ready or failed to initialize.")
+                if not hasattr(camera_instance, 'capture_array'): raise IOError("Picamera2 not ready or failed to initialize.")
                 frame = camera_instance.capture_array()
         except Exception as e:
             print(f"get_frame: Error capturing frame: {e}. Returning blank frame.")
-            # Reset camera instance on error
             if camera_instance is not None:
                 try:
                     if sys.platform == "darwin": camera_instance.release()
@@ -279,6 +275,42 @@ def stream_context():
         active_streams -= 1
         print(f"[STREAM] Stream ended. Active streams: {active_streams}")
 
+def get_board_and_canonical_homography_for_django(undistorted_frame, new_camera_matrix_cv, calibration_cfg_dict):
+    cs_cols = calibration_cfg_dict.get("chessboard_cols", 9)
+    cs_rows = calibration_cfg_dict.get("chessboard_rows", 7)
+    sq_size = calibration_cfg_dict.get("square_size_mm", 15.0)
+    chessboard_dim_cv = (cs_cols, cs_rows)
+    objp_cv = np.zeros((cs_cols * cs_rows, 3), np.float32)
+    objp_cv[:, :2] = np.mgrid[0:cs_cols, 0:cs_rows].T.reshape(-1, 2)
+    objp_cv *= sq_size
+    
+    criteria_cv = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 30, 0.001)
+    gray = cv2.cvtColor(undistorted_frame, cv2.COLOR_BGR2GRAY)
+    ret, corners = cv2.findChessboardCorners(gray, chessboard_dim_cv, None)
+    if not ret: return None, None
+    corners2 = cv2.cornerSubPix(gray, corners, (11, 11), (-1, -1), criteria_cv)
+    success, rvec, tvec = cv2.solvePnP(objp_cv, corners2, new_camera_matrix_cv, None, flags=cv2.SOLVEPNP_ITERATIVE)
+    if not success: return None, None
+    
+    obj_board_perimeter_pts = np.array([
+        [0,0,0], [ (cs_cols-1)*sq_size, 0, 0], 
+        [(cs_cols-1)*sq_size, (cs_rows-1)*sq_size, 0], [0, (cs_rows-1)*sq_size, 0]
+    ], dtype=np.float32)
+    img_board_perimeter_pts, _ = cv2.projectPoints(obj_board_perimeter_pts, rvec, tvec, new_camera_matrix_cv, None)
+    img_board_perimeter_pts = img_board_perimeter_pts.reshape(-1, 2)
+    
+    canonical_width = int(round((cs_cols-1) * sq_size))
+    canonical_height = int(round((cs_rows-1) * sq_size))
+    canonical_dst_pts = np.array([
+        [0,0], [canonical_width-1,0], 
+        [canonical_width-1,canonical_height-1], [0,canonical_height-1]
+    ], dtype=np.float32)
+    
+    H_canonical = cv2.getPerspectiveTransform(img_board_perimeter_pts, canonical_dst_pts)
+    canonical_board_size_tuple = (canonical_width, canonical_height) 
+    
+    return H_canonical, canonical_board_size_tuple
+
 # --- Sezione Logica Principale per Griglia e Percorso ---
 
 def construct_graph(nodi, velocita_x=4.0, velocita_y=1.0):
@@ -294,10 +326,6 @@ def construct_graph(nodi, velocita_x=4.0, velocita_y=1.0):
     return G
 
 def _generate_grid_and_path(world_coords, camera_settings):
-    """
-    Funzione unificata che genera la griglia ideale e calcola il percorso.
-    Questa è l'unica "fonte di verità" per la geometria.
-    """
     GRID_ROWS, GRID_COLS = 8, 6
     SPACING_X_MM, SPACING_Y_MM = 50.0, 50.0
 
@@ -325,9 +353,6 @@ def _generate_grid_and_path(world_coords, camera_settings):
     return ideal_grid_world, final_ordered_path
 
 def get_graph_and_tsp_path_with_speeds(velocita_x=4.0, velocita_y=1.0):
-    """
-    Prepara i dati per i comandi motore chiamando la funzione master.
-    """
     response = get_world_coordinates_data()
     if response.get("status") != "success" or not response.get("coordinates"):
         return None, None, {"status": "error", "message": "Nessun punto rilevato."}
@@ -458,13 +483,9 @@ def camera_feed(request):
 @csrf_exempt
 @require_GET
 def reproject_points_feed(request):
-    """
-    Stream video che disegna ESATTAMENTE la stessa griglia e percorso usati per i comandi motore.
-    """
     def gen_frames():
         H_fixed = get_fixed_perspective_homography_from_config()
         if H_fixed is None:
-            # Gestione errore
             dummy_frame = np.zeros((480, 640, 3), dtype=np.uint8)
             cv2.putText(dummy_frame, "Homography not set", (50, 240), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
             _, buffer = cv2.imencode('.jpg', dummy_frame)
@@ -495,14 +516,12 @@ def reproject_points_feed(request):
                     if world_coords_data.get('status') == 'success' and world_coords_data.get('coordinates'):
                         ideal_grid_world, ordered_path_world = _generate_grid_and_path(world_coords_data['coordinates'], camera_settings)
 
-                        # Disegna la griglia (punti verdi)
                         grid_world_pts_np = np.array(ideal_grid_world, dtype=np.float32).reshape(-1, 1, 2)
                         grid_pixels_np = cv2.perspectiveTransform(grid_world_pts_np, H_inv)
                         if grid_pixels_np is not None:
                             for pt in grid_pixels_np:
                                 cv2.circle(undistorted_frame, tuple(pt[0].astype(int)), 5, (0, 255, 0), -1)
 
-                        # Disegna il percorso (linee blu)
                         path_world_pts_np = np.array(ordered_path_world, dtype=np.float32).reshape(-1, 1, 2)
                         path_pixels_np = cv2.perspectiveTransform(path_world_pts_np, H_inv)
                         if path_pixels_np is not None:
@@ -518,3 +537,163 @@ def reproject_points_feed(request):
                     time.sleep(1)
 
     return StreamingHttpResponse(gen_frames(), content_type='multipart/x-mixed-replace; boundary=frame')
+
+@csrf_exempt
+@require_POST
+def reset_camera_calibration(request):
+    try:
+        current_disk_config = load_config_data_from_file()
+        if "camera" not in current_disk_config: current_disk_config["camera"] = {}
+        current_disk_config["camera"].setdefault("calibration", {})
+        current_disk_config["camera"].setdefault("fixed_perspective", {})
+        current_disk_config["camera"]["calibration"]["camera_matrix"] = None
+        current_disk_config["camera"]["calibration"]["distortion_coefficients"] = None
+        current_disk_config["camera"]["fixed_perspective"]["homography_matrix"] = None
+        if save_config_data_to_file(current_disk_config):
+            return JsonResponse({"status": "success", "message": "Camera calibration and fixed perspective reset."})
+        else:
+            return JsonResponse({"status": "error", "message": "Failed to save the reset configuration."}, status=500)
+    except Exception as e:
+        print(f"Error resetting camera calibration: {e}")
+        traceback.print_exc()
+        return JsonResponse({"status": "error", "message": str(e)}, status=500)
+
+@csrf_exempt
+@require_GET
+def get_keypoints(request):
+    try:
+        _, keypoints_data = get_current_frame_and_keypoints_from_config()
+        keypoints_list = [[kp.pt[0], kp.pt[1]] for kp in keypoints_data]
+        return JsonResponse({"status": "success", "keypoints": keypoints_list})
+    except Exception as e:
+        return JsonResponse({"status": "error", "message": str(e)}, status=500)
+
+@csrf_exempt
+@require_POST
+def set_camera_origin(request):
+    try:
+        data = json.loads(request.body)
+        x_val, y_val = float(data.get("origin_x", 0.0)), float(data.get("origin_y", 0.0))
+        current_disk_config = load_config_data_from_file()
+        current_disk_config.setdefault("camera", {})
+        current_disk_config["camera"]["origin_x"] = x_val
+        current_disk_config["camera"]["origin_y"] = y_val
+        if save_config_data_to_file(current_disk_config):
+            return JsonResponse({"status": "success", "origin": {"origin_x": x_val, "origin_y": y_val}})
+        else:
+            return JsonResponse({"status": "error", "message": "Failed to save origin."}, status=500)
+    except Exception as e:
+        return JsonResponse({"status": "error", "message": str(e)}, status=400)
+
+@csrf_exempt
+@require_POST
+def save_frame_calibration(request):
+    try:
+        frame_to_save = get_frame(release_after=True)
+        if frame_to_save is None or frame_to_save.size == 0:
+            return JsonResponse({"status": "error", "message": "Invalid frame from camera."}, status=500)
+        filename = f"calib_{int(time.time())}.jpg"
+        filepath = os.path.join(CALIBRATION_MEDIA_DIR, filename)
+        cv2.imwrite(filepath, frame_to_save)
+        print(f"Frame saved for calibration: {filepath}")
+        return JsonResponse({"status": "success", "filename": filename, "path": filepath})
+    except Exception as e:
+        return JsonResponse({"status": "error", "message": str(e)}, status=500)
+
+@csrf_exempt
+@require_POST
+def calibrate_camera_endpoint(request):
+    calib_settings = camera_settings.get("calibration_settings", {})
+    cs_cols, cs_rows = calib_settings.get("chessboard_cols", 9), calib_settings.get("chessboard_rows", 7)
+    square_size_mm = calib_settings.get("square_size_mm", 15.0)
+    chessboard_dim = (cs_cols, cs_rows)
+    criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 30, 0.001)
+    objp = np.zeros((cs_cols * cs_rows, 3), np.float32)
+    objp[:, :2] = np.mgrid[0:cs_cols, 0:cs_rows].T.reshape(-1, 2) * square_size_mm
+    
+    objpoints, imgpoints = [], []
+    image_files = glob.glob(os.path.join(CALIBRATION_MEDIA_DIR, '*.jpg'))
+    if not image_files:
+        return JsonResponse({"status": "error", "message": f"No JPG images in {CALIBRATION_MEDIA_DIR}."}, status=400)
+        
+    gray_shape = None
+    for fname in image_files:
+        img = cv2.imread(fname)
+        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+        if gray_shape is None: gray_shape = gray.shape[::-1]
+        ret, corners = cv2.findChessboardCorners(gray, chessboard_dim, None)
+        if ret:
+            objpoints.append(objp)
+            corners2 = cv2.cornerSubPix(gray, corners, (11, 11), (-1, -1), criteria)
+            imgpoints.append(corners2)
+            
+    if not objpoints:
+        return JsonResponse({"status": "error", "message": "No valid chessboard points found."}, status=400)
+        
+    ret, mtx, dist, _, _ = cv2.calibrateCamera(objpoints, imgpoints, gray_shape, None, None)
+    if ret:
+        calib_data = {"camera_matrix": mtx.tolist(), "distortion_coefficients": dist.tolist()}
+        current_config = load_config_data_from_file()
+        current_config.setdefault("camera", {})["calibration"] = calib_data
+        if save_config_data_to_file(current_config):
+            return JsonResponse({"status": "success", "message": "Calibration saved.", "calibration": calib_data})
+        else:
+            return JsonResponse({"status": "error", "message": "Calibration failed to save."}, status=500)
+    else:
+        return JsonResponse({"status": "error", "message": "cv2.calibrateCamera failed."}, status=500)
+
+@csrf_exempt
+@require_POST
+def set_fixed_perspective_view(request):
+    cam_calib = camera_settings.get("calibration", {})
+    cam_matrix = np.array(cam_calib.get("camera_matrix"))
+    dist_coeffs = np.array(cam_calib.get("distortion_coefficients"))
+    if cam_matrix.size == 0 or dist_coeffs.size == 0:
+        return JsonResponse({"status": "error", "message": "Camera not calibrated."}, status=400)
+        
+    frame = get_frame(release_after=True)
+    if frame is None: return JsonResponse({"status": "error", "message": "Could not get frame."}, status=500)
+    
+    h, w = frame.shape[:2]
+    new_cam_matrix, _ = cv2.getOptimalNewCameraMatrix(cam_matrix, dist_coeffs, (w,h), 1.0, (w,h))
+    undistorted_frame = cv2.undistort(frame, cam_matrix, dist_coeffs, None, new_cam_matrix)
+    
+    calib_settings = camera_settings.get("calibration_settings", {})
+    H_canonical, canonical_dims = get_board_and_canonical_homography_for_django(undistorted_frame, new_cam_matrix, calib_settings)
+    
+    if H_canonical is not None:
+        fixed_persp_cfg = camera_settings.get("fixed_perspective", {})
+        FIXED_WIDTH = fixed_persp_cfg.get("output_width", 1000)
+        FIXED_HEIGHT = fixed_persp_cfg.get("output_height", 800)
+        cb_w, cb_h = canonical_dims
+        offset_x = max(0, (FIXED_WIDTH - cb_w) / 2.0)
+        offset_y = max(0, (FIXED_HEIGHT - cb_h) / 2.0)
+        M_translate = np.array([[1,0,offset_x], [0,1,offset_y], [0,0,1]], dtype=np.float32)
+        H_ref = M_translate @ H_canonical
+        if save_fixed_perspective_homography_to_config(H_ref):
+            return JsonResponse({"status": "success", "message": "Fixed perspective view established."})
+        else:
+            return JsonResponse({"status": "error", "message": "Error saving homography."}, status=500)
+    else:
+        return JsonResponse({"status": "error", "message": "Chessboard pattern not detected."}, status=400)
+
+@csrf_exempt
+@require_GET
+def plot_graph(request):
+    graph, hamiltonian_path, info = get_graph_and_tsp_path()
+    if graph is None: return HttpResponse("Error: " + info.get("message", "Unknown"), status=500)
+    
+    plt.figure(figsize=(8, 6))
+    pos = nx.get_node_attributes(graph, 'pos')
+    nx.draw_networkx_nodes(graph, pos, node_color='skyblue', node_size=500)
+    nx.draw_networkx_labels(graph, pos, font_size=10)
+    path_edges = list(zip(hamiltonian_path, hamiltonian_path[1:]))
+    nx.draw_networkx_edges(graph, pos, edgelist=path_edges, edge_color='red', width=2)
+    plt.title("Percorso TSP (in rosso)")
+    plt.axis('off')
+    
+    buf = BytesIO()
+    plt.savefig(buf, format='png')
+    plt.close()
+    buf.seek(0)
+    return HttpResponse(buf.getvalue(), content_type='image/png')
