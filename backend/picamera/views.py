@@ -1288,14 +1288,14 @@ def get_graph_and_tsp_path_with_speeds(velocita_x=4.0, velocita_y=1.0):
 @require_GET
 def reproject_points_feed(request):
     """
-    Stream video finale: mostra griglia 8x6 e percorso con partenza OBBLIGATORIA
-    in basso a destra. Usa print per l'output.
+    Stream video con correzione finale dell'effetto specchio, griglia stabile
+    e percorso calcolato con TSP.
     """
     def gen_frames():
-        # --- Carica le matrici di trasformazione ---
+        # --- Inizializzazione ---
         H_fixed = get_fixed_perspective_homography_from_config()
         if H_fixed is None:
-            print("[ERRORE] Impossibile avviare lo stream: Omografia fissa non impostata.")
+            print("[ERRORE] Omografia fissa non impostata.")
             return
 
         ret, H_inv = cv2.invert(H_fixed)
@@ -1313,7 +1313,11 @@ def reproject_points_feed(request):
         except Exception as e:
             print(f"[ERRORE] Nello stream di riproiezione: {e}")
             return
-        
+            
+        # Variabili per stabilizzare l'ancoraggio della griglia
+        stable_anchor_point = None
+        smoothing_factor = 0.1 # Valore più basso = più stabile
+
         with stream_context():
             while True:
                 try:
@@ -1324,7 +1328,7 @@ def reproject_points_feed(request):
 
                     undistorted_frame = cv2.undistort(frame, cam_matrix, dist_coeffs, None, new_cam_matrix)
 
-                    # ### MODIFICA 1: DIMENSIONI GRIGLIA E PRINT ###
+                    # Parametri della griglia
                     GRID_ROWS, GRID_COLS = 8, 6
                     SPACING_X_MM, SPACING_Y_MM = 50.0, 50.0
                     
@@ -1333,45 +1337,42 @@ def reproject_points_feed(request):
                     ideal_grid_world = []
                     if world_coords_data['status'] == 'success' and world_coords_data['coordinates']:
                         points = np.array(world_coords_data['coordinates'])
+                        current_anchor_point = np.array([np.min(points[:, 0]), np.min(points[:, 1])])
                         
-                        min_x = np.min(points[:, 0])
-                        min_y = np.min(points[:, 1])
-                        anchor_point = np.array([min_x, min_y])
-                        print(f"[INFO] Ancoraggio griglia calcolato: {anchor_point}")
-
+                        # Applica il filtro di smorzamento per stabilizzare la griglia
+                        if stable_anchor_point is None:
+                            stable_anchor_point = current_anchor_point
+                        else:
+                            stable_anchor_point = (smoothing_factor * current_anchor_point) + \
+                                                  (1 - smoothing_factor) * stable_anchor_point
+                        
+                        # Genera la griglia ideale
                         for r in range(GRID_ROWS):
                             for c in range(GRID_COLS):
-                                x = anchor_point[0] + c * SPACING_X_MM
-                                y = anchor_point[1] + r * SPACING_Y_MM
+                                # ### MODIFICA FINALE: Inverti l'asse X per correggere l'effetto specchio ###
+                                x = stable_anchor_point[0] - c * SPACING_X_MM
+                                
+                                y = stable_anchor_point[1] + r * SPACING_Y_MM
                                 ideal_grid_world.append([x, y])
 
-                    # ### MODIFICA 2: LOGICA PERCORSO CON PARTENZA FORZATA ###
+                    # Calcola il percorso usando la stessa logica dei comandi motore
                     path_pixel_coords = []
                     if ideal_grid_world:
-                        # 1. Costruisci il grafo SOLO con i punti della griglia (senza origine virtuale)
                         graph = construct_graph([tuple(p) for p in ideal_grid_world])
-                        
-                        # 2. Il nodo di partenza (source=0) ora corrisponde al primo punto della lista,
-                        #    che è il nostro angolo in basso a destra.
-                        path_indices = nx.algorithms.approximation.greedy_tsp(graph, source=0)
-                        
-                        # 3. Ordina i punti della griglia secondo il percorso
-                        ordered_path_world = [ideal_grid_world[i] for i in path_indices]
+                        path_indices_grid_only = nx.algorithms.approximation.greedy_tsp(graph, source=0)
+                        ordered_path_world = [ideal_grid_world[i] for i in path_indices_grid_only]
 
-                        # 4. Aggiungi l'origine del motore all'inizio del percorso solo per il disegno
                         origin_x = camera_settings.get("origin_x", 0.0)
                         origin_y = camera_settings.get("origin_y", 0.0)
-                        origin_coord = [origin_x, origin_y]
-                        ordered_path_world.insert(0, origin_coord)
+                        ordered_path_world.insert(0, [origin_x, origin_y])
 
-                        # 5. Riproietta tutti i punti del percorso per disegnarli
                         path_world_pts_np = np.array(ordered_path_world, dtype=np.float32).reshape(-1, 1, 2)
                         path_pixels_np = cv2.perspectiveTransform(path_world_pts_np, H_inv)
                         
                         if path_pixels_np is not None:
                             path_pixel_coords = [tuple(p[0].astype(int)) for p in path_pixels_np]
 
-                    # Disegna la griglia e il percorso
+                    # Disegna la griglia (punti verdi)
                     if ideal_grid_world:
                         grid_world_pts_np = np.array(ideal_grid_world, dtype=np.float32).reshape(-1, 1, 2)
                         grid_pixels_np = cv2.perspectiveTransform(grid_world_pts_np, H_inv)
@@ -1379,16 +1380,17 @@ def reproject_points_feed(request):
                             for pt in grid_pixels_np:
                                 cv2.circle(undistorted_frame, tuple(pt[0].astype(int)), 5, (0, 255, 0), -1)
 
+                    # Disegna il percorso (linee blu)
                     if len(path_pixel_coords) > 1:
                         for i in range(len(path_pixel_coords) - 1):
                             cv2.line(undistorted_frame, path_pixel_coords[i], path_pixel_coords[i+1], (255, 0, 0), 2)
 
+                    # Invia il frame al browser
                     _, buffer = cv2.imencode('.jpg', undistorted_frame)
                     frame_bytes = buffer.tobytes()
                     yield (b'--frame\r\nContent-Type: image/jpeg\r\n\r\n' + frame_bytes + b'\r\n')
 
                 except Exception as e:
-                    # ### MODIFICA 3: PRINT AL POSTO DEL LOGGER ###
                     print(f"[ERRORE] Errore nel loop di riproiezione: {e}")
                     traceback.print_exc()
                     time.sleep(1)
