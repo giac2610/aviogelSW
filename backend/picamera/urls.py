@@ -3,7 +3,7 @@ from django.urls import path
 from django.conf.urls.static import static
 from .views import (
     camera_feed,
-    debug_camera_feed,
+    # debug_camera_feed,
     fixed_perspective_stream,
     get_keypoints,
     initialize_camera_endpoint,
@@ -34,7 +34,7 @@ urlpatterns = [
     path('deinitialize_camera_endpoint/', deinitialize_camera_endpoint, name='deinitialize_camera_endpoint'),
     path('get_route/', compute_route, name='compute_route'),
     path('plot_graph/', plot_graph, name='plot_graph'),
-    path('debug_feed/', debug_camera_feed, name='debug_camera_feed'),
+    # path('debug_feed/', debug_camera_feed, name='debug_camera_feed'),
 ]
 
 # Serve i file media solo in sviluppo (DEBUG=True)
