@@ -219,7 +219,7 @@ def generate_adaptive_grid_from_cluster(points, config_data=None):
     points_np = np.array(points, dtype=np.float32)
 
     # Parametri DBSCAN più permissivi
-    db = DBSCAN(eps=spacing * 2.5, min_samples=2).fit(points_np)
+    db = DBSCAN(eps=spacing * 1.2, min_samples=3).fit(points_np)
     labels = db.labels_
     print("DBSCAN labels:", labels)
     print("Numero punti trovati:", len(points_np))
