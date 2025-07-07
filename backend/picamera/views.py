@@ -1190,12 +1190,16 @@ def plot_graph(request):
         # Disegna i nodi
         nx.draw_networkx_nodes(graph, pos, node_color='skyblue', node_size=500)
         nx.draw_networkx_labels(graph, pos, font_size=10)
+        
+        # --- INVERTI LE COORDINATE Y QUI ---
+        OUT_H = 800  # oppure prendi il valore reale della tua canvas se dinamico
+        for k in pos:
+            pos[k] = (pos[k][0], OUT_H - pos[k][1])
         # Disegna solo il percorso TSP in rosso
         tsp_edges = [(hamiltonian_path[i], hamiltonian_path[i+1]) for i in range(len(hamiltonian_path)-1)]
         nx.draw_networkx_edges(graph, pos, edgelist=tsp_edges, edge_color='red', width=2)
         plt.title("Percorso TSP (in rosso)")
         plt.axis('off')
-        plt.gca().invert_yaxis()  
         buf = BytesIO()
         plt.savefig(buf, format='png')
         plt.close()
