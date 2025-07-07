@@ -1225,178 +1225,6 @@ def compute_route(request):
         "plot_graph_base64": img_base64
     })
 
-def get_graph_and_tsp_path_with_speeds(velocita_x=4.0, velocita_y=1.0):
-    # --- 1. Parametri della griglia HARDCODED ---
-    GRID_ROWS = 8
-    GRID_COLS = 6
-    SPACING_X_MM = 50.0 
-    SPACING_Y_MM = 50.0 
-    # -----------------------------------------
-
-    response = get_world_coordinates_data()
-    if response.get("status") != "success":
-        return None, None, response
-    
-    coordinates = response.get("coordinates", [])
-
-    # --- 2. Genera la griglia perfetta (LOGICA CORRETTA) ---
-    if not coordinates:
-        print("Nessun punto rilevato per ancorare la griglia.")
-        completed_coordinates = []
-    else:
-        points = np.array(coordinates)
-        
-        min_x = np.min(points[:, 0])
-        min_y = np.min(points[:, 1])
-        anchor_point = np.array([min_x, min_y])
-        print("Ancoraggio griglia calcolato: %s", anchor_point)
-
-        ideal_grid = []
-        for r in range(GRID_ROWS):
-            for c in range(GRID_COLS):
-                x = anchor_point[0] - c * SPACING_X_MM 
-                y = anchor_point[1] + r * SPACING_Y_MM
-                ideal_grid.append([x, y])
-        completed_coordinates = ideal_grid
-        print("Generata griglia %dx%d hardcoded e ancorata correttamente.", GRID_ROWS, GRID_COLS)
-    
-    origin_x = camera_settings.get("origin_x", 0.0)
-    origin_y = camera_settings.get("origin_y", 0.0)
-    origin_coord = [origin_x, origin_y]
-    coordinates_with_origin = [origin_coord] + completed_coordinates
-
-    filtered_coords = []
-    for coord in coordinates_with_origin:
-        x_rel = coord[0] - origin_x
-        if -500 <= x_rel <= 500:
-            filtered_coords.append(coord)
-    nodi = [tuple(coord) for coord in filtered_coords]
-
-    if len(nodi) < 2:
-        return None, None, {"status": "error", "message": "Nessun punto da plottare dopo il filtro."}
-    
-    graph = construct_graph(nodi, velocita_x, velocita_y)
-    source = 0
-
-    ### RIGA CORRETTA ###
-    # Si chiama direttamente l'algoritmo greedy_tsp
-    hamiltonian_path = nx.algorithms.approximation.greedy_tsp(graph, source=source)
-    
-    return graph, hamiltonian_path, {"status": "success", "nodi": nodi}
-
-@csrf_exempt
-@require_GET
-def reproject_points_feed(request):
-    """
-    Stream video con correzione finale dell'effetto specchio, griglia stabile
-    e percorso calcolato con TSP.
-    """
-    def gen_frames():
-        # --- Inizializzazione ---
-        H_fixed = get_fixed_perspective_homography_from_config()
-        if H_fixed is None:
-            print("[ERRORE] Omografia fissa non impostata.")
-            return
-
-        ret, H_inv = cv2.invert(H_fixed)
-        if not ret:
-            print("[ERRORE] Impossibile invertire la matrice di omografia.")
-            return
-
-        cam_calib = camera_settings.get("calibration", {})
-        cam_matrix = np.array(cam_calib.get("camera_matrix"))
-        dist_coeffs = np.array(cam_calib.get("distortion_coefficients"))
-        try:
-            sample_frame = get_frame()
-            h, w = sample_frame.shape[:2]
-            new_cam_matrix, _ = cv2.getOptimalNewCameraMatrix(cam_matrix, dist_coeffs, (w,h), 1.0, (w,h))
-        except Exception as e:
-            print(f"[ERRORE] Nello stream di riproiezione: {e}")
-            return
-            
-        # Variabili per stabilizzare l'ancoraggio della griglia
-        stable_anchor_point = None
-        smoothing_factor = 0.1 # Valore più basso = più stabile
-
-        with stream_context():
-            while True:
-                try:
-                    frame = get_frame()
-                    if frame is None or frame.size == 0:
-                        time.sleep(0.1)
-                        continue
-
-                    undistorted_frame = cv2.undistort(frame, cam_matrix, dist_coeffs, None, new_cam_matrix)
-
-                    # Parametri della griglia
-                    GRID_ROWS, GRID_COLS = 8, 6
-                    SPACING_X_MM, SPACING_Y_MM = 50.0, 50.0
-                    
-                    world_coords_data = get_world_coordinates_data()
-                    
-                    ideal_grid_world = []
-                    if world_coords_data['status'] == 'success' and world_coords_data['coordinates']:
-                        points = np.array(world_coords_data['coordinates'])
-                        current_anchor_point = np.array([np.min(points[:, 0]), np.min(points[:, 1])])
-                        
-                        # Applica il filtro di smorzamento per stabilizzare la griglia
-                        if stable_anchor_point is None:
-                            stable_anchor_point = current_anchor_point
-                        else:
-                            stable_anchor_point = (smoothing_factor * current_anchor_point) + \
-                                                  (1 - smoothing_factor) * stable_anchor_point
-                        
-                        # Genera la griglia ideale
-                        for r in range(GRID_ROWS):
-                            for c in range(GRID_COLS):
-                                # ### MODIFICA FINALE: Inverti l'asse X per correggere l'effetto specchio ###
-                                x = stable_anchor_point[0] - c * SPACING_X_MM
-                                
-                                y = stable_anchor_point[1] + r * SPACING_Y_MM
-                                ideal_grid_world.append([x, y])
-
-                    # Calcola il percorso usando la stessa logica dei comandi motore
-                    path_pixel_coords = []
-                    if ideal_grid_world:
-                        graph = construct_graph([tuple(p) for p in ideal_grid_world])
-                        path_indices_grid_only = nx.algorithms.approximation.greedy_tsp(graph, source=0)
-                        ordered_path_world = [ideal_grid_world[i] for i in path_indices_grid_only]
-
-                        origin_x = camera_settings.get("origin_x", 0.0)
-                        origin_y = camera_settings.get("origin_y", 0.0)
-                        ordered_path_world.insert(0, [origin_x, origin_y])
-
-                        path_world_pts_np = np.array(ordered_path_world, dtype=np.float32).reshape(-1, 1, 2)
-                        path_pixels_np = cv2.perspectiveTransform(path_world_pts_np, H_inv)
-                        
-                        if path_pixels_np is not None:
-                            path_pixel_coords = [tuple(p[0].astype(int)) for p in path_pixels_np]
-
-                    # Disegna la griglia (punti verdi)
-                    if ideal_grid_world:
-                        grid_world_pts_np = np.array(ideal_grid_world, dtype=np.float32).reshape(-1, 1, 2)
-                        grid_pixels_np = cv2.perspectiveTransform(grid_world_pts_np, H_inv)
-                        if grid_pixels_np is not None:
-                            for pt in grid_pixels_np:
-                                cv2.circle(undistorted_frame, tuple(pt[0].astype(int)), 5, (0, 255, 0), -1)
-
-                    # Disegna il percorso (linee blu)
-                    if len(path_pixel_coords) > 1:
-                        for i in range(len(path_pixel_coords) - 1):
-                            cv2.line(undistorted_frame, path_pixel_coords[i], path_pixel_coords[i+1], (255, 0, 0), 2)
-
-                    # Invia il frame al browser
-                    _, buffer = cv2.imencode('.jpg', undistorted_frame)
-                    frame_bytes = buffer.tobytes()
-                    yield (b'--frame\r\nContent-Type: image/jpeg\r\n\r\n' + frame_bytes + b'\r\n')
-
-                except Exception as e:
-                    print(f"[ERRORE] Errore nel loop di riproiezione: {e}")
-                    traceback.print_exc()
-                    time.sleep(1)
-
-    return StreamingHttpResponse(gen_frames(), content_type='multipart/x-mixed-replace; boundary=frame')
-
 @csrf_exempt
 @require_GET
 def plot_graph(request):
@@ -1454,3 +1282,124 @@ def construct_graph(nodi, velocita_x=4.0, velocita_y=1.0):
             tempo = max(abs(dx)/velocita_x, abs(dy)/velocita_y)
             G.add_edge(i, j, weight=round(tempo, 4))
     return G
+
+### ====================================================================
+### ARCHITETTURA FINALE E CORRETTA
+### ====================================================================
+
+# 1. LA NUOVA FUNZIONE "MASTER" CHE CONTIENE LA LOGICA CORRETTA
+def _generate_grid_and_path(world_coords, camera_settings):
+    """
+    Questa è l'unica funzione che genera la griglia e il percorso.
+    Contiene la logica che hai confermato essere corretta per i motori.
+    """
+    # Parametri della griglia
+    GRID_ROWS, GRID_COLS = 8, 6
+    SPACING_X_MM, SPACING_Y_MM = 50.0, 50.0
+
+    # Ancoraggio in basso a destra (coordinate minime)
+    points = np.array(world_coords)
+    anchor_point = np.array([np.min(points[:, 0]), np.min(points[:, 1])])
+
+    # Generazione griglia (con il + che hai confermato essere giusto per il percorso)
+    ideal_grid_world = []
+    for r in range(GRID_ROWS):
+        for c in range(GRID_COLS):
+            x = anchor_point[0] + c * SPACING_X_MM
+            y = anchor_point[1] + r * SPACING_Y_MM
+            ideal_grid_world.append([x, y])
+
+    # Calcolo del percorso TSP (logica che hai confermato essere giusta)
+    graph = construct_graph([tuple(p) for p in ideal_grid_world])
+    path_indices_grid_only = nx.algorithms.approximation.greedy_tsp(graph, source=0)
+    ordered_grid_points = [ideal_grid_world[i] for i in path_indices_grid_only]
+
+    # Aggiungi l'origine del motore all'inizio del percorso
+    origin_x = camera_settings.get("origin_x", 0.0)
+    origin_y = camera_settings.get("origin_y", 0.0)
+    final_ordered_path = [[origin_x, origin_y]] + ordered_grid_points
+
+    return ideal_grid_world, final_ordered_path
+
+
+# 2. FUNZIONE DI CALCOLO PERCORSO (ORA SEMPLIFICATA)
+def get_graph_and_tsp_path_with_speeds(velocita_x=4.0, velocita_y=1.0):
+    """
+    Prepara i dati per i comandi motore chiamando la funzione master.
+    """
+    response = get_world_coordinates_data()
+    if response.get("status") != "success" or not response.get("coordinates"):
+        return None, None, {"status": "error", "message": "Nessun punto rilevato."}
+
+    # Chiama la funzione master per ottenere la griglia e il percorso
+    _, final_ordered_path = _generate_grid_and_path(response["coordinates"], camera_settings)
+
+    # Prepara l'output per l'endpoint `compute_route`
+    final_nodes = [tuple(p) for p in final_ordered_path]
+    final_graph = construct_graph(final_nodes, velocita_x, velocita_y)
+    final_path_indices = list(range(len(final_nodes)))
+
+    return final_graph, final_path_indices, {"status": "success", "nodi": final_nodes}
+
+
+# 3. FUNZIONE DI DISEGNO (ORA SEMPLIFICATA E SINCRONIZZATA)
+@csrf_exempt
+@require_GET
+def reproject_points_feed(request):
+    """
+    Stream video che disegna ESATTAMENTE la stessa griglia e percorso
+    usati per i comandi motore.
+    """
+    def gen_frames():
+        # --- Inizializzazione (invariata) ---
+        H_fixed = get_fixed_perspective_homography_from_config()
+        ret, H_inv = cv2.invert(H_fixed)
+        cam_calib = camera_settings.get("calibration", {})
+        cam_matrix = np.array(cam_calib.get("camera_matrix"))
+        dist_coeffs = np.array(cam_calib.get("distortion_coefficients"))
+        try:
+            sample_frame = get_frame()
+            h, w = sample_frame.shape[:2]
+            new_cam_matrix, _ = cv2.getOptimalNewCameraMatrix(cam_matrix, dist_coeffs, (w,h), 1.0, (w,h))
+        except Exception as e:
+            print(f"[ERRORE] Nello stream: {e}")
+            return
+
+        with stream_context():
+            while True:
+                try:
+                    frame = get_frame()
+                    undistorted_frame = cv2.undistort(frame, cam_matrix, dist_coeffs, None, new_cam_matrix)
+
+                    world_coords_data = get_world_coordinates_data()
+                    
+                    if world_coords_data['status'] == 'success' and world_coords_data['coordinates']:
+                        # Chiama la funzione master per ottenere i dati da disegnare
+                        ideal_grid_world, ordered_path_world = _generate_grid_and_path(world_coords_data['coordinates'], camera_settings)
+
+                        # --- Logica di disegno ---
+                        # Disegna la griglia (punti verdi)
+                        grid_world_pts_np = np.array(ideal_grid_world, dtype=np.float32).reshape(-1, 1, 2)
+                        grid_pixels_np = cv2.perspectiveTransform(grid_world_pts_np, H_inv)
+                        if grid_pixels_np is not None:
+                            for pt in grid_pixels_np:
+                                cv2.circle(undistorted_frame, tuple(pt[0].astype(int)), 5, (0, 255, 0), -1)
+
+                        # Disegna il percorso (linee blu)
+                        path_world_pts_np = np.array(ordered_path_world, dtype=np.float32).reshape(-1, 1, 2)
+                        path_pixels_np = cv2.perspectiveTransform(path_world_pts_np, H_inv)
+                        if path_pixels_np is not None:
+                            path_pixel_coords = [tuple(p[0].astype(int)) for p in path_pixels_np]
+                            for i in range(len(path_pixel_coords) - 1):
+                                cv2.line(undistorted_frame, path_pixel_coords[i], path_pixel_coords[i+1], (255, 0, 0), 2)
+
+                    # Invia il frame al browser
+                    _, buffer = cv2.imencode('.jpg', undistorted_frame)
+                    yield (b'--frame\r\nContent-Type: image/jpeg\r\n\r\n' + buffer.tobytes() + b'\r\n')
+
+                except Exception as e:
+                    print(f"[ERRORE] Nel loop di disegno: {e}")
+                    traceback.print_exc()
+                    time.sleep(1)
+
+    return StreamingHttpResponse(gen_frames(), content_type='multipart/x-mixed-replace; boundary=frame')
