@@ -374,39 +374,51 @@ def get_board_and_canonical_homography_for_django(undistorted_frame, new_camera_
     H_canonical = cv2.getPerspectiveTransform(img_board_perimeter_pts, canonical_dst_pts)
     return H_canonical, (w, h)
 
+# SOSTITUISCI QUESTA FUNZIONE CON LA VERSIONE AGGIORNATA
 def get_frame_with_world_grid():
     """
-    Cattura un frame, lo corregge e vi disegna sopra la griglia del mondo
-    e il percorso a serpentina dell'estrusore.
+    Cattura un frame, vi disegna sopra i blob rilevati, la griglia del mondo
+    e il percorso a serpentina.
     """
     # 1. Cattura il frame UNA SOLA VOLTA
     frame = get_frame()
 
-    # 2. Recupera i dati di calibrazione e omografia
+    # 2. Esegui il rilevamento dei blob grezzi per la visualizzazione
+    # Questa è la nuova parte che rileva i "contorni"
+    # Lo facciamo qui per poterli disegnare subito sul frame corretto.
+    _, raw_keypoints = get_current_frame_and_keypoints_from_config(frame)
+
+    # 3. Recupera i dati di calibrazione e omografia
     cam_calib = camera_settings.get("calibration")
     H_fixed = get_fixed_perspective_homography_from_config()
 
     if H_fixed is None or not cam_calib:
-        return frame # Restituisci il frame raw se non calibrato
+        # Se non siamo calibrati, disegna almeno i blob grezzi e restituisci
+        frame_with_keypoints = cv2.drawKeypoints(frame, raw_keypoints, np.array([]), (0, 255, 255), cv2.DRAW_MATCHES_FLAGS_DRAW_RICH_KEYPOINTS)
+        return frame_with_keypoints
 
-    # 3. Correggi la distorsione del frame catturato
+    # 4. Correggi la distorsione del frame catturato
     cam_matrix = np.array(cam_calib["camera_matrix"])
     dist_coeffs = np.array(cam_calib["distortion_coefficients"])
     h, w = frame.shape[:2]
     new_cam_matrix, _ = cv2.getOptimalNewCameraMatrix(cam_matrix, dist_coeffs, (w, h), 1.0, (w, h))
     undistorted_frame = cv2.undistort(frame, cam_matrix, dist_coeffs, None, new_cam_matrix)
 
-    # 4. Calcola la griglia e il percorso usando il frame appena catturato
+    # === NUOVO: Disegna i keypoint grezzi sul frame non distorto ===
+    # Usiamo un colore CIANO (0, 255, 255) per distinguerli
+    cv2.drawKeypoints(undistorted_frame, raw_keypoints, undistorted_frame, (0, 255, 255), cv2.DRAW_MATCHES_FLAGS_DRAW_RICH_KEYPOINTS)
+
+    # 5. Calcola la griglia e il percorso (la logica non cambia)
     graph, path_indices, info = _calculate_serpentine_path_data(frame) 
     
     if graph is None:
-        return undistorted_frame
+        return undistorted_frame # Restituisci il frame con i soli keypoint gialli
     
     nodi_mondo = info.get("nodi", [])
     if not nodi_mondo:
         return undistorted_frame
 
-    # 5. Esegui la trasformazione INVERSA per ottenere i punti sull'immagine
+    # 6. Proietta la griglia ideale sull'immagine (puntini rossi e linee verdi)
     try:
         H_inversa = np.linalg.inv(H_fixed)
     except np.linalg.LinAlgError:
@@ -420,7 +432,7 @@ def get_frame_with_world_grid():
         
     nodi_immagine = nodi_immagine.reshape(-1, 2).astype(int)
 
-    # 6. Disegna la griglia e il percorso
+    # 7. Disegna la griglia finale e il percorso
     if path_indices:
         for i in range(len(path_indices) - 1):
             start_node_index = path_indices[i]
@@ -428,10 +440,10 @@ def get_frame_with_world_grid():
             if start_node_index < len(nodi_immagine) and end_node_index < len(nodi_immagine):
                 start_point = tuple(nodi_immagine[start_node_index])
                 end_point = tuple(nodi_immagine[end_node_index])
-                cv2.line(undistorted_frame, start_point, end_point, (0, 255, 0), 2)
+                cv2.line(undistorted_frame, start_point, end_point, (0, 255, 0), 2) # Linee Verdi
 
     for point in nodi_immagine:
-        cv2.circle(undistorted_frame, tuple(point), 5, (0, 0, 255), -1)
+        cv2.circle(undistorted_frame, tuple(point), 5, (0, 0, 255), -1) # Puntini Rossi
         
     return undistorted_frame
 
