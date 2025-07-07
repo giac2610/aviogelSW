@@ -18,7 +18,6 @@ from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_POST, require_GET
 import traceback # Added for more detailed error logging if needed
 import requests #type: ignore
-from sklearn.cluster import KMeans ### NEW ### Import KMeans for grid inference
 
 # --- File Configuration ---
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -433,106 +432,15 @@ def get_world_coordinates_data():
         world_coords_bottom_right_origin.append([x_br, y_br])
     return {"status": "success", "coordinates": world_coords_bottom_right_origin}
 
-
-### NEW ###
-def complete_grid_from_detected_points(detected_coords, min_points_for_inference=4, num_expected_blobs=None):
-    """
-    Infers a complete grid from a list of partially detected points.
-
-    This function calculates the grid spacing from the data itself, finds missing
-    points, and returns the coordinates of the full, ideal grid.
-
-    Args:
-        detected_coords (list of lists): The [[x, y], ...] coordinates.
-        min_points_for_inference (int): The minimum number of blobs that must be detected
-                                        to attempt grid inference.
-        num_expected_blobs (int, optional): If you know the exact number of blobs,
-                                            this can help validate the result.
-
-    Returns:
-        A list of coordinates for the complete, idealized grid. If inference fails,
-        it returns the original detected coordinates.
-    """
-    if len(detected_coords) < min_points_for_inference:
-        print("[INFO] Not enough points to infer grid. Returning original points.")
-        return detected_coords
-
-    points = np.array(detected_coords)
-
-    # 1. Calculate all pairwise vectors between points
-    vectors = []
-    for p1 in points:
-        for p2 in points:
-            if not np.array_equal(p1, p2):
-                vectors.append(p2 - p1)
-    vectors = np.array(vectors)
-
-    # 2. Find the primary grid vectors (delta_x, delta_y) using clustering
-    try:
-        # Use KMeans to find the 2 main clusters of vector lengths
-        kmeans = KMeans(n_clusters=2, random_state=0, n_init='auto').fit(np.abs(vectors))
-        # The cluster centers are our grid spacings (delta_x, delta_y)
-        centers = kmeans.cluster_centers_
-        delta_x = max(centers[0, 0], centers[1, 0])
-        delta_y = max(centers[0, 1], centers[1, 1])
-        
-        # A sanity check for grid spacing
-        if delta_x < 5 or delta_y < 5:
-             print("[WARN] Inferred grid spacing is too small. Aborting inference.")
-             return detected_coords
-
-    except Exception as e:
-        print(f"[WARN] Could not determine grid vectors via clustering: {e}")
-        return detected_coords
-        
-    # 3. Determine grid indices for each detected point
-    # Find the top-leftmost point to act as the grid's origin (0,0)
-    origin = points[np.argmin(np.sum(points, axis=1))]
-    
-    indices = []
-    for p in points:
-        # Calculate the grid index (i, j) relative to the origin
-        ix = int(round((p[0] - origin[0]) / delta_x))
-        iy = int(round((p[1] - origin[1]) / delta_y))
-        indices.append((ix, iy))
-
-    # 4. Generate the complete, ideal grid
-    min_ix = min(idx[0] for idx in indices)
-    max_ix = max(idx[0] for idx in indices)
-    min_iy = min(idx[1] for idx in indices)
-    max_iy = max(idx[1] for idx in indices)
-
-    full_grid_coords = []
-    for iy in range(min_iy, max_iy + 1):
-        for ix in range(min_ix, max_ix + 1):
-            # Calculate the ideal position for this grid point
-            ideal_x = origin[0] + ix * delta_x
-            ideal_y = origin[1] + iy * delta_y
-            full_grid_coords.append([ideal_x, ideal_y])
-    
-    print(f"[INFO] Grid inference successful. Original: {len(points)} points. Completed: {len(full_grid_coords)} points.")
-
-    return full_grid_coords
-
-
-### MODIFIED ###
 def get_graph_and_tsp_path(velocita_x=4.0, velocita_y=1.0):
     response = get_world_coordinates_data()
     if response.get("status", []) != "success" and response.get("status") != "success":
         return None, None, response
-        
     coordinates = response.get("coordinates", [])
-    
-    # --- ADD GRID COMPLETION LOGIC HERE ---
-    completed_coordinates = complete_grid_from_detected_points(coordinates)
-    # --- END OF NEW LOGIC ---
-
     origin_x = camera_settings.get("origin_x", 0.0)
     origin_y = camera_settings.get("origin_y", 0.0)
     origin_coord = [origin_x, origin_y]
-    
-    # Use the completed coordinates list from now on
-    coordinates_with_origin = [origin_coord] + completed_coordinates
+    coordinates_with_origin = [origin_coord] + coordinates
 
     filtered_coords = []
     for coord in coordinates_with_origin:
@@ -1225,6 +1133,34 @@ def compute_route(request):
         "plot_graph_base64": img_base64
     })
 
+# Funzione di supporto per passare le velocità a construct_graph
+def get_graph_and_tsp_path_with_speeds(velocita_x=4.0, velocita_y=1.0):
+    response = get_world_coordinates_data()
+    if response.get("status", []) != "success" and response.get("status") != "success":
+        return None, None, response
+    coordinates = response.get("coordinates", [])
+    origin_x = camera_settings.get("origin_x", 0.0)
+    origin_y = camera_settings.get("origin_y", 0.0)
+    origin_coord = [origin_x, origin_y]
+    coordinates_with_origin = [origin_coord] + coordinates
+
+    filtered_coords = []
+    for coord in coordinates_with_origin:
+        x_rel = coord[0] - origin_x
+        if 0 <= x_rel <= 250:
+            filtered_coords.append(coord)
+    nodi = [tuple(coord) for coord in filtered_coords]
+
+    if len(nodi) < 2:
+        return None, None, {"status": "error", "message": "Nessun punto da plottare."}
+    graph = construct_graph(nodi, velocita_x, velocita_y)
+    source = 0
+    hamiltonian_path = nx.algorithms.approximation.traveling_salesman_problem(
+        graph, cycle=False, method=nx.algorithms.approximation.greedy_tsp, source=source
+    )
+    return graph, hamiltonian_path, {"status": "success", "nodi": nodi}
+
+
 @csrf_exempt
 @require_GET
 def plot_graph(request):
@@ -1259,6 +1195,7 @@ def plot_graph(request):
         nx.draw_networkx_edges(graph, pos, edgelist=tsp_edges, edge_color='red', width=2)
         plt.title("Percorso TSP (in rosso)")
         plt.axis('off')
+        plt.gca().invert_yaxis()  
         buf = BytesIO()
         plt.savefig(buf, format='png')
         plt.close()
@@ -1282,108 +1219,3 @@ def construct_graph(nodi, velocita_x=4.0, velocita_y=1.0):
             tempo = max(abs(dx)/velocita_x, abs(dy)/velocita_y)
             G.add_edge(i, j, weight=round(tempo, 4))
     return G
-
-### ====================================================================
-### ARCHITETTURA FINALE E CORRETTA
-### ====================================================================
-
-def _generate_grid_and_path(world_coords, camera_settings):
-    """
-    Genera la griglia e il percorso usando i punti rilevati e la funzione di completamento griglia.
-    """
-    # Usa la funzione di completamento per inferire la griglia ideale dai punti rilevati
-    ideal_grid_world = complete_grid_from_detected_points(world_coords)
-    
-    # Calcolo del percorso TSP sulla griglia completata
-    graph = construct_graph([tuple(p) for p in ideal_grid_world])
-    path_indices_grid_only = nx.algorithms.approximation.greedy_tsp(graph, source=0)
-    ordered_grid_points = [ideal_grid_world[i] for i in path_indices_grid_only]
-
-    # Aggiungi l'origine del motore all'inizio del percorso
-    origin_x = camera_settings.get("origin_x", 0.0)
-    origin_y = camera_settings.get("origin_y", 0.0)
-    final_ordered_path = [[origin_x, origin_y]] + ordered_grid_points
-
-    return ideal_grid_world, final_ordered_path
-
-# 2. FUNZIONE DI CALCOLO PERCORSO (ORA SEMPLIFICATA)
-def get_graph_and_tsp_path_with_speeds(velocita_x=4.0, velocita_y=1.0):
-    """
-    Prepara i dati per i comandi motore chiamando la funzione master.
-    """
-    response = get_world_coordinates_data()
-    if response.get("status") != "success" or not response.get("coordinates"):
-        return None, None, {"status": "error", "message": "Nessun punto rilevato."}
-
-    # Chiama la funzione master per ottenere la griglia e il percorso
-    _, final_ordered_path = _generate_grid_and_path(response["coordinates"], camera_settings)
-
-    # Prepara l'output per l'endpoint `compute_route`
-    final_nodes = [tuple(p) for p in final_ordered_path]
-    final_graph = construct_graph(final_nodes, velocita_x, velocita_y)
-    final_path_indices = list(range(len(final_nodes)))
-
-    return final_graph, final_path_indices, {"status": "success", "nodi": final_nodes}
-
-
-# 3. FUNZIONE DI DISEGNO (ORA SEMPLIFICATA E SINCRONIZZATA)
-@csrf_exempt
-@require_GET
-def reproject_points_feed(request):
-    """
-    Stream video che disegna ESATTAMENTE la stessa griglia e percorso
-    usati per i comandi motore.
-    """
-    def gen_frames():
-        # --- Inizializzazione (invariata) ---
-        H_fixed = get_fixed_perspective_homography_from_config()
-        ret, H_inv = cv2.invert(H_fixed)
-        cam_calib = camera_settings.get("calibration", {})
-        cam_matrix = np.array(cam_calib.get("camera_matrix"))
-        dist_coeffs = np.array(cam_calib.get("distortion_coefficients"))
-        try:
-            sample_frame = get_frame()
-            h, w = sample_frame.shape[:2]
-            new_cam_matrix, _ = cv2.getOptimalNewCameraMatrix(cam_matrix, dist_coeffs, (w,h), 1.0, (w,h))
-        except Exception as e:
-            print(f"[ERRORE] Nello stream: {e}")
-            return
-
-        with stream_context():
-            while True:
-                try:
-                    frame = get_frame()
-                    undistorted_frame = cv2.undistort(frame, cam_matrix, dist_coeffs, None, new_cam_matrix)
-
-                    world_coords_data = get_world_coordinates_data()
-                    
-                    if world_coords_data['status'] == 'success' and world_coords_data['coordinates']:
-                        # Chiama la funzione master per ottenere i dati da disegnare
-                        ideal_grid_world, ordered_path_world = _generate_grid_and_path(world_coords_data['coordinates'], camera_settings)
-
-                        # --- Logica di disegno ---
-                        # Disegna la griglia (punti verdi)
-                        grid_world_pts_np = np.array(ideal_grid_world, dtype=np.float32).reshape(-1, 1, 2)
-                        grid_pixels_np = cv2.perspectiveTransform(grid_world_pts_np, H_inv)
-                        if grid_pixels_np is not None:
-                            for pt in grid_pixels_np:
-                                cv2.circle(undistorted_frame, tuple(pt[0].astype(int)), 5, (0, 255, 0), -1)
-
-                        # Disegna il percorso (linee blu)
-                        path_world_pts_np = np.array(ordered_path_world, dtype=np.float32).reshape(-1, 1, 2)
-                        path_pixels_np = cv2.perspectiveTransform(path_world_pts_np, H_inv)
-                        if path_pixels_np is not None:
-                            path_pixel_coords = [tuple(p[0].astype(int)) for p in path_pixels_np]
-                            for i in range(len(path_pixel_coords) - 1):
-                                cv2.line(undistorted_frame, path_pixel_coords[i], path_pixel_coords[i+1], (255, 0, 0), 2)
-
-                    # Invia il frame al browser
-                    _, buffer = cv2.imencode('.jpg', undistorted_frame)
-                    yield (b'--frame\r\nContent-Type: image/jpeg\r\n\r\n' + buffer.tobytes() + b'\r\n')
-
-                except Exception as e:
-                    print(f"[ERRORE] Nel loop di disegno: {e}")
-                    traceback.print_exc()
-                    time.sleep(1)
-
-    return StreamingHttpResponse(gen_frames(), content_type='multipart/x-mixed-replace; boundary=frame')
