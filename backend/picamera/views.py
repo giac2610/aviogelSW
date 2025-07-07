@@ -1241,7 +1241,7 @@ def get_graph_and_tsp_path_with_speeds(velocita_x=4.0, velocita_y=1.0):
 
     # --- 2. Genera la griglia perfetta (LOGICA CORRETTA) ---
     if not coordinates:
-        logger.warning("Nessun punto rilevato per ancorare la griglia.")
+        print("Nessun punto rilevato per ancorare la griglia.")
         completed_coordinates = []
     else:
         points = np.array(coordinates)
@@ -1250,7 +1250,7 @@ def get_graph_and_tsp_path_with_speeds(velocita_x=4.0, velocita_y=1.0):
         min_x = np.min(points[:, 0])
         min_y = np.min(points[:, 1])
         anchor_point = np.array([min_x, min_y])
-        logger.info("Ancoraggio griglia calcolato: %s", anchor_point)
+        print("Ancoraggio griglia calcolato: %s", anchor_point)
 
         # Genera la griglia ideale partendo dall'ancora corretta
         ideal_grid = []
@@ -1263,7 +1263,7 @@ def get_graph_and_tsp_path_with_speeds(velocita_x=4.0, velocita_y=1.0):
                 y = anchor_point[1] + r * SPACING_Y_MM
                 ideal_grid.append([x, y])
         completed_coordinates = ideal_grid
-        logger.info("Generata griglia %dx%d hardcoded e ancorata correttamente.", GRID_ROWS, GRID_COLS)
+        print("Generata griglia %dx%d hardcoded e ancorata correttamente.", GRID_ROWS, GRID_COLS)
     # ------------------------------------
     
     origin_x = camera_settings.get("origin_x", 0.0)
