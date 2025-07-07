@@ -315,7 +315,8 @@ def _calculate_serpentine_path_data():
     """Funzione helper che centralizza la logica di calcolo del percorso a serpentina."""
     response = get_world_coordinates_data()
     if response.get("status") != "success":
-        return None, None, None, response
+        # CORRETTO: restituisce 3 valori
+        return None, None, response
 
     coordinates = response.get("coordinates", [])
     if len(coordinates) > 48:
@@ -323,11 +324,13 @@ def _calculate_serpentine_path_data():
         coordinates = sorted(coordinates, key=lambda p: (p[1], p[0]))[:48]
 
     if not coordinates:
-        return None, None, None, {"status": "error", "message": "Nessun punto rilevato per il calcolo."}
+        # CORRETTO: restituisce 3 valori
+        return None, None, {"status": "error", "message": "Nessun punto rilevato per il calcolo."}
         
     nodi, grid_dims = generate_adaptive_grid_from_cluster(coordinates, config_data=camera_settings)
     if not nodi:
-        return None, None, None, {"status": "error", "message": "Impossibile calcolare griglia adattiva."}
+        # CORRETTO: restituisce 3 valori
+        return None, None, {"status": "error", "message": "Impossibile calcolare griglia adattiva."}
 
     path_indices = generate_serpentine_path(nodi, grid_dims)
     
@@ -347,6 +350,7 @@ def _calculate_serpentine_path_data():
     else:
         final_path_indices = []
         
+    # Questo era già corretto, restituisce 3 valori
     return graph, final_path_indices, {"status": "success", "nodi": nodi, "grid_dims": grid_dims}
 
 def _generate_plot_image(graph, nodi, grid_dims, path_indices):
@@ -462,7 +466,7 @@ def set_camera_origin(request):
 def compute_route(request):
     """Calcola un percorso a serpentina, partendo dal punto più vicino all'origine."""
     try:
-        graph, path_indices, info, response = _calculate_serpentine_path_data()
+        graph, path_indices, info = _calculate_serpentine_path_data()
         if graph is None:
             return JsonResponse(info, status=400, safe=False)
         
@@ -495,7 +499,7 @@ def compute_route(request):
 def plot_graph(request):
     """Genera un'immagine del percorso a serpentina."""
     try:
-        graph, path_indices, info, response = _calculate_serpentine_path_data()
+        graph, path_indices, info = _calculate_serpentine_path_data()
         if graph is None:
             return HttpResponse(f"Errore: {info.get('message')}", status=400)
         
@@ -631,7 +635,7 @@ def get_frame_with_world_grid():
     undistorted_frame = cv2.undistort(frame, cam_matrix, dist_coeffs, None, new_cam_matrix)
 
     # 3. Calcola la griglia e il percorso
-    graph, path_indices, info, response = _calculate_serpentine_path_data()
+    graph, path_indices, info = _calculate_serpentine_path_data()
     if graph is None:
         return undistorted_frame
     
