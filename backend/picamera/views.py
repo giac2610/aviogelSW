@@ -697,3 +697,77 @@ def plot_graph(request):
     plt.close()
     buf.seek(0)
     return HttpResponse(buf.getvalue(), content_type='image/png')
+
+@csrf_exempt
+@require_POST
+def set_fixed_perspective_view(request):
+    cam_calib_data = camera_settings.get("calibration", None)
+    calib_settings_dict = camera_settings.get("calibration_settings", {})
+    fixed_perspective_cfg = camera_settings.get("fixed_perspective", {})
+    if not (cam_calib_data and cam_calib_data.get("camera_matrix") and cam_calib_data.get("distortion_coefficients")):
+        return JsonResponse({"status": "error", "message": "Camera calibration data not found. Please calibrate first."}, status=400)
+    camera_matrix_cv = np.array(cam_calib_data["camera_matrix"], dtype=np.float32)
+    dist_coeffs_cv = np.array(cam_calib_data["distortion_coefficients"], dtype=np.float32)
+    FIXED_WIDTH = fixed_perspective_cfg.get("output_width", 1000)
+    FIXED_HEIGHT = fixed_perspective_cfg.get("output_height", 800)
+    
+    try:
+        frame_cap = get_frame(release_after=False)
+        if frame_cap is None or frame_cap.size == 0: 
+            return JsonResponse({"status": "error", "message": "Could not get frame from camera."}, status=500)
+        h_cam_cap, w_cam_cap = frame_cap.shape[:2]
+        new_camera_matrix_cv, _ = cv2.getOptimalNewCameraMatrix(camera_matrix_cv, dist_coeffs_cv, (w_cam_cap,h_cam_cap), 1.0, (w_cam_cap,h_cam_cap))
+        undistorted_frame_cap = cv2.undistort(frame_cap, camera_matrix_cv, dist_coeffs_cv, None, new_camera_matrix_cv)
+        
+        H_canonical, canonical_dims = get_board_and_canonical_homography_for_django(
+            undistorted_frame_cap, new_camera_matrix_cv, calib_settings_dict
+        )
+        
+        if H_canonical is not None and canonical_dims is not None and canonical_dims[0] > 0 and canonical_dims[1] > 0:
+            cb_w, cb_h = canonical_dims
+            offset_x = max(0, (FIXED_WIDTH - cb_w) / 2.0)
+            offset_y = max(0, (FIXED_HEIGHT - cb_h) / 2.0)
+            M_translate = np.array([[1,0,offset_x], [0,1,offset_y], [0,0,1]], dtype=np.float32)
+            H_ref = M_translate @ H_canonical
+            if save_fixed_perspective_homography_to_config(H_ref):
+                return JsonResponse({
+                    "status": "success",
+                    "message": "Fixed perspective view established and saved."
+                })
+            else:
+                print("[ERROR] set_fixed_perspective_view: Failed to save homography to config file.")
+                return JsonResponse({
+                    "status": "error",
+                    "message": "Error saving fixed perspective homography to configuration file.",
+                    "error_code": "SAVE_HOMOGRAPHY_FAILED"
+                }, status=500)
+        else:
+            error_message = "Cannot define fixed view. An unknown error occurred."
+            error_code = "UNKNOWN_FIXED_VIEW_ERROR"
+            status_code = 400
+            if H_canonical is None:
+                error_message = "Chessboard pattern not detected in the current camera view. Ensure the full pattern is clearly visible and well-lit."
+                error_code = "CHESSBOARD_NOT_DETECTED"
+                print(f"[ERROR] set_fixed_perspective_view ({error_code}): {error_message}")
+            elif canonical_dims is None:
+                error_message = "Internal error: Chessboard detected, but its dimensions could not be determined."
+                error_code = "CANONICAL_DIMS_MISSING_UNEXPECTEDLY"
+                status_code = 500
+                print(f"[ERROR] set_fixed_perspective_view ({error_code}): {error_message}")
+            elif canonical_dims[0] <= 0 or canonical_dims[1] <= 0:
+                error_message = (f"Invalid canonical dimensions calculated for the chessboard: {canonical_dims}. "
+                                 f"This might indicate an issue with the chessboard configuration (e.g., square size, pattern size in settings) "
+                                 f"or a highly distorted detection.")
+                error_code = "INVALID_CANONICAL_DIMS_CALCULATED"
+                print(f"[ERROR] set_fixed_perspective_view ({error_code}): {error_message} - Dimensions: {canonical_dims}")
+            
+            return JsonResponse({
+                "status": "error",
+                "message": error_message,
+                "error_code": error_code
+            }, status=status_code)
+    except Exception as e:
+        print(f"Exception in set_fixed_perspective_view: {e}")
+        traceback.print_exc()
+        return JsonResponse({"status": "error", "message": str(e)}, status=500)
+    
