@@ -1289,31 +1289,12 @@ def construct_graph(nodi, velocita_x=4.0, velocita_y=1.0):
 
 def _generate_grid_and_path(world_coords, camera_settings):
     """
-    Genera la griglia e il percorso con entrambi gli assi X e Y invertiti
-    per una corrispondenza 1:1 con la visualizzazione desiderata.
+    Genera la griglia e il percorso usando i punti rilevati e la funzione di completamento griglia.
     """
-    # Parametri della griglia
-    GRID_ROWS, GRID_COLS = 8, 6
-    SPACING_X_MM, SPACING_Y_MM = 50.0, 50.0
-
-    # Ancoraggio in basso a destra (coordinate minime)
-    points = np.array(world_coords)
-    anchor_point = np.array([np.min(points[:, 0]), np.min(points[:, 1])])
-
-    # Generazione griglia
-    ideal_grid_world = []
-    for r in range(GRID_ROWS):
-        for c in range(GRID_COLS):
-            
-            # Inversione asse X (come prima)
-            x = anchor_point[0] - c * SPACING_X_MM
-            
-            ### NUOVA MODIFICA: Inversione asse Y ###
-            y = anchor_point[1] - r * SPACING_Y_MM
-            
-            ideal_grid_world.append([x, y])
-
-    # Calcolo del percorso TSP (logica invariata)
+    # Usa la funzione di completamento per inferire la griglia ideale dai punti rilevati
+    ideal_grid_world = complete_grid_from_detected_points(world_coords)
+    
+    # Calcolo del percorso TSP sulla griglia completata
     graph = construct_graph([tuple(p) for p in ideal_grid_world])
     path_indices_grid_only = nx.algorithms.approximation.greedy_tsp(graph, source=0)
     ordered_grid_points = [ideal_grid_world[i] for i in path_indices_grid_only]
