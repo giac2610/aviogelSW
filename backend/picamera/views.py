@@ -237,28 +237,14 @@ def generate_adaptive_grid_from_cluster(points, config_data=None):
 
     # 1. Ottieni il rettangolo di contorno
     rect = cv2.minAreaRect(main_cluster_points)
-
-    # ======================================================================
-    # === Vincolo sull'angolo: più permissivo ===
-    # ======================================================================
     angle = rect[2]
     width, height = rect[1]
 
-    # Calcola l'angolo di orientamento (stessa logica di prima)
+    # Calcola l'angolo di orientamento (ma non lo filtra più)
     if width < height:
         orientation_angle = 90 + angle
     else:
         orientation_angle = angle
-
-    # Definisci i limiti dell'angolo accettabile
-    MIN_ANGLE = 89.0
-    MAX_ANGLE = 91.0
-
-    # Applica il vincolo: l'angolo deve essere DENTRO l'intervallo definito
-    if not (MIN_ANGLE <= orientation_angle <= MAX_ANGLE):
-        print(f"[WARN] Griglia scartata: angolo di orientamento ({orientation_angle:.2f}°) è fuori dal range [{MIN_ANGLE}°, {MAX_ANGLE}°].")
-        return None, None # Scarta il cluster perché non rispetta il vincolo
-    # ======================================================================
 
     # 2. Trova bounding box e allinea i punti
     box = cv2.boxPoints(rect)
@@ -293,6 +279,7 @@ def generate_adaptive_grid_from_cluster(points, config_data=None):
     grid_points = cv2.transform(grid_points[None, :, :], M_inv)[0]
 
     return grid_points.tolist(), (cols, rows)
+
 def generate_serpentine_path(nodes, grid_dims):
     if not nodes or not all(grid_dims): return []
     cols, rows = grid_dims
