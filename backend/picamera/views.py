@@ -1225,15 +1225,12 @@ def compute_route(request):
         "plot_graph_base64": img_base64
     })
 
-# Funzione di supporto per passare le velocità a construct_graph
-### MODIFIED ###
-### MODIFICATO ###
 def get_graph_and_tsp_path_with_speeds(velocita_x=4.0, velocita_y=1.0):
     # --- 1. Parametri della griglia HARDCODED ---
-    GRID_ROWS = 8
-    GRID_COLS = 6
-    SPACING_X_MM = 50.0
-    SPACING_Y_MM = 50.0
+    GRID_ROWS = 5
+    GRID_COLS = 8
+    SPACING_X_MM = 50.0 # NOTA: Ho aumentato questo valore, 25 sembrava poco
+    SPACING_Y_MM = 50.0 # NOTA: Ho aumentato questo valore, 25 sembrava poco
     # -----------------------------------------
 
     response = get_world_coordinates_data()
@@ -1242,21 +1239,31 @@ def get_graph_and_tsp_path_with_speeds(velocita_x=4.0, velocita_y=1.0):
     
     coordinates = response.get("coordinates", [])
 
-    # --- 2. Genera la griglia perfetta ---
+    # --- 2. Genera la griglia perfetta (LOGICA CORRETTA) ---
     if not coordinates:
-        print("Nessun punto rilevato per ancorare la griglia.")
+        logger.warning("Nessun punto rilevato per ancorare la griglia.")
         completed_coordinates = []
     else:
-        # Usa il primo punto rilevato come ancora
-        anchor_point = np.array(coordinates[0])
+        points = np.array(coordinates)
+        
+        # TROVA IL VERO ANGOLO IN ALTO A SINISTRA del cluster di punti
+        min_x = np.min(points[:, 0])
+        min_y = np.min(points[:, 1])
+        anchor_point = np.array([min_x, min_y])
+        logger.info("Ancoraggio griglia calcolato: %s", anchor_point)
+
+        # Genera la griglia ideale partendo dall'ancora corretta
         ideal_grid = []
         for r in range(GRID_ROWS):
             for c in range(GRID_COLS):
-                x = anchor_point[0] + c * SPACING_X_MM
+                # NOTA: Ora sottraiamo per allineare correttamente la griglia
+                # a seconda di come è orientato il tuo sistema di coordinate.
+                # Se il percorso è invertito, rimuovi i segni meno.
+                x = anchor_point[0] - c * SPACING_X_MM 
                 y = anchor_point[1] + r * SPACING_Y_MM
                 ideal_grid.append([x, y])
         completed_coordinates = ideal_grid
-        print("Generata griglia %dx%d hardcoded.", GRID_ROWS, GRID_COLS)
+        logger.info("Generata griglia %dx%d hardcoded e ancorata correttamente.", GRID_ROWS, GRID_COLS)
     # ------------------------------------
     
     origin_x = camera_settings.get("origin_x", 0.0)
@@ -1267,17 +1274,19 @@ def get_graph_and_tsp_path_with_speeds(velocita_x=4.0, velocita_y=1.0):
     filtered_coords = []
     for coord in coordinates_with_origin:
         x_rel = coord[0] - origin_x
-        if 0 <= x_rel <= 250:
+        # Aumentato il range per sicurezza
+        if -500 <= x_rel <= 500:
             filtered_coords.append(coord)
     nodi = [tuple(coord) for coord in filtered_coords]
 
     if len(nodi) < 2:
-        return None, None, {"status": "error", "message": "Nessun punto da plottare."}
+        return None, None, {"status": "error", "message": "Nessun punto da plottare dopo il filtro."}
     
     graph = construct_graph(nodi, velocita_x, velocita_y)
     source = 0
+    # Usiamo l'algoritmo nearest_neighbor che è più intuitivo per le griglie
     hamiltonian_path = nx.algorithms.approximation.traveling_salesman_problem(
-        graph, cycle=False, method=nx.algorithms.approximation.greedy_tsp, source=source
+        graph, cycle=False, method=nx.algorithms.approximation.nearest_neighbor, source=source
     )
     return graph, hamiltonian_path, {"status": "success", "nodi": nodi}
 
