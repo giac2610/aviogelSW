@@ -1283,6 +1283,100 @@ def get_graph_and_tsp_path_with_speeds(velocita_x=4.0, velocita_y=1.0):
     hamiltonian_path = nx.algorithms.approximation.greedy_tsp(graph, source=source)
     
     return graph, hamiltonian_path, {"status": "success", "nodi": nodi}
+
+@csrf_exempt
+@require_GET
+def reproject_points_feed(request):
+    """
+    Un video stream che mostra i punti della griglia ideale riproiettati
+    sull'immagine della camera raddrizzata.
+    """
+    def gen_frames():
+        # --- 1. Carica le matrici necessarie una sola volta ---
+        H_fixed = get_fixed_perspective_homography_from_config()
+        if H_fixed is None:
+            print("Impossibile avviare lo stream di riproiezione: Omografia fissa non impostata.")
+            return
+
+        # Calcola la matrice inversa per tornare da coordinate mondo a pixel
+        ret, H_inv = cv2.invert(H_fixed)
+        if not ret:
+            print("Impossibile invertire la matrice di omografia.")
+            return
+
+        cam_calib = camera_settings.get("calibration", {})
+        cam_matrix = np.array(cam_calib.get("camera_matrix"))
+        dist_coeffs = np.array(cam_calib.get("distortion_coefficients"))
+        
+        # Ottieni le dimensioni per la new_camera_matrix
+        try:
+            sample_frame = get_frame()
+            h, w = sample_frame.shape[:2]
+            new_cam_matrix, _ = cv2.getOptimalNewCameraMatrix(cam_matrix, dist_coeffs, (w,h), 1.0, (w,h))
+        except Exception as e:
+            print("Errore nell'ottenere le dimensioni iniziali per lo stream: %s", e)
+            return
+
+        with stream_context():
+            while True:
+                try:
+                    frame = get_frame()
+                    if frame is None or frame.size == 0:
+                        time.sleep(0.1)
+                        continue
+
+                    # --- 2. Raddrizza l'immagine live ---
+                    undistorted_frame = cv2.undistort(frame, cam_matrix, dist_coeffs, None, new_cam_matrix)
+
+                    # --- 3. Genera la griglia ideale (stessa logica di prima) ---
+                    # Per generare la griglia, dobbiamo prima rilevare i blob per trovare l'ancora
+                    # Questa è una versione semplificata che non richiede una funzione separata
+                    GRID_ROWS, GRID_COLS = 6, 8  # Usa le tue dimensioni
+                    SPACING_X_MM, SPACING_Y_MM = 50.0, 50.0
+                    
+                    # Rileva i punti attuali per trovare l'ancora
+                    _, keypoints = get_current_frame_and_keypoints_from_config() # Funzione esistente
+                    world_coords_data = get_world_coordinates_data() # Funzione esistente
+                    
+                    ideal_grid_world = []
+                    if world_coords_data['status'] == 'success' and world_coords_data['coordinates']:
+                        points = np.array(world_coords_data['coordinates'])
+                        min_x, min_y = np.min(points[:, 0]), np.min(points[:, 1])
+                        anchor_point = np.array([min_x, min_y])
+
+                        for r in range(GRID_ROWS):
+                            for c in range(GRID_COLS):
+                                x = anchor_point[0] - c * SPACING_X_MM
+                                y = anchor_point[1] + r * SPACING_Y_MM
+                                ideal_grid_world.append([x, y])
+
+                    # --- 4. Riproietta i punti sull'immagine ---
+                    if ideal_grid_world:
+                        # Converti i punti della griglia in un array numpy per la trasformazione
+                        grid_pts_world = np.array(ideal_grid_world, dtype=np.float32).reshape(-1, 1, 2)
+                        
+                        # Applica la trasformazione inversa
+                        grid_pts_pixels = cv2.perspectiveTransform(grid_pts_world, H_inv)
+                        
+                        # Disegna i punti riproiettati sull'immagine
+                        if grid_pts_pixels is not None:
+                            for pt in grid_pts_pixels:
+                                x, y = int(round(pt[0][0])), int(round(pt[0][1]))
+                                cv2.circle(undistorted_frame, (x, y), 5, (0, 255, 0), -1) # Cerchio verde
+                                cv2.circle(undistorted_frame, (x, y), 6, (0, 0, 0), 1)   # Bordo nero
+
+                    # --- 5. Invia il frame ---
+                    _, buffer = cv2.imencode('.jpg', undistorted_frame)
+                    frame_bytes = buffer.tobytes()
+                    yield (b'--frame\r\nContent-Type: image/jpeg\r\n\r\n' + frame_bytes + b'\r\n')
+
+                except Exception as e:
+                    print("Errore nel loop di riproiezione:")
+                    time.sleep(1)
+
+    return StreamingHttpResponse(gen_frames(), content_type='multipart/x-mixed-replace; boundary=frame')
+
+
 @csrf_exempt
 @require_GET
 def plot_graph(request):
