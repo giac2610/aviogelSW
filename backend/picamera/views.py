@@ -1288,25 +1288,17 @@ def get_graph_and_tsp_path_with_speeds(velocita_x=4.0, velocita_y=1.0):
 @require_GET
 def reproject_points_feed(request):
     """
-    Stream video che mostra la griglia ideale E il percorso TSP calcolato,
-    riproiettati sull'immagine raddrizzata.
+    Stream video che mostra la griglia e il percorso CORRETTI, con partenza
+    in basso a destra e direzione specchiata.
     """
     def gen_frames():
         # --- 1. Carica le matrici di trasformazione ---
+        # ... (codice invariato, omesso per brevità) ...
         H_fixed = get_fixed_perspective_homography_from_config()
-        if H_fixed is None:
-            # ... (gestione errore omessa per brevità)
-            return
-
         ret, H_inv = cv2.invert(H_fixed)
-        if not ret:
-            # ... (gestione errore omessa per brevità)
-            return
-
         cam_calib = camera_settings.get("calibration", {})
         cam_matrix = np.array(cam_calib.get("camera_matrix"))
         dist_coeffs = np.array(cam_calib.get("distortion_coefficients"))
-        
         try:
             sample_frame = get_frame()
             h, w = sample_frame.shape[:2]
@@ -1314,7 +1306,7 @@ def reproject_points_feed(request):
         except Exception as e:
             print("Errore nello stream di riproiezione: %s", e)
             return
-
+        
         with stream_context():
             while True:
                 try:
@@ -1326,7 +1318,7 @@ def reproject_points_feed(request):
                     # --- 2. Prepara l'immagine di sfondo ---
                     undistorted_frame = cv2.undistort(frame, cam_matrix, dist_coeffs, None, new_cam_matrix)
 
-                    # --- 3. Genera la Griglia Ideale con l'Ancoraggio CORRETTO ---
+                    # --- 3. Genera la Griglia Ideale con Ancoraggio e Direzione SPECULAR ---
                     GRID_ROWS, GRID_COLS = 5, 6
                     SPACING_X_MM, SPACING_Y_MM = 50.0, 50.0
                     
@@ -1336,58 +1328,51 @@ def reproject_points_feed(request):
                     if world_coords_data['status'] == 'success' and world_coords_data['coordinates']:
                         points = np.array(world_coords_data['coordinates'])
                         
-                        # ### LOGICA DI ANCORAGGIO CORRETTA ###
-                        # Poiché l'origine è in basso a destra, il punto fisico in alto a sinistra
-                        # ha le coordinate X e Y massime.
-                        max_x = np.max(points[:, 0])
-                        max_y = np.max(points[:, 1])
-                        anchor_point = np.array([max_x, max_y])
+                        # ### MODIFICA 1: ANCORAGGIO IN BASSO A DESTRA ###
+                        # Usiamo min_x e min_y per trovare l'angolo fisico in basso a destra
+                        min_x = np.min(points[:, 0])
+                        min_y = np.min(points[:, 1])
+                        anchor_point = np.array([min_x, min_y])
 
+                        # ### MODIFICA 2: GENERAZIONE SPECULARE ###
                         for r in range(GRID_ROWS):
                             for c in range(GRID_COLS):
-                                # Asse X: i valori diminuiscono verso sinistra
-                                # Asse Y: i valori diminuiscono verso l'alto
-                                x = anchor_point[0] - c * SPACING_X_MM
-                                y = anchor_point[1] - r * SPACING_Y_MM
+                                # Asse X: i valori aumentano verso sinistra
+                                # Asse Y: i valori aumentano verso l'alto
+                                x = anchor_point[0] + c * SPACING_X_MM
+                                y = anchor_point[1] + r * SPACING_Y_MM
                                 ideal_grid_world.append([x, y])
 
-                    # --- 4. Calcola il percorso TSP sulla griglia ideale ---
+                    # --- 4. Calcola e disegna il percorso (codice invariato) ---
                     path_pixel_coords = []
                     if ideal_grid_world:
-                        # Dobbiamo includere l'origine virtuale per il calcolo del percorso
                         origin_x = camera_settings.get("origin_x", 0.0)
                         origin_y = camera_settings.get("origin_y", 0.0)
                         origin_coord = [origin_x, origin_y]
-                        
                         nodes_with_origin = [origin_coord] + ideal_grid_world
                         
-                        # Crea il grafo e calcola il percorso
                         graph = construct_graph([tuple(p) for p in nodes_with_origin])
                         path_indices = nx.algorithms.approximation.greedy_tsp(graph, source=0)
                         
-                        # Ordina i punti della griglia secondo il percorso calcolato
                         ordered_path_world = [nodes_with_origin[i] for i in path_indices]
 
-                        # Riproietta i punti del percorso (non solo della griglia)
                         path_world_pts_np = np.array(ordered_path_world, dtype=np.float32).reshape(-1, 1, 2)
                         path_pixels_np = cv2.perspectiveTransform(path_world_pts_np, H_inv)
                         
                         if path_pixels_np is not None:
                             path_pixel_coords = [tuple(p[0].astype(int)) for p in path_pixels_np]
 
-                    # --- 5. Disegna la Griglia e il Percorso ---
-                    # Disegna i punti della griglia (ora correttamente posizionati)
+                    # Disegna i punti e le linee
                     if ideal_grid_world:
                         grid_world_pts_np = np.array(ideal_grid_world, dtype=np.float32).reshape(-1, 1, 2)
                         grid_pixels_np = cv2.perspectiveTransform(grid_world_pts_np, H_inv)
                         if grid_pixels_np is not None:
                             for pt in grid_pixels_np:
-                                cv2.circle(undistorted_frame, tuple(pt[0].astype(int)), 5, (0, 255, 0), -1) # Verde
+                                cv2.circle(undistorted_frame, tuple(pt[0].astype(int)), 5, (0, 255, 0), -1)
 
-                    # Disegna le linee del percorso
                     if len(path_pixel_coords) > 1:
                         for i in range(len(path_pixel_coords) - 1):
-                            cv2.line(undistorted_frame, path_pixel_coords[i], path_pixel_coords[i+1], (255, 0, 0), 2) # Blu
+                            cv2.line(undistorted_frame, path_pixel_coords[i], path_pixel_coords[i+1], (255, 0, 0), 2)
 
                     # --- 6. Invia il frame ---
                     _, buffer = cv2.imencode('.jpg', undistorted_frame)
