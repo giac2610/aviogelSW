@@ -18,6 +18,7 @@ from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_POST, require_GET
 import traceback # Added for more detailed error logging if needed
 import requests #type: ignore
+from sklearn.cluster import KMeans ### NEW ### Import KMeans for grid inference
 
 # --- File Configuration ---
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -432,15 +433,106 @@ def get_world_coordinates_data():
         world_coords_bottom_right_origin.append([x_br, y_br])
     return {"status": "success", "coordinates": world_coords_bottom_right_origin}
 
+
+### NEW ###
+def complete_grid_from_detected_points(detected_coords, min_points_for_inference=4, num_expected_blobs=None):
+    """
+    Infers a complete grid from a list of partially detected points.
+
+    This function calculates the grid spacing from the data itself, finds missing
+    points, and returns the coordinates of the full, ideal grid.
+
+    Args:
+        detected_coords (list of lists): The [[x, y], ...] coordinates.
+        min_points_for_inference (int): The minimum number of blobs that must be detected
+                                        to attempt grid inference.
+        num_expected_blobs (int, optional): If you know the exact number of blobs,
+                                            this can help validate the result.
+
+    Returns:
+        A list of coordinates for the complete, idealized grid. If inference fails,
+        it returns the original detected coordinates.
+    """
+    if len(detected_coords) < min_points_for_inference:
+        print("[INFO] Not enough points to infer grid. Returning original points.")
+        return detected_coords
+
+    points = np.array(detected_coords)
+
+    # 1. Calculate all pairwise vectors between points
+    vectors = []
+    for p1 in points:
+        for p2 in points:
+            if not np.array_equal(p1, p2):
+                vectors.append(p2 - p1)
+    vectors = np.array(vectors)
+
+    # 2. Find the primary grid vectors (delta_x, delta_y) using clustering
+    try:
+        # Use KMeans to find the 2 main clusters of vector lengths
+        kmeans = KMeans(n_clusters=2, random_state=0, n_init='auto').fit(np.abs(vectors))
+        # The cluster centers are our grid spacings (delta_x, delta_y)
+        centers = kmeans.cluster_centers_
+        delta_x = max(centers[0, 0], centers[1, 0])
+        delta_y = max(centers[0, 1], centers[1, 1])
+        
+        # A sanity check for grid spacing
+        if delta_x < 5 or delta_y < 5:
+             print("[WARN] Inferred grid spacing is too small. Aborting inference.")
+             return detected_coords
+
+    except Exception as e:
+        print(f"[WARN] Could not determine grid vectors via clustering: {e}")
+        return detected_coords
+        
+    # 3. Determine grid indices for each detected point
+    # Find the top-leftmost point to act as the grid's origin (0,0)
+    origin = points[np.argmin(np.sum(points, axis=1))]
+    
+    indices = []
+    for p in points:
+        # Calculate the grid index (i, j) relative to the origin
+        ix = int(round((p[0] - origin[0]) / delta_x))
+        iy = int(round((p[1] - origin[1]) / delta_y))
+        indices.append((ix, iy))
+
+    # 4. Generate the complete, ideal grid
+    min_ix = min(idx[0] for idx in indices)
+    max_ix = max(idx[0] for idx in indices)
+    min_iy = min(idx[1] for idx in indices)
+    max_iy = max(idx[1] for idx in indices)
+
+    full_grid_coords = []
+    for iy in range(min_iy, max_iy + 1):
+        for ix in range(min_ix, max_ix + 1):
+            # Calculate the ideal position for this grid point
+            ideal_x = origin[0] + ix * delta_x
+            ideal_y = origin[1] + iy * delta_y
+            full_grid_coords.append([ideal_x, ideal_y])
+    
+    print(f"[INFO] Grid inference successful. Original: {len(points)} points. Completed: {len(full_grid_coords)} points.")
+
+    return full_grid_coords
+
+
+### MODIFIED ###
 def get_graph_and_tsp_path(velocita_x=4.0, velocita_y=1.0):
     response = get_world_coordinates_data()
     if response.get("status", []) != "success" and response.get("status") != "success":
         return None, None, response
+        
     coordinates = response.get("coordinates", [])
+    
+    # --- ADD GRID COMPLETION LOGIC HERE ---
+    completed_coordinates = complete_grid_from_detected_points(coordinates)
+    # --- END OF NEW LOGIC ---
+
     origin_x = camera_settings.get("origin_x", 0.0)
     origin_y = camera_settings.get("origin_y", 0.0)
     origin_coord = [origin_x, origin_y]
-    coordinates_with_origin = [origin_coord] + coordinates
+    
+    # Use the completed coordinates list from now on
+    coordinates_with_origin = [origin_coord] + completed_coordinates
 
     filtered_coords = []
     for coord in coordinates_with_origin:
@@ -1134,15 +1226,24 @@ def compute_route(request):
     })
 
 # Funzione di supporto per passare le velocità a construct_graph
+### MODIFIED ###
 def get_graph_and_tsp_path_with_speeds(velocita_x=4.0, velocita_y=1.0):
     response = get_world_coordinates_data()
     if response.get("status", []) != "success" and response.get("status") != "success":
         return None, None, response
+    
     coordinates = response.get("coordinates", [])
+
+    # --- ADD GRID COMPLETION LOGIC HERE ---
+    completed_coordinates = complete_grid_from_detected_points(coordinates)
+    # --- END OF NEW LOGIC ---
+
     origin_x = camera_settings.get("origin_x", 0.0)
     origin_y = camera_settings.get("origin_y", 0.0)
     origin_coord = [origin_x, origin_y]
-    coordinates_with_origin = [origin_coord] + coordinates
+    
+    # Use the completed coordinates list from now on
+    coordinates_with_origin = [origin_coord] + completed_coordinates
 
     filtered_coords = []
     for coord in coordinates_with_origin:
