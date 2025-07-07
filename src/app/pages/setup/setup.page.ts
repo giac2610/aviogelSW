@@ -284,14 +284,17 @@ onPresetChange() {
   updateStreamUrl() {
     switch (this.selectedStream) {
       case 'fixed':
-        this.currentStreamUrl = `${this.normalStreamUrl}?mode=fixed&keyframe=true`; // Modalità fissa con keyframe
+        // this.currentStreamUrl = `${this.normalStreamUrl}?mode=fixed&keyframe=true`; // Modalità fissa con keyframe
+        this.currentStreamUrl = this.configService.getFixedPerspectiveStreamUrl(); // Modalità fissa con keyframe
         break
       case 'threshold':
-        this.currentStreamUrl = `${this.normalStreamUrl}?mode=threshold&keyframe=true`; // Modalità threshold con keyframe
+        // this.currentStreamUrl = `${this.normalStreamUrl}?mode=threshold&keyframe=true`; // Modalità threshold con keyframe
+        this.currentStreamUrl = this.configService.getThresholdStreamUrl(); // Modalità threshold con keyframe
         break;
       case 'normal':
       default:
-        this.currentStreamUrl = `${this.normalStreamUrl}?mode=normal&keyframe=true`; // Modalità normale con keyframe
+        // this.currentStreamUrl = `${this.normalStreamUrl}?mode=normal&keyframe=true`; // Modalità normale con keyframe
+        this.currentStreamUrl = this.configService.getNormalStreamUrl(); // Modalità normale con keyframe
         break;
     }
     console.log(`Stream URL aggiornato a: ${this.currentStreamUrl}`); // Debug log
