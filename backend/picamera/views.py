@@ -435,7 +435,7 @@ def get_world_coordinates_data():
 
 
 ### NEW ###
-def complete_grid_from_detected_points(detected_coords, min_points_for_inference=4, num_expected_blobs=None):
+def complete_grid_from_detected_points(detected_coords, min_points_for_inference=25, num_expected_blobs=48):
     """
     Infers a complete grid from a list of partially detected points.
 
