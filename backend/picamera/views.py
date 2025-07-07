@@ -1287,11 +1287,10 @@ def construct_graph(nodi, velocita_x=4.0, velocita_y=1.0):
 ### ARCHITETTURA FINALE E CORRETTA
 ### ====================================================================
 
-# 1. LA NUOVA FUNZIONE "MASTER" CHE CONTIENE LA LOGICA CORRETTA
 def _generate_grid_and_path(world_coords, camera_settings):
     """
-    Questa è l'unica funzione che genera la griglia e il percorso.
-    Contiene la logica che hai confermato essere corretta per i motori.
+    Genera la griglia e il percorso con entrambi gli assi X e Y invertiti
+    per una corrispondenza 1:1 con la visualizzazione desiderata.
     """
     # Parametri della griglia
     GRID_ROWS, GRID_COLS = 8, 6
@@ -1301,15 +1300,20 @@ def _generate_grid_and_path(world_coords, camera_settings):
     points = np.array(world_coords)
     anchor_point = np.array([np.min(points[:, 0]), np.min(points[:, 1])])
 
-    # Generazione griglia (con il + che hai confermato essere giusto per il percorso)
+    # Generazione griglia
     ideal_grid_world = []
     for r in range(GRID_ROWS):
         for c in range(GRID_COLS):
-            x = anchor_point[0] + c * SPACING_X_MM
-            y = anchor_point[1] + r * SPACING_Y_MM
+            
+            # Inversione asse X (come prima)
+            x = anchor_point[0] - c * SPACING_X_MM
+            
+            ### NUOVA MODIFICA: Inversione asse Y ###
+            y = anchor_point[1] - r * SPACING_Y_MM
+            
             ideal_grid_world.append([x, y])
 
-    # Calcolo del percorso TSP (logica che hai confermato essere giusta)
+    # Calcolo del percorso TSP (logica invariata)
     graph = construct_graph([tuple(p) for p in ideal_grid_world])
     path_indices_grid_only = nx.algorithms.approximation.greedy_tsp(graph, source=0)
     ordered_grid_points = [ideal_grid_world[i] for i in path_indices_grid_only]
@@ -1320,7 +1324,6 @@ def _generate_grid_and_path(world_coords, camera_settings):
     final_ordered_path = [[origin_x, origin_y]] + ordered_grid_points
 
     return ideal_grid_world, final_ordered_path
-
 
 # 2. FUNZIONE DI CALCOLO PERCORSO (ORA SEMPLIFICATA)
 def get_graph_and_tsp_path_with_speeds(velocita_x=4.0, velocita_y=1.0):
