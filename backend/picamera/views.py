@@ -431,6 +431,7 @@ def get_world_coordinates(request):
 
 @csrf_exempt
 @require_GET
+
 def compute_route(request):
     try:
         resp = requests.get("http://localhost:8000/motors/maxSpeeds/")
@@ -452,10 +453,26 @@ def compute_route(request):
         conveyor_mm = nodi[i][1] - nodi[i-1][1]
         motor_commands.append({"extruder": round(extruder_mm, 4), "conveyor": round(conveyor_mm, 4)})
 
+        # --- Genera il plot come immagine base64 ---
+    plt.figure(figsize=(8, 6))
+    pos = nx.get_node_attributes(graph, 'pos')
+    nx.draw_networkx_nodes(graph, pos, node_color='skyblue', node_size=500)
+    nx.draw_networkx_labels(graph, pos, font_size=10)
+    tsp_edges = [(hamiltonian_path[i], hamiltonian_path[i+1]) for i in range(len(hamiltonian_path)-1)]
+    nx.draw_networkx_edges(graph, pos, edgelist=tsp_edges, edge_color='red', width=2)
+    plt.title("Percorso TSP (in rosso)")
+    plt.axis('off')
+    buf = BytesIO()
+    plt.savefig(buf, format='png')
+    plt.close()
+    buf.seek(0)
+    img_base64 = base64.b64encode(buf.getvalue()).decode('utf-8')
+
     return JsonResponse({
         "status": "success",
         "route": hamiltonian_path,
-        "motor_commands": motor_commands
+        "motor_commands": motor_commands,
+        "plot_graph_base64": img_base64
     })
 
 @csrf_exempt
@@ -691,7 +708,6 @@ def plot_graph(request):
     nx.draw_networkx_edges(graph, pos, edgelist=path_edges, edge_color='red', width=2)
     plt.title("Percorso TSP (in rosso)")
     plt.axis('off')
-    
     buf = BytesIO()
     plt.savefig(buf, format='png')
     plt.close()
