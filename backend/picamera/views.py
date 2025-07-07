@@ -57,6 +57,10 @@ def _load_global_config_from_file():
             config = json.load(f)
         camera_settings = config.get("camera", {})
         camera_settings.setdefault("picamera_config", {}).setdefault("main", {}).setdefault("size", [640, 480])
+        # === NUOVI PARAMETRI PER ADAPTIVE THRESHOLD ===
+        # Aggiungili al tuo file setup.json se vuoi renderli configurabili
+        camera_settings.setdefault("adaptive_thresh_block_size", 25)
+        camera_settings.setdefault("adaptive_thresh_C", 7)
     except (FileNotFoundError, json.JSONDecodeError) as e:
         print(f"[WARN] setup.json non trovato o malformato ({e}). Creo configurazione di default.")
         config = {
@@ -64,7 +68,9 @@ def _load_global_config_from_file():
                 "picamera_config": {"main": {"size": [640, 480]}},
                 "calibration_settings": {"point_spacing_mm": 50.0},
                 "origin_x": 0.0,
-                "origin_y": 0.0
+                "origin_y": 0.0,
+                "adaptive_thresh_block_size": 25, # Valore di default
+                "adaptive_thresh_C": 7            # Valore di default
             }
         }
         camera_settings = config["camera"]
@@ -160,7 +166,7 @@ def detect_blobs_from_params(binary_image, blob_params, scale_x=1.0, scale_y=1.0
     params.minArea = max(1, blob_params.get("minArea", 150) * area_scale_factor)
     params.maxArea = max(1, blob_params.get("maxArea", 5000) * area_scale_factor)
     params.filterByCircularity = blob_params.get("circularityFilter", True)
-    params.minCircularity = blob_params.get("minCircularity", 0.1)
+    params.minCircularity = blob_params.get("minCircularity", 0.7) # Leggermente più selettivo
     params.filterByConvexity = blob_params.get("filterByConvexity", True)
     params.minConvexity = blob_params.get("minConvexity", 0.87)
     params.filterByInertia = blob_params.get("inertiaFilter", True)
@@ -168,7 +174,7 @@ def detect_blobs_from_params(binary_image, blob_params, scale_x=1.0, scale_y=1.0
     return cv2.SimpleBlobDetector_create(params).detect(binary_image)
 
 # ==============================================================================
-# ==== SEZIONE DI FUNZIONI REFACTORIZZATE PER RISOLVERE IL DEADLOCK ====
+# ==== FUNZIONI CON MIGLIORIE SOFTWARE APPLICATE ====
 # ==============================================================================
 
 def get_current_frame_and_keypoints_from_config(frame):
@@ -178,12 +184,28 @@ def get_current_frame_and_keypoints_from_config(frame):
         return np.zeros((size[1], size[0], 3), dtype=np.uint8), []
     
     gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+    
+    # Applica un blur per ridurre il rumore prima della sogliatura
+    gray = cv2.GaussianBlur(gray, (5, 5), 0)
+    
     proc_w = 640
     orig_h, orig_w = frame.shape[:2]
     proc_h = int(orig_h * (proc_w / orig_w))
     scale_x, scale_y = orig_w / proc_w, orig_h / proc_h
     resized_gray = cv2.resize(gray, (proc_w, proc_h), interpolation=cv2.INTER_AREA)
-    _, thresh = cv2.threshold(resized_gray, camera_settings.get("minThreshold", 127), camera_settings.get("maxThreshold", 255), cv2.THRESH_BINARY)
+
+    # === MIGLIORIA 1: Uso di cv2.adaptiveThreshold ===
+    block_size = camera_settings.get("adaptive_thresh_block_size", 25)
+    C = camera_settings.get("adaptive_thresh_C", 7)
+    # Assicura che block_size sia dispari e > 1
+    if block_size % 2 == 0:
+        block_size += 1
+    if block_size <= 1:
+        block_size = 3
+        
+    thresh = cv2.adaptiveThreshold(resized_gray, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
+                                   cv2.THRESH_BINARY_INV, block_size, C) # THRESH_BINARY_INV per fori scuri
+
     kps_resized = detect_blobs_from_params(thresh, camera_settings, scale_x, scale_y)
     kps_orig = [cv2.KeyPoint(kp.pt[0] * scale_x, kp.pt[1] * scale_y, kp.size * ((scale_x + scale_y) / 2)) for kp in kps_resized]
     return frame, kps_orig
@@ -220,12 +242,33 @@ def _calculate_serpentine_path_data(frame):
         return None, None, response
 
     coordinates = response.get("coordinates", [])
+    
+    # === MIGLIORIA 2: Filtro di robustezza basato sui vicini ===
+    if len(coordinates) > 1:
+        spacing = camera_settings.get("calibration_settings", {}).get("point_spacing_mm", 50.0)
+        dist_tolerance = spacing * 0.5  # Tolleranza sulla distanza
+        min_neighbors = 2               # Un punto valido deve avere almeno 2 vicini
+        
+        filtered_coords = []
+        coords_np = np.array(coordinates)
+        for i, p1 in enumerate(coords_np):
+            # Calcola la distanza da p1 a tutti gli altri punti
+            distances = np.linalg.norm(coords_np - p1, axis=1)
+            # Conta quanti vicini sono alla distanza "giusta"
+            neighbor_count = np.sum((distances > (spacing - dist_tolerance)) & (distances < (spacing + dist_tolerance)))
+            
+            if neighbor_count >= min_neighbors:
+                filtered_coords.append(coordinates[i])
+        
+        print(f"[INFO] Filtro Vicini: Punti originali: {len(coordinates)}, Punti filtrati: {len(filtered_coords)}")
+        coordinates = filtered_coords
+
     if len(coordinates) > 48:
         print(f"[INFO] Rilevati {len(coordinates)} punti, limitati a 48.")
         coordinates = sorted(coordinates, key=lambda p: (p[1], p[0]))[:48]
 
     if not coordinates:
-        return None, None, {"status": "error", "message": "Nessun punto rilevato per il calcolo."}
+        return None, None, {"status": "error", "message": "Nessun punto valido dopo il filtraggio."}
         
     nodi, grid_dims = generate_adaptive_grid_from_cluster(coordinates, config_data=camera_settings)
     if not nodi:
@@ -251,9 +294,6 @@ def _calculate_serpentine_path_data(frame):
         
     return graph, final_path_indices, {"status": "success", "nodi": nodi, "grid_dims": grid_dims}
 
-# ==============================================================================
-# ==== FINE SEZIONE REFACTORIZZATA ====
-# ==============================================================================
 
 def generate_adaptive_grid_from_cluster(points, config_data=None):
     if config_data is None:
@@ -329,7 +369,6 @@ def generate_serpentine_path(nodes, grid_dims):
     return path_indices
 
 def _generate_plot_image(graph, nodi, grid_dims, path_indices):
-    """Funzione helper che genera l'immagine del grafico."""
     plt.figure(figsize=(8, 6))
     pos = nx.get_node_attributes(graph, 'pos')
 
@@ -374,51 +413,36 @@ def get_board_and_canonical_homography_for_django(undistorted_frame, new_camera_
     H_canonical = cv2.getPerspectiveTransform(img_board_perimeter_pts, canonical_dst_pts)
     return H_canonical, (w, h)
 
-# SOSTITUISCI QUESTA FUNZIONE CON LA VERSIONE AGGIORNATA
 def get_frame_with_world_grid():
-    """
-    Cattura un frame, vi disegna sopra i blob rilevati, la griglia del mondo
-    e il percorso a serpentina.
-    """
-    # 1. Cattura il frame UNA SOLA VOLTA
     frame = get_frame()
-
-    # 2. Esegui il rilevamento dei blob grezzi per la visualizzazione
-    # Questa è la nuova parte che rileva i "contorni"
-    # Lo facciamo qui per poterli disegnare subito sul frame corretto.
+    
+    # Rileva i blob grezzi per la visualizzazione
     _, raw_keypoints = get_current_frame_and_keypoints_from_config(frame)
 
-    # 3. Recupera i dati di calibrazione e omografia
     cam_calib = camera_settings.get("calibration")
     H_fixed = get_fixed_perspective_homography_from_config()
 
     if H_fixed is None or not cam_calib:
-        # Se non siamo calibrati, disegna almeno i blob grezzi e restituisci
         frame_with_keypoints = cv2.drawKeypoints(frame, raw_keypoints, np.array([]), (0, 255, 255), cv2.DRAW_MATCHES_FLAGS_DRAW_RICH_KEYPOINTS)
         return frame_with_keypoints
 
-    # 4. Correggi la distorsione del frame catturato
     cam_matrix = np.array(cam_calib["camera_matrix"])
     dist_coeffs = np.array(cam_calib["distortion_coefficients"])
     h, w = frame.shape[:2]
     new_cam_matrix, _ = cv2.getOptimalNewCameraMatrix(cam_matrix, dist_coeffs, (w, h), 1.0, (w, h))
     undistorted_frame = cv2.undistort(frame, cam_matrix, dist_coeffs, None, new_cam_matrix)
 
-    # === NUOVO: Disegna i keypoint grezzi sul frame non distorto ===
-    # Usiamo un colore CIANO (0, 255, 255) per distinguerli
     cv2.drawKeypoints(undistorted_frame, raw_keypoints, undistorted_frame, (0, 255, 255), cv2.DRAW_MATCHES_FLAGS_DRAW_RICH_KEYPOINTS)
 
-    # 5. Calcola la griglia e il percorso (la logica non cambia)
     graph, path_indices, info = _calculate_serpentine_path_data(frame) 
     
     if graph is None:
-        return undistorted_frame # Restituisci il frame con i soli keypoint gialli
+        return undistorted_frame
     
     nodi_mondo = info.get("nodi", [])
     if not nodi_mondo:
         return undistorted_frame
 
-    # 6. Proietta la griglia ideale sull'immagine (puntini rossi e linee verdi)
     try:
         H_inversa = np.linalg.inv(H_fixed)
     except np.linalg.LinAlgError:
@@ -432,7 +456,6 @@ def get_frame_with_world_grid():
         
     nodi_immagine = nodi_immagine.reshape(-1, 2).astype(int)
 
-    # 7. Disegna la griglia finale e il percorso
     if path_indices:
         for i in range(len(path_indices) - 1):
             start_node_index = path_indices[i]
@@ -440,15 +463,15 @@ def get_frame_with_world_grid():
             if start_node_index < len(nodi_immagine) and end_node_index < len(nodi_immagine):
                 start_point = tuple(nodi_immagine[start_node_index])
                 end_point = tuple(nodi_immagine[end_node_index])
-                cv2.line(undistorted_frame, start_point, end_point, (0, 255, 0), 2) # Linee Verdi
+                cv2.line(undistorted_frame, start_point, end_point, (0, 255, 0), 2)
 
     for point in nodi_immagine:
-        cv2.circle(undistorted_frame, tuple(point), 5, (0, 0, 255), -1) # Puntini Rossi
+        cv2.circle(undistorted_frame, tuple(point), 5, (0, 0, 255), -1)
         
     return undistorted_frame
 
 # ==============================================================================
-# ENDPOINT API DJANGO
+# ENDPOINT API DJANGO (Nessuna modifica richiesta qui, ma inclusi per completezza)
 # ==============================================================================
 @contextmanager
 def stream_context():
@@ -460,6 +483,12 @@ def stream_context():
 def update_camera_settings(request):
     try:
         data = json.loads(request.body)
+        # Salva anche i nuovi parametri per adaptive threshold se presenti
+        if "adaptive_thresh_block_size" in data:
+            camera_settings["adaptive_thresh_block_size"] = int(data["adaptive_thresh_block_size"])
+        if "adaptive_thresh_C" in data:
+            camera_settings["adaptive_thresh_C"] = int(data["adaptive_thresh_C"])
+            
         config_data = load_config_data_from_file()
         config_data.setdefault("camera", {}).update(data)
         if save_config_data_to_file(config_data): return JsonResponse({"status": "success"})
@@ -482,9 +511,6 @@ def camera_feed(request):
 @csrf_exempt
 @require_GET
 def get_world_coordinates(request):
-    # NOTA: Questa funzione ora richiede un frame.
-    # Per una chiamata API singola, catturiamo un frame qui.
-    # Questo non causa deadlock perché non è in un loop di streaming che detiene già il lock.
     frame = get_frame()
     data = get_world_coordinates_data(frame)
     return JsonResponse(data, status=200 if data.get("status") == "success" else 400)
@@ -493,7 +519,6 @@ def get_world_coordinates(request):
 @require_GET
 def get_keypoints(request):
     try:
-        # Anche qui, catturiamo un frame per la singola elaborazione.
         frame = get_frame()
         _, keypoints = get_current_frame_and_keypoints_from_config(frame)
         return JsonResponse({"status": "success", "keypoints": [[kp.pt[0], kp.pt[1]] for kp in keypoints]})
@@ -517,9 +542,7 @@ def set_camera_origin(request):
 @csrf_exempt
 @require_GET
 def compute_route(request):
-    """Calcola un percorso a serpentina, partendo dal punto più vicino all'origine."""
     try:
-        # Per una singola computazione, cattura un frame.
         frame = get_frame()
         graph, path_indices, info = _calculate_serpentine_path_data(frame)
         if graph is None:
@@ -552,7 +575,6 @@ def compute_route(request):
 @csrf_exempt
 @require_GET
 def plot_graph(request):
-    """Genera un'immagine del percorso a serpentina."""
     try:
         frame = get_frame()
         graph, path_indices, info = _calculate_serpentine_path_data(frame)
@@ -570,7 +592,6 @@ def fixed_perspective_stream(request):
     request.mode_override = 'fixed'
     return camera_feed(request)
 
-# --- Endpoint di Setup e Calibrazione ---
 @csrf_exempt
 @require_POST
 def initialize_camera_endpoint(request):
@@ -589,7 +610,7 @@ def deinitialize_camera_endpoint(request):
                 camera_instance = None
             except Exception as e: return JsonResponse({"status": "error", "message": str(e)}, status=500)
     return JsonResponse({"status": "success", "message": "Camera rilasciata."})
-
+        
 @csrf_exempt
 @require_POST
 def save_frame_calibration(request):
