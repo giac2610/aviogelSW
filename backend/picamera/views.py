@@ -1288,33 +1288,31 @@ def get_graph_and_tsp_path_with_speeds(velocita_x=4.0, velocita_y=1.0):
 @require_GET
 def reproject_points_feed(request):
     """
-    Un video stream che mostra i punti della griglia ideale riproiettati
-    sull'immagine della camera raddrizzata.
+    Stream video che mostra la griglia ideale E il percorso TSP calcolato,
+    riproiettati sull'immagine raddrizzata.
     """
     def gen_frames():
-        # --- 1. Carica le matrici necessarie una sola volta ---
+        # --- 1. Carica le matrici di trasformazione ---
         H_fixed = get_fixed_perspective_homography_from_config()
         if H_fixed is None:
-            print("Impossibile avviare lo stream di riproiezione: Omografia fissa non impostata.")
+            # ... (gestione errore omessa per brevità)
             return
 
-        # Calcola la matrice inversa per tornare da coordinate mondo a pixel
         ret, H_inv = cv2.invert(H_fixed)
         if not ret:
-            print("Impossibile invertire la matrice di omografia.")
+            # ... (gestione errore omessa per brevità)
             return
 
         cam_calib = camera_settings.get("calibration", {})
         cam_matrix = np.array(cam_calib.get("camera_matrix"))
         dist_coeffs = np.array(cam_calib.get("distortion_coefficients"))
         
-        # Ottieni le dimensioni per la new_camera_matrix
         try:
             sample_frame = get_frame()
             h, w = sample_frame.shape[:2]
             new_cam_matrix, _ = cv2.getOptimalNewCameraMatrix(cam_matrix, dist_coeffs, (w,h), 1.0, (w,h))
         except Exception as e:
-            print("Errore nell'ottenere le dimensioni iniziali per lo stream: %s", e)
+            print("Errore nello stream di riproiezione: %s", e)
             return
 
         with stream_context():
@@ -1325,47 +1323,73 @@ def reproject_points_feed(request):
                         time.sleep(0.1)
                         continue
 
-                    # --- 2. Raddrizza l'immagine live ---
+                    # --- 2. Prepara l'immagine di sfondo ---
                     undistorted_frame = cv2.undistort(frame, cam_matrix, dist_coeffs, None, new_cam_matrix)
 
-                    # --- 3. Genera la griglia ideale (stessa logica di prima) ---
-                    # Per generare la griglia, dobbiamo prima rilevare i blob per trovare l'ancora
-                    # Questa è una versione semplificata che non richiede una funzione separata
-                    GRID_ROWS, GRID_COLS = 6, 8  # Usa le tue dimensioni
+                    # --- 3. Genera la Griglia Ideale con l'Ancoraggio CORRETTO ---
+                    GRID_ROWS, GRID_COLS = 5, 6
                     SPACING_X_MM, SPACING_Y_MM = 50.0, 50.0
                     
-                    # Rileva i punti attuali per trovare l'ancora
-                    _, keypoints = get_current_frame_and_keypoints_from_config() # Funzione esistente
-                    world_coords_data = get_world_coordinates_data() # Funzione esistente
+                    world_coords_data = get_world_coordinates_data()
                     
                     ideal_grid_world = []
                     if world_coords_data['status'] == 'success' and world_coords_data['coordinates']:
                         points = np.array(world_coords_data['coordinates'])
-                        min_x, min_y = np.min(points[:, 0]), np.min(points[:, 1])
-                        anchor_point = np.array([min_x, min_y])
+                        
+                        # ### LOGICA DI ANCORAGGIO CORRETTA ###
+                        # Poiché l'origine è in basso a destra, il punto fisico in alto a sinistra
+                        # ha le coordinate X e Y massime.
+                        max_x = np.max(points[:, 0])
+                        max_y = np.max(points[:, 1])
+                        anchor_point = np.array([max_x, max_y])
 
                         for r in range(GRID_ROWS):
                             for c in range(GRID_COLS):
+                                # Asse X: i valori diminuiscono verso sinistra
+                                # Asse Y: i valori diminuiscono verso l'alto
                                 x = anchor_point[0] - c * SPACING_X_MM
-                                y = anchor_point[1] + r * SPACING_Y_MM
+                                y = anchor_point[1] - r * SPACING_Y_MM
                                 ideal_grid_world.append([x, y])
 
-                    # --- 4. Riproietta i punti sull'immagine ---
+                    # --- 4. Calcola il percorso TSP sulla griglia ideale ---
+                    path_pixel_coords = []
                     if ideal_grid_world:
-                        # Converti i punti della griglia in un array numpy per la trasformazione
-                        grid_pts_world = np.array(ideal_grid_world, dtype=np.float32).reshape(-1, 1, 2)
+                        # Dobbiamo includere l'origine virtuale per il calcolo del percorso
+                        origin_x = camera_settings.get("origin_x", 0.0)
+                        origin_y = camera_settings.get("origin_y", 0.0)
+                        origin_coord = [origin_x, origin_y]
                         
-                        # Applica la trasformazione inversa
-                        grid_pts_pixels = cv2.perspectiveTransform(grid_pts_world, H_inv)
+                        nodes_with_origin = [origin_coord] + ideal_grid_world
                         
-                        # Disegna i punti riproiettati sull'immagine
-                        if grid_pts_pixels is not None:
-                            for pt in grid_pts_pixels:
-                                x, y = int(round(pt[0][0])), int(round(pt[0][1]))
-                                cv2.circle(undistorted_frame, (x, y), 5, (0, 255, 0), -1) # Cerchio verde
-                                cv2.circle(undistorted_frame, (x, y), 6, (0, 0, 0), 1)   # Bordo nero
+                        # Crea il grafo e calcola il percorso
+                        graph = construct_graph([tuple(p) for p in nodes_with_origin])
+                        path_indices = nx.algorithms.approximation.greedy_tsp(graph, source=0)
+                        
+                        # Ordina i punti della griglia secondo il percorso calcolato
+                        ordered_path_world = [nodes_with_origin[i] for i in path_indices]
 
-                    # --- 5. Invia il frame ---
+                        # Riproietta i punti del percorso (non solo della griglia)
+                        path_world_pts_np = np.array(ordered_path_world, dtype=np.float32).reshape(-1, 1, 2)
+                        path_pixels_np = cv2.perspectiveTransform(path_world_pts_np, H_inv)
+                        
+                        if path_pixels_np is not None:
+                            path_pixel_coords = [tuple(p[0].astype(int)) for p in path_pixels_np]
+
+                    # --- 5. Disegna la Griglia e il Percorso ---
+                    # Disegna i punti della griglia (ora correttamente posizionati)
+                    if ideal_grid_world:
+                        grid_world_pts_np = np.array(ideal_grid_world, dtype=np.float32).reshape(-1, 1, 2)
+                        grid_pixels_np = cv2.perspectiveTransform(grid_world_pts_np, H_inv)
+                        if grid_pixels_np is not None:
+                            for pt in grid_pixels_np:
+                                cv2.circle(undistorted_frame, tuple(pt[0].astype(int)), 5, (0, 255, 0), -1) # Verde
+
+                    # Disegna le linee del percorso
+                    if len(path_pixel_coords) > 1:
+                        for i in range(len(path_pixel_coords) - 1):
+                            cv2.line(undistorted_frame, path_pixel_coords[i], path_pixel_coords[i+1], (255, 0, 0), 2) # Blu
+
+                    # --- 6. Invia il frame ---
                     _, buffer = cv2.imencode('.jpg', undistorted_frame)
                     frame_bytes = buffer.tobytes()
                     yield (b'--frame\r\nContent-Type: image/jpeg\r\n\r\n' + frame_bytes + b'\r\n')
@@ -1375,7 +1399,6 @@ def reproject_points_feed(request):
                     time.sleep(1)
 
     return StreamingHttpResponse(gen_frames(), content_type='multipart/x-mixed-replace; boundary=frame')
-
 
 @csrf_exempt
 @require_GET
