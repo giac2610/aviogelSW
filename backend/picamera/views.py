@@ -1319,7 +1319,7 @@ def reproject_points_feed(request):
                     undistorted_frame = cv2.undistort(frame, cam_matrix, dist_coeffs, None, new_cam_matrix)
 
                     # --- 3. Genera la Griglia Ideale con Ancoraggio e Direzione SPECULAR ---
-                    GRID_ROWS, GRID_COLS = 5, 6
+                    GRID_ROWS, GRID_COLS = 8, 6
                     SPACING_X_MM, SPACING_Y_MM = 50.0, 50.0
                     
                     world_coords_data = get_world_coordinates_data()
