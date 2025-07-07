@@ -16,8 +16,8 @@ import threading
 from django.http import StreamingHttpResponse, JsonResponse, HttpResponse
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_POST, require_GET
-import traceback # Added for more detailed error logging if needed
-import requests #type: ignore
+import traceback
+import requests #type: ignore[import-untyped]
 
 # --- File Configuration ---
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -34,7 +34,6 @@ if not os.path.exists(SETUP_JSON_PATH):
         copyfile(EXAMPLE_JSON_PATH, SETUP_JSON_PATH)
         print(f"[INFO] Configuration file created from {EXAMPLE_JSON_PATH}")
     else:
-        # Create a minimal default config if example is missing
         default_config_content = {"camera": {"capture_width": 640, "capture_height": 480}}
         with open(SETUP_JSON_PATH, 'w') as f_default:
             json.dump(default_config_content, f_default, indent=4)
@@ -50,15 +49,14 @@ def _load_global_config_from_file():
         with open(SETUP_JSON_PATH, 'r') as f:
             config = json.load(f)
         camera_settings = config.get("camera", {})
-        # Imposta un default per picamera_config.main.size se non esiste
         camera_settings.setdefault("picamera_config", {}).setdefault("main", {}).setdefault("size", [640, 480])
         print("[INFO] Global configuration loaded successfully.")
     except Exception as e:
         print(f"Critical error loading setup.json at startup: {e}. Falling back to empty config.")
-        config = {"camera": {"picamera_config": {"main": {"size": [640, 480]}}}} # Ensure config is a dict with defaults
+        config = {"camera": {"picamera_config": {"main": {"size": [640, 480]}}}}
         camera_settings = config["camera"]
 
-_load_global_config_from_file() # Load it once at startup
+_load_global_config_from_file()
 
 # --- Camera Init ---
 camera_instance = None
@@ -77,31 +75,24 @@ def _initialize_camera_internally():
         camera_instance = None
 
     cfg_data_for_init = camera_settings
-    
-    # Assicurati che picam_main_size sia una lista di due elementi
     picam_main_size = cfg_data_for_init.get("picamera_config", {}).get("main", {}).get("size", [640, 480])
     if not isinstance(picam_main_size, list) or len(picam_main_size) != 2:
-        print(f"[WARN] picamera_config.main.size in setup.json is malformed: {picam_main_size}. Using default [640, 480].")
+        print(f"[WARN] picamera_config.main.size malformed: {picam_main_size}. Using default [640, 480].")
         picam_main_size = [640, 480]
 
-    capture_width = picam_main_size[0]
-    capture_height = picam_main_size[1]
+    capture_width, capture_height = picam_main_size
 
     if sys.platform == "darwin":
         print("[INFO] Attempting macOS camera initialization...")
-        mac_cam = cv2.VideoCapture(cfg_data_for_init.get("mac_camera_index", 0)) # Use configured index or default 0
+        mac_cam = cv2.VideoCapture(cfg_data_for_init.get("mac_camera_index", 0))
         if not mac_cam.isOpened():
-            print(f"[WARN] macOS camera {cfg_data_for_init.get('mac_camera_index', 0)} not open. Trying index 1 if different.")
-            if cfg_data_for_init.get("mac_camera_index", 0) != 1: # Avoid trying index 1 twice
-                mac_cam = cv2.VideoCapture(1)
+            print(f"[WARN] macOS camera {cfg_data_for_init.get('mac_camera_index', 0)} not open. Trying index 1.")
+            mac_cam = cv2.VideoCapture(1)
             if not mac_cam.isOpened():
-                print("[ERROR] No webcam available or in use on macOS.")
+                print("[ERROR] No webcam available on macOS.")
                 return None
-        
-        # Set capture resolution for macOS camera (if supported)
         mac_cam.set(cv2.CAP_PROP_FRAME_WIDTH, capture_width)
         mac_cam.set(cv2.CAP_PROP_FRAME_HEIGHT, capture_height)
-
         camera_instance = mac_cam
         print(f"[INFO] macOS camera initialized ({int(mac_cam.get(cv2.CAP_PROP_FRAME_WIDTH))}x{int(mac_cam.get(cv2.CAP_PROP_FRAME_HEIGHT))}).")
     else:
@@ -109,10 +100,7 @@ def _initialize_camera_internally():
         try:
             from picamera2 import Picamera2
             picam2 = Picamera2()
-            
-            video_config = picam2.create_video_configuration(
-                main={"size": (capture_width, capture_height), "format": "RGB888"}
-            )
+            video_config = picam2.create_video_configuration(main={"size": (capture_width, capture_height), "format": "RGB888"})
             picam2.configure(video_config)
             picam2.start()
             camera_instance = picam2
@@ -133,42 +121,35 @@ def get_frame(release_after=False):
             _initialize_camera_internally()
             if camera_instance is None:
                 print("get_frame: Camera unavailable, returning blank frame.")
-                configured_height = camera_settings.get("picamera_config", {}).get("main", {}).get("size", [640, 480])[1]
-                configured_width = camera_settings.get("picamera_config", {}).get("main", {}).get("size", [640, 480])[0]
-                return np.zeros((configured_height, configured_width, 3), dtype=np.uint8)
+                cfg_height = camera_settings.get("picamera_config", {}).get("main", {}).get("size", [640, 480])[1]
+                cfg_width = camera_settings.get("picamera_config", {}).get("main", {}).get("size", [640, 480])[0]
+                return np.zeros((cfg_height, cfg_width, 3), dtype=np.uint8)
         
-        should_release_now = release_after and active_streams == 0
         frame = None
         try:
             if sys.platform == "darwin":
                 if not camera_instance.isOpened():
-                    print("get_frame (macOS): Camera not open. Re-initializing.")
-                    _initialize_camera_internally()
-                    if camera_instance is None or not camera_instance.isOpened():
-                         raise IOError("macOS camera failed to open.")
+                    raise IOError("macOS camera failed to open.")
                 ret, frame = camera_instance.read()
                 if not ret: raise IOError("macOS camera failed to read frame.")
-            else: # Picamera2
+            else:
                 if not hasattr(camera_instance, 'capture_array'):
-                    print("get_frame (Pi): Picamera2 not ready. Re-initializing.")
-                    _initialize_camera_internally()
-                    if camera_instance is None or not hasattr(camera_instance, 'capture_array'):
-                        raise IOError("Picamera2 not ready or failed to initialize.")
+                    raise IOError("Picamera2 not ready or failed to initialize.")
                 frame = camera_instance.capture_array()
         except Exception as e:
             print(f"get_frame: Error capturing frame: {e}. Returning blank frame.")
+            # Reset camera instance on error
             if camera_instance is not None:
                 try:
                     if sys.platform == "darwin": camera_instance.release()
                     else: camera_instance.stop(); camera_instance.close()
                 except Exception as e_rel: print(f"Error releasing camera after capture error: {e_rel}")
                 camera_instance = None
-            
-            configured_height = camera_settings.get("picamera_config", {}).get("main", {}).get("size", [640, 480])[1]
-            configured_width = camera_settings.get("picamera_config", {}).get("main", {}).get("size", [640, 480])[0]
-            return np.zeros((configured_height, configured_width, 3), dtype=np.uint8)
+            cfg_height = camera_settings.get("picamera_config", {}).get("main", {}).get("size", [640, 480])[1]
+            cfg_width = camera_settings.get("picamera_config", {}).get("main", {}).get("size", [640, 480])[0]
+            return np.zeros((cfg_height, cfg_width, 3), dtype=np.uint8)
 
-        if should_release_now: 
+        if release_after and active_streams == 0:
             try:
                 if sys.platform == "darwin": camera_instance.release()
                 else: camera_instance.stop(); camera_instance.close()
@@ -178,7 +159,7 @@ def get_frame(release_after=False):
                 print(f"get_frame: Error releasing camera: {e}")
         return frame
 
-# --- Utility ---
+# --- Utility Functions ---
 def load_config_data_from_file():
     try:
         with open(SETUP_JSON_PATH, 'r') as f:
@@ -234,71 +215,58 @@ def detect_blobs_from_params(binary_image, blob_detection_params, scale_x=1.0, s
     return detector.detect(binary_image)
 
 def get_current_frame_and_keypoints_from_config():
-    frame = get_frame(release_after=False)
+    frame = get_frame()
     if frame is None or frame.size == 0:
-        print("get_current_frame_and_keypoints: Invalid frame received.")
-        configured_height = camera_settings.get("picamera_config", {}).get("main", {}).get("size", [640, 480])[1]
-        configured_width = camera_settings.get("picamera_config", {}).get("main", {}).get("size", [640, 480])[0]
-        return np.zeros((configured_height, configured_width, 3), dtype=np.uint8), []
-    
+        return np.zeros((480, 640, 3), dtype=np.uint8), []
     gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-    processing_width_for_single_shot = 640
+    processing_width = 640
     original_height, original_width = frame.shape[:2]
-    processing_height_for_single_shot = int(original_height * (processing_width_for_single_shot / original_width))
-    scale_x_for_single_shot = original_width / processing_width_for_single_shot
-    scale_y_for_single_shot = original_height / processing_height_for_single_shot
-    resized_gray = cv2.resize(gray, (processing_width_for_single_shot, processing_height_for_single_shot), interpolation=cv2.INTER_AREA)
-    _, thresh = cv2.threshold(
-        resized_gray,
-        camera_settings.get("minThreshold", 127),
-        camera_settings.get("maxThreshold", 255),
-        cv2.THRESH_BINARY
-    )
-    keypoints_resized = detect_blobs_from_params(thresh, camera_settings, scale_x_for_single_shot, scale_y_for_single_shot)
-    keypoints_original_coords = []
-    for kp in keypoints_resized:
-        new_x = kp.pt[0] * scale_x_for_single_shot
-        new_y = kp.pt[1] * scale_y_for_single_shot
-        new_size = kp.size * ((scale_x_for_single_shot + scale_y_for_single_shot) / 2)
-        keypoints_original_coords.append(cv2.KeyPoint(new_x, new_y, new_size, kp.angle, kp.response, kp.octave, kp.class_id))
+    processing_height = int(original_height * (processing_width / original_width))
+    scale_x = original_width / processing_width
+    scale_y = original_height / processing_height
+    resized_gray = cv2.resize(gray, (processing_width, processing_height), interpolation=cv2.INTER_AREA)
+    _, thresh = cv2.threshold(resized_gray, camera_settings.get("minThreshold", 127), camera_settings.get("maxThreshold", 255), cv2.THRESH_BINARY)
+    keypoints_resized = detect_blobs_from_params(thresh, camera_settings, scale_x, scale_y)
+    keypoints_original_coords = [cv2.KeyPoint(kp.pt[0] * scale_x, kp.pt[1] * scale_y, kp.size * (scale_x + scale_y) / 2) for kp in keypoints_resized]
     return frame, keypoints_original_coords
 
 def get_world_coordinates_data():
     H_fixed_ref = get_fixed_perspective_homography_from_config()
     if H_fixed_ref is None:
-        return {"status": "error", "message": "Fixed perspective homography not available."}
-    cam_calib_wc = camera_settings.get("calibration", None)
-    if not (cam_calib_wc and cam_calib_wc.get("camera_matrix") and cam_calib_wc.get("distortion_coefficients")):
-        return {"status": "error", "message": "Camera calibration data missing."}
-    cam_matrix_wc = np.array(cam_calib_wc["camera_matrix"], dtype=np.float32)
-    dist_coeffs_wc = np.array(cam_calib_wc["distortion_coefficients"], dtype=np.float32)
-    frame_for_coords, keypoints_for_coords_original_coords = get_current_frame_and_keypoints_from_config()
-    if frame_for_coords is None or frame_for_coords.size == 0:
-         return {"status": "error", "message": "Could not get frame."}
-    if not keypoints_for_coords_original_coords:
+        return {"status": "error", "message": "Homography not set."}
+    cam_calib = camera_settings.get("calibration", {})
+    cam_matrix = cam_calib.get("camera_matrix")
+    dist_coeffs = cam_calib.get("distortion_coefficients")
+    if not (cam_matrix and dist_coeffs):
+        return {"status": "error", "message": "Camera not calibrated."}
+    
+    frame, keypoints = get_current_frame_and_keypoints_from_config()
+    if not keypoints:
         return {"status": "success", "coordinates": []}
-    img_pts_original_coords = np.array([kp.pt for kp in keypoints_for_coords_original_coords], dtype=np.float32).reshape(-1,1,2)
-    h_frame_wc, w_frame_wc = frame_for_coords.shape[:2]
-    new_cam_matrix_wc, _ = cv2.getOptimalNewCameraMatrix(cam_matrix_wc, dist_coeffs_wc, (w_frame_wc,h_frame_wc), 1.0, (w_frame_wc,h_frame_wc))
-    img_pts_undistorted_remapped = cv2.undistortPoints(img_pts_original_coords, cam_matrix_wc, dist_coeffs_wc, P=new_cam_matrix_wc)
-    if img_pts_undistorted_remapped is None:
+        
+    img_pts = np.array([kp.pt for kp in keypoints], dtype=np.float32).reshape(-1, 1, 2)
+    h, w = frame.shape[:2]
+    cam_matrix_np = np.array(cam_matrix, dtype=np.float32)
+    dist_coeffs_np = np.array(dist_coeffs, dtype=np.float32)
+    new_cam_matrix, _ = cv2.getOptimalNewCameraMatrix(cam_matrix_np, dist_coeffs_np, (w, h), 1.0, (w, h))
+    
+    undistorted_pts = cv2.undistortPoints(img_pts, cam_matrix_np, dist_coeffs_np, P=new_cam_matrix)
+    if undistorted_pts is None:
         return {"status": "error", "message": "Point undistortion failed."}
-    world_coords_top_left_origin = []
-    if img_pts_undistorted_remapped.size > 0:
-        transformed_pts = cv2.perspectiveTransform(img_pts_undistorted_remapped, H_fixed_ref)
-        if transformed_pts is not None:
-             world_coords_top_left_origin = transformed_pts.reshape(-1, 2).tolist()
-        else:
-            return {"status": "error", "message": "Perspective transformation failed."}
+        
+    world_coords_tl = cv2.perspectiveTransform(undistorted_pts, H_fixed_ref)
+    if world_coords_tl is None:
+        return {"status": "error", "message": "Perspective transformation failed."}
+    
+    world_coords_tl = world_coords_tl.reshape(-1, 2).tolist()
+    
     fixed_persp_cfg = camera_settings.get("fixed_perspective", {})
     OUTPUT_WIDTH = fixed_persp_cfg.get("output_width", 1000)
     OUTPUT_HEIGHT = fixed_persp_cfg.get("output_height", 800)
-    world_coords_bottom_right_origin = []
-    for x_tl, y_tl in world_coords_top_left_origin:
-        x_br = OUTPUT_WIDTH - x_tl
-        y_br = OUTPUT_HEIGHT - y_tl
-        world_coords_bottom_right_origin.append([x_br, y_br])
-    return {"status": "success", "coordinates": world_coords_bottom_right_origin}
+    
+    world_coords_br = [[OUTPUT_WIDTH - x, OUTPUT_HEIGHT - y] for x, y in world_coords_tl]
+    
+    return {"status": "success", "coordinates": world_coords_br}
 
 @contextmanager
 def stream_context():
@@ -311,7 +279,6 @@ def stream_context():
         active_streams -= 1
         print(f"[STREAM] Stream ended. Active streams: {active_streams}")
 
-
 # --- Sezione Logica Principale per Griglia e Percorso ---
 
 def construct_graph(nodi, velocita_x=4.0, velocita_y=1.0):
@@ -319,10 +286,10 @@ def construct_graph(nodi, velocita_x=4.0, velocita_y=1.0):
     for i, pos in enumerate(nodi):
         G.add_node(i, pos=pos)
     for i in range(len(nodi)):
-        for j in range(i+1, len(nodi)):
+        for j in range(i + 1, len(nodi)):
             dx = nodi[i][0] - nodi[j][0]
             dy = nodi[i][1] - nodi[j][1]
-            tempo = max(abs(dx)/velocita_x, abs(dy)/velocita_y)
+            tempo = max(abs(dx) / velocita_x, abs(dy) / velocita_y)
             G.add_edge(i, j, weight=round(tempo, 4))
     return G
 
@@ -374,7 +341,6 @@ def get_graph_and_tsp_path_with_speeds(velocita_x=4.0, velocita_y=1.0):
     return final_graph, final_path_indices, {"status": "success", "nodi": final_nodes}
 
 def get_graph_and_tsp_path(velocita_x=4.0, velocita_y=1.0):
-    """ Funzione speculare a quella con le velocità, per coerenza. """
     return get_graph_and_tsp_path_with_speeds(velocita_x, velocita_y)
 
 
@@ -383,9 +349,34 @@ def get_graph_and_tsp_path(velocita_x=4.0, velocita_y=1.0):
 @csrf_exempt
 @require_POST
 def initialize_camera_endpoint(request):
-    # ... (Il codice degli endpoint rimane invariato, verrà omesso per brevità)
-    # ... se necessario, lo si può recuperare dalle risposte precedenti.
-    pass
+    print("[ENDPOINT] HTTP request to initialize camera.")
+    with camera_lock:
+        instance = _initialize_camera_internally()
+    if instance is not None:
+        return JsonResponse({"status": "success", "message": "Camera initialization attempt completed."})
+    else:
+        return JsonResponse({"status": "error", "message": "Camera initialization failed."}, status=500)
+
+@csrf_exempt
+@require_POST
+def deinitialize_camera_endpoint(request):
+    global camera_instance
+    with camera_lock:
+        if camera_instance is not None:
+            try:
+                if sys.platform == "darwin":
+                    camera_instance.release()
+                else:
+                    if hasattr(camera_instance, 'stop'): camera_instance.stop()
+                    if hasattr(camera_instance, 'close'): camera_instance.close()
+                camera_instance = None
+                print("[INFO] Camera deinitialized.")
+                return JsonResponse({"status": "success", "message": "Camera deinitialized."})
+            except Exception as e:
+                print(f"[ERROR] Error during camera deinitialization: {e}")
+                return JsonResponse({"status": "error", "message": str(e)}, status=500)
+        else:
+            return JsonResponse({"status": "success", "message": "Camera was already released."})
 
 @csrf_exempt
 @require_POST
@@ -431,8 +422,6 @@ def compute_route(request):
     
     nodi = info["nodi"]
     motor_commands = []
-    # Il primo nodo (nodi[0]) è l'origine. Il percorso parte da qui.
-    # Il primo passo è da nodi[0] a nodi[1].
     for i in range(1, len(nodi)):
         extruder_mm = nodi[i][0] - nodi[i-1][0]
         conveyor_mm = nodi[i][1] - nodi[i-1][1]
@@ -446,20 +435,40 @@ def compute_route(request):
 
 @csrf_exempt
 @require_GET
+def camera_feed(request):
+    def gen_frames():
+        with stream_context():
+            while True:
+                try:
+                    frame = get_frame()
+                    if frame is None or frame.size == 0:
+                        time.sleep(0.1)
+                        continue
+                    
+                    _, keypoints = get_current_frame_and_keypoints_from_config()
+                    frame_with_keypoints = cv2.drawKeypoints(frame, keypoints, np.array([]), (0, 0, 255), cv2.DRAW_MATCHES_FLAGS_DRAW_RICH_KEYPOINTS)
+                    
+                    _, buffer = cv2.imencode('.jpg', frame_with_keypoints, [int(cv2.IMWRITE_JPEG_QUALITY), 80])
+                    yield (b'--frame\r\nContent-Type: image/jpeg\r\n\r\n' + buffer.tobytes() + b'\r\n')
+                except Exception as e:
+                    print(f"Error in camera_feed loop: {e}")
+                    time.sleep(1)
+    return StreamingHttpResponse(gen_frames(), content_type='multipart/x-mixed-replace; boundary=frame')
+
+@csrf_exempt
+@require_GET
 def reproject_points_feed(request):
     """
-    Stream video che disegna ESATTAMENTE la stessa griglia e percorso
-    usati per i comandi motore.
+    Stream video che disegna ESATTAMENTE la stessa griglia e percorso usati per i comandi motore.
     """
     def gen_frames():
         H_fixed = get_fixed_perspective_homography_from_config()
         if H_fixed is None:
-            # Gestione errore: disegna un frame nero con un messaggio
+            # Gestione errore
             dummy_frame = np.zeros((480, 640, 3), dtype=np.uint8)
             cv2.putText(dummy_frame, "Homography not set", (50, 240), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
             _, buffer = cv2.imencode('.jpg', dummy_frame)
-            frame_bytes = buffer.tobytes()
-            yield (b'--frame\r\nContent-Type: image/jpeg\r\n\r\n' + frame_bytes + b'\r\n')
+            yield (b'--frame\r\nContent-Type: image/jpeg\r\n\r\n' + buffer.tobytes() + b'\r\n')
             return
 
         ret, H_inv = cv2.invert(H_fixed)
@@ -481,10 +490,9 @@ def reproject_points_feed(request):
                 try:
                     frame = get_frame()
                     undistorted_frame = cv2.undistort(frame, cam_matrix, dist_coeffs, None, new_cam_matrix)
-
                     world_coords_data = get_world_coordinates_data()
                     
-                    if world_coords_data['status'] == 'success' and world_coords_data['coordinates']:
+                    if world_coords_data.get('status') == 'success' and world_coords_data.get('coordinates'):
                         ideal_grid_world, ordered_path_world = _generate_grid_and_path(world_coords_data['coordinates'], camera_settings)
 
                         # Disegna la griglia (punti verdi)
@@ -502,10 +510,8 @@ def reproject_points_feed(request):
                             for i in range(len(path_pixel_coords) - 1):
                                 cv2.line(undistorted_frame, path_pixel_coords[i], path_pixel_coords[i+1], (255, 0, 0), 2)
 
-                    # Invia il frame al browser
                     _, buffer = cv2.imencode('.jpg', undistorted_frame)
                     yield (b'--frame\r\nContent-Type: image/jpeg\r\n\r\n' + buffer.tobytes() + b'\r\n')
-
                 except Exception as e:
                     print(f"[ERRORE] Nel loop di disegno: {e}")
                     traceback.print_exc()
