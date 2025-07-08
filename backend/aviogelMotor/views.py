@@ -406,6 +406,11 @@ def motor_worker():
                             if not remaining_targets:
                                 logging.warning("Tutti i motori bloccati da finecorsa. Uscita dal ciclo.")
                                 break
+                            # PATCH: accoda il residuo se rimangono target
+                            if any(abs(dist) > 0.001 for dist in remaining_targets.values()):
+                                logging.info(f"Accodo movimento residuo per motori non bloccati: {remaining_targets}")
+                                motor_command_queue.put({"command": "move", "targets": remaining_targets.copy()})
+                                break
 
                     with SYSTEM_CONFIG_LOCK:
                         current_switch_states = MOTOR_CONTROLLER.switch_states.copy()
