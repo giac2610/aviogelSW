@@ -411,17 +411,6 @@ def _generate_grid_and_path(world_coords, camera_settings, velocita_x=4.0, veloc
 
     return ideal_grid_world, final_ordered_path
 
-# Funzione ausiliaria (da definire altrove)
-def construct_graph(points, vx, vy):
-    G = nx.Graph()
-    for i, p1 in enumerate(points):
-        for j, p2 in enumerate(points):
-            if i < j:
-                dx = abs(p1[0] - p2[0])
-                dy = abs(p1[1] - p2[1])
-                weight = max(dx / vx, dy / vy) if vx > 0 and vy > 0 else float('inf')
-                G.add_edge(p1, p2, weight=weight)
-    return G
 
 def get_graph_and_tsp_path_with_speeds(velocita_x=4.0, velocita_y=1.0):
     response = get_world_coordinates_data()
