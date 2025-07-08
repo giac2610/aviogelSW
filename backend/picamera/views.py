@@ -385,8 +385,6 @@ def _generate_grid_and_path(world_coords, camera_settings, velocita_x=4.0, veloc
 
     # 3. Filtra la griglia usando i limiti dinamici
     ideal_grid_world = [p for p in ideal_grid_world if extruder_start_x <= p[0] <= extruder_end_x]
-    
-    # ===================== FINE MODIFICA =====================
 
     if not ideal_grid_world:
         print("[WARN] Nessun punto della griglia rispetta i vincoli dell'estrusore.")
@@ -427,7 +425,6 @@ def get_graph_and_tsp_path_with_speeds(velocita_x=4.0, velocita_y=1.0):
 
 def get_graph_and_tsp_path(velocita_x=4.0, velocita_y=1.0):
     return get_graph_and_tsp_path_with_speeds(velocita_x, velocita_y)
-
 
 # --- Django Endpoints ---
 
