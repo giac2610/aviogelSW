@@ -333,7 +333,7 @@ def rotate_points(points, angle_deg, center):
     ])
     return np.dot(points - center, R.T) + center
 
-def _generate_grid_and_path(world_coords, camera_settings):
+def _generate_grid_and_path(world_coords, camera_settings, velocita_x=4.0, velocita_y=1.0):
     GRID_ROWS, GRID_COLS = 8, 6
     SPACING_X_MM, SPACING_Y_MM = 50.0, 50.0
 
@@ -386,7 +386,7 @@ def _generate_grid_and_path(world_coords, camera_settings):
         ordered_grid_points = ideal_grid_world
 
     # 6. Costruisci grafo e percorso
-    graph = construct_graph([tuple(p) for p in ordered_grid_points])
+    graph = construct_graph([tuple(p) for p in ordered_grid_points], velocita_x, velocita_y)
     path_indices_grid_only = nx.algorithms.approximation.greedy_tsp(graph, source=0)
     ordered_grid_points = [ordered_grid_points[i] for i in path_indices_grid_only]
 
@@ -401,7 +401,7 @@ def get_graph_and_tsp_path_with_speeds(velocita_x=4.0, velocita_y=1.0):
     if response.get("status") != "success" or not response.get("coordinates"):
         return None, None, {"status": "error", "message": "Nessun punto rilevato."}
 
-    _, final_ordered_path = _generate_grid_and_path(response["coordinates"], camera_settings)
+    _, final_ordered_path = _generate_grid_and_path(response["coordinates"], camera_settings, velocita_x, velocita_y)
 
     final_nodes = [tuple(p) for p in final_ordered_path]
     final_graph = construct_graph(final_nodes, velocita_x, velocita_y)
