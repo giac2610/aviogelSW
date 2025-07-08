@@ -334,70 +334,109 @@ def rotate_points(points, angle_deg, center):
     return np.dot(points - center, R.T) + center
 
 def _generate_grid_and_path(world_coords, camera_settings, velocita_x=4.0, velocita_y=1.0):
-    GRID_ROWS, GRID_COLS = 8, 6
+    # Costanti
     SPACING_X_MM, SPACING_Y_MM = 50.0, 50.0
+    MAX_X_EXTRUDER = 260.0 # Vincolo massimo per l'asse X
 
     points = np.array(world_coords, dtype=np.float32)
+
+    # Se non ci sono abbastanza punti, non si può calcolare una griglia significativa
     if len(points) < 3:
-        # fallback: griglia statica
-        anchor_point = np.array([np.min(points[:, 0]), np.min(points[:, 1])])
-        ideal_grid_world = []
-        for r in range(GRID_ROWS):
-            for c in range(GRID_COLS):
-                x = anchor_point[0] + c * SPACING_X_MM
-                y = anchor_point[1] + r * SPACING_Y_MM
-                ideal_grid_world.append([x, y])
-        ordered_grid_points = ideal_grid_world
-    else:
-        # 1. Stima angolo griglia con minAreaRect
-        rect = cv2.minAreaRect(points)
-        width, height = rect[1]
-        angle = rect[2]
-        if width > height:
-            angle = 90 + angle  # Allinea sempre all'asse delle righe (8)
-        print(f"[INFO] Angolo rispetto all'asse delle 8 righe: {angle:.2f}°")
+        return [], []
 
-        # 2. Ruota i punti per allinearli all'asse X
-        center = np.mean(points, axis=0)
-        def rotate_points(pts, angle_deg, center):
-            angle_rad = np.deg2rad(angle_deg)
-            R = np.array([
-                [np.cos(angle_rad), -np.sin(angle_rad)],
-                [np.sin(angle_rad),  np.cos(angle_rad)]
-            ])
-            return np.dot(pts - center, R.T) + center
+    # 1. Stima angolo e dimensioni della griglia con minAreaRect
+    rect = cv2.minAreaRect(points)
+    center = rect[0]
+    width, height = rect[1]
+    angle = rect[2]
 
-        points_rot = rotate_points(points, -angle, center)
+    # Assicura che 'width' sia sempre la dimensione maggiore per coerenza
+    if width < height:
+        width, height = height, width
+        angle += 90
 
-        # 3. Trova punto di ancoraggio nella base ruotata
-        min_x, min_y = np.min(points_rot, axis=0)
-        anchor_point_rot = np.array([min_x, min_y])
+    print(f"[INFO] Box rilevato - Larghezza: {width:.2f}mm, Altezza: {height:.2f}mm, Angolo: {angle:.2f}°")
+    
+    # 2. MODIFICA: Calcola dinamicamente righe e colonne basandosi sulle dimensioni reali
+    num_cols = int(width / SPACING_X_MM) + 1
+    num_rows = int(height / SPACING_Y_MM) + 1
 
-        # 4. Genera la griglia ideale ruotata
-        ideal_grid_rot = []
-        for r in range(GRID_ROWS):
-            for c in range(GRID_COLS):
-                x = anchor_point_rot[0] + c * SPACING_X_MM
-                y = anchor_point_rot[1] + r * SPACING_Y_MM
-                ideal_grid_rot.append([x, y])
-        ideal_grid_rot = np.array(ideal_grid_rot, dtype=np.float32)
+    # 3. Ruota i punti per allinearli agli assi (logica invariata)
+    def rotate_points(pts, angle_deg, center_pt):
+        angle_rad = np.deg2rad(angle_deg)
+        R = np.array([[np.cos(angle_rad), -np.sin(angle_rad)],
+                      [np.sin(angle_rad),  np.cos(angle_rad)]])
+        return np.dot(pts - center_pt, R.T) + center_pt
 
-        # 5. Ruota indietro la griglia per riportarla nel sistema originale
-        ideal_grid_world = rotate_points(ideal_grid_rot, angle, center).tolist()
-        ordered_grid_points = ideal_grid_world
+    points_rot = rotate_points(points, -angle, center)
 
+    # 4. Trova punto di ancoraggio (min_x, min_y) nella base ruotata
+    min_x, min_y = np.min(points_rot, axis=0)
+    anchor_point_rot = np.array([min_x, min_y])
+
+    # 5. Genera la griglia ideale ruotata usando le dimensioni dinamiche
+    ideal_grid_rot = []
+    for r in range(num_rows):
+        for c in range(num_cols):
+            x = anchor_point_rot[0] + c * SPACING_X_MM
+            y = anchor_point_rot[1] + r * SPACING_Y_MM
+            ideal_grid_rot.append([x, y])
+    ideal_grid_rot = np.array(ideal_grid_rot, dtype=np.float32)
+
+    # 6. Ruota indietro la griglia per riportarla nel sistema originale
+    ideal_grid_world = rotate_points(ideal_grid_rot, angle, center)
+
+    # 7. MODIFICA: Filtra i punti per rispettare i vincoli sull'asse X
+    ideal_grid_world = [p for p in ideal_grid_world if 0 <= p[0] <= MAX_X_EXTRUDER]
+
+    # Se dopo il filtro non ci sono più punti, restituisci liste vuote
+    if not ideal_grid_world:
+        print("[WARN] Nessun punto della griglia rispetta i vincoli X [0, 260].")
+        return [], []
+    
+    # La logica per il calcolo del percorso (TSP) rimane la stessa,
+    # ma ora lavorerà solo sui punti validi e filtrati.
+    ordered_grid_points = ideal_grid_world
+    
     origin_x = camera_settings.get("origin_x", 0.0)
     origin_y = camera_settings.get("origin_y", 0.0)
-
     origin = [origin_x, origin_y]
-    all_points = [origin] + ordered_grid_points
+
+    # Assicurati che l'origine rispetti i vincoli
+    if not (0 <= origin[0] <= MAX_X_EXTRUDER):
+         print(f"[WARN] Il punto di origine {origin} è fuori dai vincoli e non sarà incluso nel percorso.")
+         all_points = ordered_grid_points
+         source_node = tuple(all_points[0]) # Inizia dal primo punto della griglia
+    else:
+        all_points = [origin] + ordered_grid_points
+        source_node = tuple(origin)
+
+    # Costruisci il grafo e calcola il percorso
+    # Nota: la funzione construct_graph non è fornita, si assume che esista
     graph = construct_graph([tuple(p) for p in all_points], velocita_x, velocita_y)
-    path_indices = nx.algorithms.approximation.greedy_tsp(graph, source=0)
-    if path_indices[0] == path_indices[-1]:
-        path_indices = path_indices[:-1]
-    final_ordered_path = [all_points[i] for i in path_indices]
+    path_nodes = nx.algorithms.approximation.greedy_tsp(graph, source=source_node)
+    
+    # Rimuovi il ritorno all'origine se il TSP lo include
+    if len(path_nodes) > 1 and path_nodes[0] == path_nodes[-1]:
+        path_nodes = path_nodes[:-1]
+        
+    # Converte i nodi del percorso di nuovo in coordinate
+    final_ordered_path = [list(p) for p in path_nodes]
 
     return ideal_grid_world, final_ordered_path
+
+# Funzione ausiliaria per il grafo (da definire altrove nel tuo codice)
+def construct_graph(points, vx, vy):
+    G = nx.Graph()
+    for i, p1 in enumerate(points):
+        for j, p2 in enumerate(points):
+            if i < j:
+                dx = abs(p1[0] - p2[0])
+                dy = abs(p1[1] - p2[1])
+                # Calcola il "peso" come tempo di percorrenza
+                weight = max(dx / vx, dy / vy) if vx > 0 and vy > 0 else np.inf
+                G.add_edge(p1, p2, weight=weight)
+    return G
 
 def get_graph_and_tsp_path_with_speeds(velocita_x=4.0, velocita_y=1.0):
     response = get_world_coordinates_data()
@@ -588,7 +627,6 @@ def reproject_points_feed(request):
                     
                     if world_coords_data.get('status') == 'success' and world_coords_data.get('coordinates'):
                         ideal_grid_world, ordered_path_world = _generate_grid_and_path(world_coords_data['coordinates'], camera_settings, velocita_x, velocita_y)
-                        # ==================== INIZIO MODIFICA ====================
                         # 2. Per proiettare, dobbiamo riconvertire i punti nel sistema "top-left"
                         #    che la matrice di omografia (H_inv) si aspetta.
                         fixed_persp_cfg = camera_settings.get("fixed_perspective", {})
@@ -598,19 +636,14 @@ def reproject_points_feed(request):
                         # Riconverti la griglia nel sistema top-left SOLO per la proiezione
                         grid_to_project = [[OUTPUT_WIDTH - p[0], OUTPUT_HEIGHT - p[1]] for p in ideal_grid_world]
                         
-                        # Riconverti il percorso nel sistema top-left SOLO per la proiezione
-                        path_to_project = [[OUTPUT_WIDTH - p[0], OUTPUT_HEIGHT - p[1]] for p in ordered_path_world]
-                        # ===================== FINE MODIFICA =====================
-                        
-                        # GIUSTO
                         grid_world_pts_np = np.array(grid_to_project, dtype=np.float32).reshape(-1, 1, 2)
-                        # ...
-                        # grid_world_pts_np = np.array(ideal_grid_world, dtype=np.float32).reshape(-1, 1, 2)
                         grid_pixels_np = cv2.perspectiveTransform(grid_world_pts_np, H_inv)
                         if grid_pixels_np is not None:
                             for pt in grid_pixels_np:
                                 cv2.circle(undistorted_frame, tuple(pt[0].astype(int)), 5, (0, 255, 0), -1)
 
+                        # Riconverti il percorso nel sistema top-left SOLO per la proiezione
+                        path_to_project = [[OUTPUT_WIDTH - p[0], OUTPUT_HEIGHT - p[1]] for p in ordered_path_world]
                         path_world_pts_np = np.array(path_to_project, dtype=np.float32).reshape(-1, 1, 2)
                         # path_world_pts_np = np.array(ordered_path_world, dtype=np.float32).reshape(-1, 1, 2)
                         path_pixels_np = cv2.perspectiveTransform(path_world_pts_np, H_inv)
