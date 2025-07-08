@@ -98,6 +98,7 @@ export class BlobSimulationPage implements OnInit {
       switchMap(() => this.configService.getMotorsRoute()),
       switchMap((res) => {
         if (res.status === 'success') {
+          console.log('route to execute:', res.motor_commands);
           return this.configService.executeRoute(res.motor_commands);
         } else {
           throw new Error(res.message || 'Errore nell\'ottenimento della rotta');
