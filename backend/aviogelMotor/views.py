@@ -391,26 +391,33 @@ def motor_worker():
                 # Cicla finché c'è ancora distanza significativa da percorrere
                 while any(abs(dist) > 0.001 for dist in remaining_targets.values()):
                     if MOTOR_CONTROLLER.last_move_interrupted:
-                            # Trova quali motori sono bloccati da finecorsa
-                            blocked = []
-                            for motor_id in list(remaining_targets.keys()):
-                                if motor_id != "conveyor":
-                                    if (remaining_targets[motor_id] < 0 and MOTOR_CONTROLLER.switch_states.get(f"{motor_id}_end")) or \
-                                       (remaining_targets[motor_id] > 0 and MOTOR_CONTROLLER.switch_states.get(f"{motor_id}_start")):
-                                        blocked.append(motor_id)
-                            for motor_id in blocked:
-                                logging.warning(f"Motore '{motor_id}' bloccato da finecorsa: rimosso dai target.")
-                                del remaining_targets[motor_id]
-                            MOTOR_CONTROLLER.last_move_interrupted = False
-                            # Se non ci sono più target, esci
-                            if not remaining_targets:
-                                logging.warning("Tutti i motori bloccati da finecorsa. Uscita dal ciclo.")
-                                break
-                            # PATCH: accoda il residuo se rimangono target
-                            if any(abs(dist) > 0.001 for dist in remaining_targets.values()):
-                                logging.info(f"Accodo movimento residuo per motori non bloccati: {remaining_targets}")
-                                motor_command_queue.put({"command": "move", "targets": remaining_targets.copy()})
-                                break
+                        # Trova quali motori sono bloccati da finecorsa
+                        blocked = []
+                        for motor_id in list(remaining_targets.keys()):
+                            if motor_id != "conveyor":
+                                if (remaining_targets[motor_id] < 0 and MOTOR_CONTROLLER.switch_states.get(f"{motor_id}_end")) or \
+                                   (remaining_targets[motor_id] > 0 and MOTOR_CONTROLLER.switch_states.get(f"{motor_id}_start")):
+                                    blocked.append(motor_id)
+                        for motor_id in blocked:
+                            logging.warning(f"Motore '{motor_id}' bloccato da finecorsa: rimosso dai target.")
+                            del remaining_targets[motor_id]
+                        MOTOR_CONTROLLER.last_move_interrupted = False
+                        # Se non ci sono più target, esci
+                        if not remaining_targets:
+                            logging.warning("Tutti i motori bloccati da finecorsa. Uscita dal ciclo.")
+                            break
+                        # PATCH: accoda il residuo solo per motori non bloccati
+                        # Rimuovi eventuali motori ancora bloccati prima di accodare
+                        for motor_id in list(remaining_targets.keys()):
+                            if motor_id != "conveyor":
+                                if (remaining_targets[motor_id] < 0 and MOTOR_CONTROLLER.switch_states.get(f"{motor_id}_end")) or \
+                                   (remaining_targets[motor_id] > 0 and MOTOR_CONTROLLER.switch_states.get(f"{motor_id}_start")):
+                                    logging.warning(f"Motore '{motor_id}' ancora bloccato da finecorsa: non verrà accodato nel residuo.")
+                                    del remaining_targets[motor_id]
+                        if any(abs(dist) > 0.001 for dist in remaining_targets.values()):
+                            logging.info(f"Accodo movimento residuo per motori non bloccati: {remaining_targets}")
+                            motor_command_queue.put({"command": "move", "targets": remaining_targets.copy()})
+                        break
 
                     with SYSTEM_CONFIG_LOCK:
                         current_switch_states = MOTOR_CONTROLLER.switch_states.copy()
@@ -476,7 +483,7 @@ def motor_worker():
         finally:
             motor_command_queue.task_done()
             time.sleep(0.1)
-                
+            
 def handle_exception(e):
     import traceback
     error_details = traceback.format_exc()
