@@ -391,9 +391,21 @@ def motor_worker():
                 # Cicla finché c'è ancora distanza significativa da percorrere
                 while any(abs(dist) > 0.001 for dist in remaining_targets.values()):
                     if MOTOR_CONTROLLER.last_move_interrupted:
-                        logging.warning("Il ciclo di movimento è stato interrotto da un finecorsa. Annullamento dei movimenti rimanenti.")
-                        MOTOR_CONTROLLER.last_move_interrupted = False # Resetta il flag
-                        break
+                            # Trova quali motori sono bloccati da finecorsa
+                            blocked = []
+                            for motor_id in list(remaining_targets.keys()):
+                                if motor_id != "conveyor":
+                                    if (remaining_targets[motor_id] < 0 and MOTOR_CONTROLLER.switch_states.get(f"{motor_id}_end")) or \
+                                       (remaining_targets[motor_id] > 0 and MOTOR_CONTROLLER.switch_states.get(f"{motor_id}_start")):
+                                        blocked.append(motor_id)
+                            for motor_id in blocked:
+                                logging.warning(f"Motore '{motor_id}' bloccato da finecorsa: rimosso dai target.")
+                                del remaining_targets[motor_id]
+                            MOTOR_CONTROLLER.last_move_interrupted = False
+                            # Se non ci sono più target, esci
+                            if not remaining_targets:
+                                logging.warning("Tutti i motori bloccati da finecorsa. Uscita dal ciclo.")
+                                break
 
                     with SYSTEM_CONFIG_LOCK:
                         current_switch_states = MOTOR_CONTROLLER.switch_states.copy()
