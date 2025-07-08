@@ -352,8 +352,8 @@ def _generate_grid_and_path(world_coords, camera_settings):
         # 1. Stima angolo griglia con minAreaRect
         rect = cv2.minAreaRect(points)
         angle = rect[2]
-        if rect[1][0] < rect[1][1]:
-            angle = 90 + angle
+        # if rect[1][0] < rect[1][1]:
+        #     angle = 90 + angle
         print(f"[INFO] Angolo stimato griglia: {angle:.2f}°")
 
         # 2. Ruota i punti per allinearli all'asse X
