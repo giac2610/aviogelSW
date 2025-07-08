@@ -483,7 +483,7 @@ def motor_worker():
         finally:
             motor_command_queue.task_done()
             time.sleep(0.1)
-            
+                 
 def handle_exception(e):
     import traceback
     error_details = traceback.format_exc()
