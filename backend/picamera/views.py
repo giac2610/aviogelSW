@@ -325,26 +325,70 @@ def construct_graph(nodi, velocita_x=4.0, velocita_y=1.0):
             G.add_edge(i, j, weight=round(tempo, 4))
     return G
 
+def rotate_points(points, angle_deg, center):
+    angle_rad = np.deg2rad(angle_deg)
+    R = np.array([
+        [np.cos(angle_rad), -np.sin(angle_rad)],
+        [np.sin(angle_rad),  np.cos(angle_rad)]
+    ])
+    return np.dot(points - center, R.T) + center
+
 def _generate_grid_and_path(world_coords, camera_settings):
     GRID_ROWS, GRID_COLS = 8, 6
     SPACING_X_MM, SPACING_Y_MM = 50.0, 50.0
 
-    points = np.array(world_coords)
-    anchor_point = np.array([np.min(points[:, 0]), np.min(points[:, 1])])
-    print(f"[INFO] Ancoraggio griglia calcolato: {anchor_point}")
+    points = np.array(world_coords, dtype=np.float32)
+    if len(points) < 3:
+        # fallback: griglia statica
+        anchor_point = np.array([np.min(points[:, 0]), np.min(points[:, 1])])
+        ideal_grid_world = []
+        for r in range(GRID_ROWS):
+            for c in range(GRID_COLS):
+                x = anchor_point[0] + c * SPACING_X_MM
+                y = anchor_point[1] + r * SPACING_Y_MM
+                ideal_grid_world.append([x, y])
+        ordered_grid_points = ideal_grid_world
+    else:
+        # 1. Stima angolo griglia con minAreaRect
+        rect = cv2.minAreaRect(points)
+        angle = rect[2]
+        if rect[1][0] < rect[1][1]:
+            angle = 90 + angle
+        print(f"[INFO] Angolo stimato griglia: {angle:.2f}°")
 
-    ideal_grid_world = []
-    for r in range(GRID_ROWS):
-        for c in range(GRID_COLS):
-            x = anchor_point[0] - c * SPACING_X_MM
-            y = anchor_point[1] - r * SPACING_Y_MM
-            ideal_grid_world.append([x, y])
-    
-    print(f"[INFO] Griglia ideale {GRID_ROWS}x{GRID_COLS} generata.")
+        # 2. Ruota i punti per allinearli all'asse X
+        center = np.mean(points, axis=0)
+        def rotate_points(pts, angle_deg, center):
+            angle_rad = np.deg2rad(angle_deg)
+            R = np.array([
+                [np.cos(angle_rad), -np.sin(angle_rad)],
+                [np.sin(angle_rad),  np.cos(angle_rad)]
+            ])
+            return np.dot(pts - center, R.T) + center
 
-    graph = construct_graph([tuple(p) for p in ideal_grid_world])
+        points_rot = rotate_points(points, -angle, center)
+
+        # 3. Trova punto di ancoraggio nella base ruotata
+        min_x, min_y = np.min(points_rot, axis=0)
+        anchor_point_rot = np.array([min_x, min_y])
+
+        # 4. Genera la griglia ideale ruotata
+        ideal_grid_rot = []
+        for r in range(GRID_ROWS):
+            for c in range(GRID_COLS):
+                x = anchor_point_rot[0] + c * SPACING_X_MM
+                y = anchor_point_rot[1] + r * SPACING_Y_MM
+                ideal_grid_rot.append([x, y])
+        ideal_grid_rot = np.array(ideal_grid_rot, dtype=np.float32)
+
+        # 5. Ruota indietro la griglia per riportarla nel sistema originale
+        ideal_grid_world = rotate_points(ideal_grid_rot, angle, center).tolist()
+        ordered_grid_points = ideal_grid_world
+
+    # 6. Costruisci grafo e percorso
+    graph = construct_graph([tuple(p) for p in ordered_grid_points])
     path_indices_grid_only = nx.algorithms.approximation.greedy_tsp(graph, source=0)
-    ordered_grid_points = [ideal_grid_world[i] for i in path_indices_grid_only]
+    ordered_grid_points = [ordered_grid_points[i] for i in path_indices_grid_only]
 
     origin_x = camera_settings.get("origin_x", 0.0)
     origin_y = camera_settings.get("origin_y", 0.0)
