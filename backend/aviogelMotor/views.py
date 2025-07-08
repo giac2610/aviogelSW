@@ -406,19 +406,18 @@ def motor_worker():
                         if not remaining_targets:
                             logging.warning("Tutti i motori bloccati da finecorsa. Uscita dal ciclo.")
                             break
-                        # PATCH: accoda il residuo solo per motori non bloccati
-                        # Rimuovi eventuali motori ancora bloccati prima di accodare
+                        # Rimuovi eventuali motori ancora bloccati prima di accodare il residuo
                         for motor_id in list(remaining_targets.keys()):
                             if motor_id != "conveyor":
                                 if (remaining_targets[motor_id] < 0 and MOTOR_CONTROLLER.switch_states.get(f"{motor_id}_end")) or \
                                    (remaining_targets[motor_id] > 0 and MOTOR_CONTROLLER.switch_states.get(f"{motor_id}_start")):
                                     logging.warning(f"Motore '{motor_id}' ancora bloccato da finecorsa: non verrà accodato nel residuo.")
                                     del remaining_targets[motor_id]
+                        # Accoda solo se rimangono target validi
                         if any(abs(dist) > 0.001 for dist in remaining_targets.values()):
                             logging.info(f"Accodo movimento residuo per motori non bloccati: {remaining_targets}")
                             motor_command_queue.put({"command": "move", "targets": remaining_targets.copy()})
                         break
-
                     with SYSTEM_CONFIG_LOCK:
                         current_switch_states = MOTOR_CONTROLLER.switch_states.copy()
                         pulse_generator, active_motors, directions, steps_executed = MOTION_PLANNER.plan_move_streamed(
