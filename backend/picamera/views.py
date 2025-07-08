@@ -336,32 +336,24 @@ def rotate_points(points, angle_deg, center):
 def _generate_grid_and_path(world_coords, camera_settings, velocita_x=4.0, velocita_y=1.0):
     # Costanti
     SPACING_X_MM, SPACING_Y_MM = 50.0, 50.0
-    MAX_X_EXTRUDER = 260.0 # Vincolo massimo per l'asse X
+    EXTRUDER_TRAVEL_DISTANCE = 260.0 # Corsa massima dell'estrusore
 
     points = np.array(world_coords, dtype=np.float32)
-
-    # Se non ci sono abbastanza punti, non si può calcolare una griglia significativa
     if len(points) < 3:
         return [], []
 
-    # 1. Stima angolo e dimensioni della griglia con minAreaRect
+    # --- Logica di generazione della griglia (invariata) ---
     rect = cv2.minAreaRect(points)
     center = rect[0]
     width, height = rect[1]
     angle = rect[2]
-
-    # Assicura che 'width' sia sempre la dimensione maggiore per coerenza
     if width < height:
         width, height = height, width
         angle += 90
-
-    print(f"[INFO] Box rilevato - Larghezza: {width:.2f}mm, Altezza: {height:.2f}mm, Angolo: {angle:.2f}°")
     
-    # 2. MODIFICA: Calcola dinamicamente righe e colonne basandosi sulle dimensioni reali
     num_cols = int(width / SPACING_X_MM) + 1
     num_rows = int(height / SPACING_Y_MM) + 1
 
-    # 3. Ruota i punti per allinearli agli assi (logica invariata)
     def rotate_points(pts, angle_deg, center_pt):
         angle_rad = np.deg2rad(angle_deg)
         R = np.array([[np.cos(angle_rad), -np.sin(angle_rad)],
@@ -369,12 +361,9 @@ def _generate_grid_and_path(world_coords, camera_settings, velocita_x=4.0, veloc
         return np.dot(pts - center_pt, R.T) + center_pt
 
     points_rot = rotate_points(points, -angle, center)
-
-    # 4. Trova punto di ancoraggio (min_x, min_y) nella base ruotata
     min_x, min_y = np.min(points_rot, axis=0)
     anchor_point_rot = np.array([min_x, min_y])
 
-    # 5. Genera la griglia ideale ruotata usando le dimensioni dinamiche
     ideal_grid_rot = []
     for r in range(num_rows):
         for c in range(num_cols):
@@ -382,50 +371,47 @@ def _generate_grid_and_path(world_coords, camera_settings, velocita_x=4.0, veloc
             y = anchor_point_rot[1] + r * SPACING_Y_MM
             ideal_grid_rot.append([x, y])
     ideal_grid_rot = np.array(ideal_grid_rot, dtype=np.float32)
-
-    # 6. Ruota indietro la griglia per riportarla nel sistema originale
     ideal_grid_world = rotate_points(ideal_grid_rot, angle, center)
+    
+    # ==================== INIZIO MODIFICA ====================
 
-    # 7. MODIFICA: Filtra i punti per rispettare i vincoli sull'asse X
-    ideal_grid_world = [p for p in ideal_grid_world if 0 <= p[0] <= MAX_X_EXTRUDER]
+    # 1. Recupera la posizione di partenza dell'estrusore (limite inferiore)
+    extruder_start_x = camera_settings.get("origin_x", 0.0)
+    
+    # 2. Calcola il limite superiore sommando la corsa massima
+    extruder_end_x = extruder_start_x + EXTRUDER_TRAVEL_DISTANCE
 
-    # Se dopo il filtro non ci sono più punti, restituisci liste vuote
+    print(f"[INFO] Filtraggio punti nell'intervallo X: [{extruder_start_x:.2f}, {extruder_end_x:.2f}]")
+
+    # 3. Filtra la griglia usando i limiti dinamici
+    ideal_grid_world = [p for p in ideal_grid_world if extruder_start_x <= p[0] <= extruder_end_x]
+    
+    # ===================== FINE MODIFICA =====================
+
     if not ideal_grid_world:
-        print("[WARN] Nessun punto della griglia rispetta i vincoli X [0, 260].")
+        print("[WARN] Nessun punto della griglia rispetta i vincoli dell'estrusore.")
         return [], []
     
-    # La logica per il calcolo del percorso (TSP) rimane la stessa,
-    # ma ora lavorerà solo sui punti validi e filtrati.
+    # --- Logica di calcolo del percorso (TSP) con i punti filtrati ---
     ordered_grid_points = ideal_grid_world
     
-    origin_x = camera_settings.get("origin_x", 0.0)
     origin_y = camera_settings.get("origin_y", 0.0)
-    origin = [origin_x, origin_y]
+    origin = [extruder_start_x, origin_y] # L'origine è la posizione di partenza
 
-    # Assicurati che l'origine rispetti i vincoli
-    if not (0 <= origin[0] <= MAX_X_EXTRUDER):
-         print(f"[WARN] Il punto di origine {origin} è fuori dai vincoli e non sarà incluso nel percorso.")
-         all_points = ordered_grid_points
-         source_node = tuple(all_points[0]) # Inizia dal primo punto della griglia
-    else:
-        all_points = [origin] + ordered_grid_points
-        source_node = tuple(origin)
+    all_points = [origin] + ordered_grid_points
+    source_node = tuple(origin)
 
-    # Costruisci il grafo e calcola il percorso
-    # Nota: la funzione construct_graph non è fornita, si assume che esista
     graph = construct_graph([tuple(p) for p in all_points], velocita_x, velocita_y)
     path_nodes = nx.algorithms.approximation.greedy_tsp(graph, source=source_node)
     
-    # Rimuovi il ritorno all'origine se il TSP lo include
     if len(path_nodes) > 1 and path_nodes[0] == path_nodes[-1]:
         path_nodes = path_nodes[:-1]
         
-    # Converte i nodi del percorso di nuovo in coordinate
     final_ordered_path = [list(p) for p in path_nodes]
 
     return ideal_grid_world, final_ordered_path
 
-# Funzione ausiliaria per il grafo (da definire altrove nel tuo codice)
+# Funzione ausiliaria (da definire altrove)
 def construct_graph(points, vx, vy):
     G = nx.Graph()
     for i, p1 in enumerate(points):
@@ -433,8 +419,7 @@ def construct_graph(points, vx, vy):
             if i < j:
                 dx = abs(p1[0] - p2[0])
                 dy = abs(p1[1] - p2[1])
-                # Calcola il "peso" come tempo di percorrenza
-                weight = max(dx / vx, dy / vy) if vx > 0 and vy > 0 else np.inf
+                weight = max(dx / vx, dy / vy) if vx > 0 and vy > 0 else float('inf')
                 G.add_edge(p1, p2, weight=weight)
     return G
 
