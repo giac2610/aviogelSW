@@ -548,6 +548,14 @@ def camera_feed(request):
 @csrf_exempt
 @require_GET
 def reproject_points_feed(request):
+    try:
+        resp = requests.get("http://localhost:8000/motors/maxSpeeds/")
+        data = resp.json()
+        velocita_x = data.get("speeds", {}).get("extruder", 4.0)
+        velocita_y = data.get("speeds", {}).get("conveyor", 1.0)
+    except Exception as e:
+        print(f"Errore richiesta velocità motori: {e}")
+        velocita_x, velocita_y = 4.0, 1.0
     def gen_frames():
         H_fixed = get_fixed_perspective_homography_from_config()
         if H_fixed is None:
@@ -579,7 +587,7 @@ def reproject_points_feed(request):
                     world_coords_data = get_world_coordinates_data()
                     
                     if world_coords_data.get('status') == 'success' and world_coords_data.get('coordinates'):
-                        ideal_grid_world, ordered_path_world = _generate_grid_and_path(world_coords_data['coordinates'], camera_settings)
+                        ideal_grid_world, ordered_path_world = _generate_grid_and_path(world_coords_data['coordinates'], camera_settings, velocita_x, velocita_y)
 
                         grid_world_pts_np = np.array(ideal_grid_world, dtype=np.float32).reshape(-1, 1, 2)
                         grid_pixels_np = cv2.perspectiveTransform(grid_world_pts_np, H_inv)
