@@ -386,14 +386,14 @@ def _generate_grid_and_path(world_coords, camera_settings, velocita_x=4.0, veloc
         ideal_grid_world = rotate_points(ideal_grid_rot, angle, center).tolist()
         ordered_grid_points = ideal_grid_world
 
-    # 6. Costruisci grafo e percorso
-    graph = construct_graph([tuple(p) for p in ordered_grid_points], velocita_x, velocita_y)
-    path_indices_grid_only = nx.algorithms.approximation.greedy_tsp(graph, source=0)
-    ordered_grid_points = [ordered_grid_points[i] for i in path_indices_grid_only]
-
     origin_x = camera_settings.get("origin_x", 0.0)
     origin_y = camera_settings.get("origin_y", 0.0)
-    final_ordered_path = [[origin_x, origin_y]] + ordered_grid_points
+
+    origin = [origin_x, origin_y]
+    all_points = [origin] + ordered_grid_points
+    graph = construct_graph([tuple(p) for p in all_points], velocita_x, velocita_y)
+    path_indices = nx.algorithms.approximation.greedy_tsp(graph, source=0)
+    final_ordered_path = [all_points[i] for i in path_indices]
 
     return ideal_grid_world, final_ordered_path
 
