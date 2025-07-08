@@ -389,7 +389,7 @@ def motor_worker():
                 remaining_targets = task.get("targets", {}).copy()
                 
                 # Cicla finché c'è ancora distanza significativa da percorrere
-                while any(abs(dist) > 0.001 for dist in remaining_targets.values()):
+                while any(abs(dist) > 0.01 for dist in remaining_targets.values()):
                     if MOTOR_CONTROLLER.last_move_interrupted:
                         # Trova quali motori sono bloccati da finecorsa
                         blocked = []
