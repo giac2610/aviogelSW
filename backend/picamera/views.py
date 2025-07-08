@@ -602,13 +602,17 @@ def reproject_points_feed(request):
                         path_to_project = [[OUTPUT_WIDTH - p[0], OUTPUT_HEIGHT - p[1]] for p in ordered_path_world]
                         # ===================== FINE MODIFICA =====================
                         
-                        grid_world_pts_np = np.array(ideal_grid_world, dtype=np.float32).reshape(-1, 1, 2)
+                        # GIUSTO
+                        grid_world_pts_np = np.array(grid_to_project, dtype=np.float32).reshape(-1, 1, 2)
+                        # ...
+                        # grid_world_pts_np = np.array(ideal_grid_world, dtype=np.float32).reshape(-1, 1, 2)
                         grid_pixels_np = cv2.perspectiveTransform(grid_world_pts_np, H_inv)
                         if grid_pixels_np is not None:
                             for pt in grid_pixels_np:
                                 cv2.circle(undistorted_frame, tuple(pt[0].astype(int)), 5, (0, 255, 0), -1)
 
-                        path_world_pts_np = np.array(ordered_path_world, dtype=np.float32).reshape(-1, 1, 2)
+                        path_world_pts_np = np.array(path_to_project, dtype=np.float32).reshape(-1, 1, 2)
+                        # path_world_pts_np = np.array(ordered_path_world, dtype=np.float32).reshape(-1, 1, 2)
                         path_pixels_np = cv2.perspectiveTransform(path_world_pts_np, H_inv)
                         if path_pixels_np is not None:
                             path_pixel_coords = [tuple(p[0].astype(int)) for p in path_pixels_np]
