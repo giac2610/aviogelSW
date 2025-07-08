@@ -486,7 +486,8 @@ def compute_route(request):
         print(f"Errore richiesta velocità motori: {e}")
         velocita_x, velocita_y = 4.0, 1.0
 
-    graph, hamiltonian_path, info = get_graph_and_tsp_path_with_speeds(velocita_x, velocita_y)
+    # Usa la stessa funzione di plot_graph!
+    graph, hamiltonian_path, info = get_graph_and_tsp_path(velocita_x, velocita_y)
     if graph is None or hamiltonian_path is None:
         return JsonResponse({"status": "error", "message": info.get("message", "Errore generico")}, status=500)
     
@@ -497,7 +498,7 @@ def compute_route(request):
         conveyor_mm = nodi[i][1] - nodi[i-1][1]
         motor_commands.append({"extruder": round(extruder_mm, 4), "conveyor": round(conveyor_mm, 4)})
 
-        # --- Genera il plot come immagine base64 ---
+    # Genera il plot come immagine base64 (opzionale)
     plt.figure(figsize=(8, 6))
     pos = nx.get_node_attributes(graph, 'pos')
     nx.draw_networkx_nodes(graph, pos, node_color='skyblue', node_size=500)
@@ -518,7 +519,7 @@ def compute_route(request):
         "motor_commands": motor_commands,
         "plot_graph_base64": img_base64
     })
-
+    
 @csrf_exempt
 @require_GET
 def camera_feed(request):
