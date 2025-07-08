@@ -503,6 +503,7 @@ def execute_route_view(request):
     try:
         data = json.loads(request.body)
         route = data.get("route", [])
+        logging.info("ricevuta questa  rotta: " + str(route))
         if not isinstance(route, list):
             return JsonResponse({"log": "Percorso non valido", "error": "Input non valido"}, status=400)
         logging.info(f"Accodamento rotta con {len(route)} passi.")
