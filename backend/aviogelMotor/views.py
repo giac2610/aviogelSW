@@ -437,11 +437,11 @@ def motor_worker():
                         if motor_id in remaining_targets:
                             config = MOTOR_CONFIGS[motor_id]
                             distance_moved_mm = steps / config.steps_per_mm
-                            # Mantieni la direzione originale del movimento
-                            if remaining_targets[motor_id] < 0:
-                                remaining_targets[motor_id] += distance_moved_mm
+                            # Aggiorna sempre verso zero
+                            if remaining_targets[motor_id] > 0:
+                                remaining_targets[motor_id] = max(0, remaining_targets[motor_id] - distance_moved_mm)
                             else:
-                                remaining_targets[motor_id] -= distance_moved_mm
+                                remaining_targets[motor_id] = min(0, remaining_targets[motor_id] + distance_moved_mm)
                     
                     logging.info(f"Blocco completato. Distanze rimanenti: {remaining_targets}")
 
