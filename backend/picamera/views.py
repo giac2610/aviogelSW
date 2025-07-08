@@ -353,7 +353,7 @@ def _generate_grid_and_path(world_coords, camera_settings, velocita_x=4.0, veloc
         rect = cv2.minAreaRect(points)
         width, height = rect[1]
         angle = rect[2]
-        if width < height:
+        if width > height:
             angle = 90 + angle  # Allinea sempre all'asse delle righe (8)
         print(f"[INFO] Angolo rispetto all'asse delle 8 righe: {angle:.2f}°")
 
@@ -508,7 +508,7 @@ def compute_route(request):
     tsp_edges = [(hamiltonian_path[i], hamiltonian_path[i+1]) for i in range(len(hamiltonian_path)-1)]
     nx.draw_networkx_edges(graph, pos, edgelist=tsp_edges, edge_color='red', width=2)
     plt.title("Percorso TSP (in rosso)")
-    plt.axis('on')
+    plt.axis('off')
     plt.gca().invert_xaxis()
     buf = BytesIO()
     plt.savefig(buf, format='png')
@@ -755,7 +755,7 @@ def plot_graph(request):
     path_edges = list(zip(hamiltonian_path, hamiltonian_path[1:]))
     nx.draw_networkx_edges(graph, pos, edgelist=path_edges, edge_color='red', width=2)
     plt.title("Percorso TSP (in rosso)")
-    plt.axis('on')
+    plt.axis('off')
     plt.gca().invert_xaxis()
     buf = BytesIO()
     plt.savefig(buf, format='png')
