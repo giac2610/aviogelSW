@@ -351,10 +351,11 @@ def _generate_grid_and_path(world_coords, camera_settings, velocita_x=4.0, veloc
     else:
         # 1. Stima angolo griglia con minAreaRect
         rect = cv2.minAreaRect(points)
+        width, height = rect[1]
         angle = rect[2]
-        # if rect[1][0] < rect[1][1]:
-        #     angle = 90 + angle
-        print(f"[INFO] Angolo stimato griglia: {angle:.2f}°")
+        if width < height:
+            angle = 90 + angle  # Allinea sempre all'asse delle righe (8)
+        print(f"[INFO] Angolo rispetto all'asse delle 8 righe: {angle:.2f}°")
 
         # 2. Ruota i punti per allinearli all'asse X
         center = np.mean(points, axis=0)
