@@ -437,6 +437,7 @@ def motor_worker():
                         if motor_id in remaining_targets:
                             config = MOTOR_CONFIGS[motor_id]
                             distance_moved_mm = steps / config.steps_per_mm
+                            logging.info(f"Blocco da compiere. Distanza: {distance_moved_mm}")
                             # Aggiorna sempre verso zero
                             if remaining_targets[motor_id] > 0:
                                 remaining_targets[motor_id] = max(0, remaining_targets[motor_id] - distance_moved_mm)
