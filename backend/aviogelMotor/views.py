@@ -430,7 +430,7 @@ def motor_worker():
                             if MOTOR_CONTROLLER.pi.wave_tx_busy(): MOTOR_CONTROLLER.pi.wave_tx_stop()
                             MOTOR_CONTROLLER.pi.wave_clear()
                             for config in MOTOR_CONTROLLER.motor_configs.values():
-                                try: MOTOR_CONTROLLER.pi.write(config.en_pin, 1)
+                                try: MOTOR_CONTROLLER.pi.write(config.en_pin, 0)
                                 except Exception: pass
                     
                     # 🎯 Aggiorna le distanze rimanenti
