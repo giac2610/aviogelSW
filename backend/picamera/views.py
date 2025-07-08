@@ -372,11 +372,11 @@ def _generate_grid_and_path(world_coords, camera_settings, velocita_x=4.0, veloc
             ideal_grid_rot.append([x, y])
     ideal_grid_rot = np.array(ideal_grid_rot, dtype=np.float32)
     ideal_grid_world = rotate_points(ideal_grid_rot, angle, center)
-    
-    # ==================== INIZIO MODIFICA ====================
 
     # 1. Recupera la posizione di partenza dell'estrusore (limite inferiore)
     extruder_start_x = camera_settings.get("origin_x", 0.0)
+    extruder_start_y = camera_settings.get("origin_y", 0.0)
+    origin = [extruder_start_x, extruder_start_y] # L'origine è la posizione di partenza
     
     # 2. Calcola il limite superiore sommando la corsa massima
     extruder_end_x = extruder_start_x + EXTRUDER_TRAVEL_DISTANCE
@@ -385,8 +385,6 @@ def _generate_grid_and_path(world_coords, camera_settings, velocita_x=4.0, veloc
 
     # 3. Filtra la griglia usando i limiti dinamici
     ideal_grid_world = [p for p in ideal_grid_world if extruder_start_x <= p[0] <= extruder_end_x]
-    
-    # ===================== FINE MODIFICA =====================
 
     if not ideal_grid_world:
         print("[WARN] Nessun punto della griglia rispetta i vincoli dell'estrusore.")
@@ -395,9 +393,6 @@ def _generate_grid_and_path(world_coords, camera_settings, velocita_x=4.0, veloc
     # --- Logica di calcolo del percorso (TSP) con i punti filtrati ---
     ordered_grid_points = ideal_grid_world
     
-    origin_y = camera_settings.get("origin_y", 0.0)
-    origin = [extruder_start_x, origin_y] # L'origine è la posizione di partenza
-
     all_points = [origin] + ordered_grid_points
     source_node = tuple(origin)
 
