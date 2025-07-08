@@ -118,10 +118,11 @@ class MotionPlanner:
         for motor_id, distance in targets.items():
             if distance == 0 or motor_id not in self.motor_configs: continue
             direction = 1 if distance >= 0 else 0
-            if (direction == 0 and switch_states.get(f"{motor_id}_start")) or \
-                (direction == 1 and switch_states.get(f"{motor_id}_end")):
-                logging.warning(f"Movimento per '{motor_id}' bloccato da finecorsa attivo.")
-                continue
+            if motor_id != "conveyor":
+                if (direction == 0 and switch_states.get(f"{motor_id}_start")) or \
+                   (direction == 1 and switch_states.get(f"{motor_id}_end")):
+                    logging.warning(f"Movimento per '{motor_id}' bloccato da finecorsa attivo.")
+                    continue
             config = self.motor_configs[motor_id]
             move_data[motor_id] = {"steps": int(abs(distance) * config.steps_per_mm), "dir": direction, "config": config}
 
