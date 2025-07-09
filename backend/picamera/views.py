@@ -432,7 +432,7 @@ def get_graph_and_tsp_path_with_speeds(velocita_x=4.0, velocita_y=1.0):
     if response.get("status") != "success" or not response.get("coordinates"):
         return None, None, {"status": "error", "message": "Nessun punto rilevato."}
 
-    _, final_ordered_path = _generate_grid_and_path(response["coordinates"], camera_settings, velocita_x, velocita_y)
+    _, final_ordered_path, _ = _generate_grid_and_path(response["coordinates"], camera_settings, velocita_x, velocita_y)
 
     final_nodes = [tuple(p) for p in final_ordered_path]
     final_graph = construct_graph(final_nodes, velocita_x, velocita_y)
