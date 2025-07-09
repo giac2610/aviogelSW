@@ -336,8 +336,11 @@ def rotate_points(points, angle_deg, center):
 def _generate_grid_and_path(world_coords, camera_settings, velocita_x=4.0, velocita_y=1.0):
     # Costanti
     SPACING_X_MM, SPACING_Y_MM = 50.0, 50.0
+    GRID_COLS, GRID_ROWS = 6, 8
     EXTRUDER_TRAVEL_DISTANCE = 260.0 # Corsa massima dell'estrusore
-
+    MAX_RECT_WIDTH_MM = SPACING_X_MM * (GRID_COLS - 1) + 10# Esempio: larghezza massima 400mm
+    MAX_RECT_HEIGHT_MM = SPACING_Y_MM * (GRID_ROWS - 1) + 10 # Esempio: altezza massima 300mm
+    
     points = np.array(world_coords, dtype=np.float32)
     if len(points) < 3:
         return [], []
@@ -351,9 +354,12 @@ def _generate_grid_and_path(world_coords, camera_settings, velocita_x=4.0, veloc
         width, height = height, width
         angle += 90
     
+    width = min(width, MAX_RECT_WIDTH_MM)
+    height = min(height, MAX_RECT_HEIGHT_MM)
+    
     num_cols = int(width / SPACING_X_MM) + 1
     num_rows = int(height / SPACING_Y_MM) + 1
-
+    
     def rotate_points(pts, angle_deg, center_pt):
         angle_rad = np.deg2rad(angle_deg)
         R = np.array([[np.cos(angle_rad), -np.sin(angle_rad)],
