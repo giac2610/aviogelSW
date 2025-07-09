@@ -261,7 +261,7 @@ def get_world_coordinates_data():
     
     # 2. Definisci i limiti di filtraggio
     min_x_bound = extruder_origin_x
-    max_x_bound = extruder_origin_x + 260.0
+    max_x_bound = extruder_origin_x + 265.5
 
     # 3. Filtra le coordinate nel sistema "top-left"
     filtered_coords_tl = [
