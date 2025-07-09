@@ -405,7 +405,7 @@ def _generate_grid_and_path(world_coords, camera_settings, velocita_x=4.0, veloc
     if len(path_nodes) > 1 and path_nodes[0] == path_nodes[-1]:
         path_nodes = path_nodes[:-1]
         
-    final_ordered_path = [list(p) for p in path_nodes]
+    final_ordered_path = [all_points[i] for i in path_nodes]
 
     return ideal_grid_world, final_ordered_path
 

@@ -42,7 +42,7 @@ LOG_FILE = os.path.join(CURRENT_SCRIPT_DIR, 'motorLog.log')
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(levelname)s - [%(threadName)s:%(funcName)s] - %(message)s',
-    handlers=[logging.FileHandler(LOG_FILE), logging.StreamHandler()]
+    handlers=[logging.FileHandler(LOG_FILE, mode='w'), logging.StreamHandler()]
 )
 
 # --- MAPPATURA HARDWARE FONDAMENTALE ---
