@@ -346,12 +346,22 @@ def rotate_points(points, angle_deg, center):
     return np.dot(points - center, R.T) + center
 
 def _generate_grid_and_path(world_coords, camera_settings, velocita_x=4.0, velocita_y=1.0):
+
     # Costanti
+
     SPACING_X_MM, SPACING_Y_MM = 50.0, 50.0
-    GRID_COLS, GRID_ROWS = 6, 8 # Limiti massimi
-    EXTRUDER_TRAVEL_DISTANCE = 260.0
+
+    GRID_COLS, GRID_ROWS = 6, 8
+
+    EXTRUDER_TRAVEL_DISTANCE = 260.0 # Corsa massima dell'estrusore
+
+    MAX_RECT_WIDTH_MM = SPACING_X_MM * (GRID_COLS - 1) + 10# Esempio: larghezza massima 400mm
+
+    MAX_RECT_HEIGHT_MM = SPACING_Y_MM * (GRID_ROWS - 1) + 10 # Esempio: altezza massima 300mm
+
 
     points = np.array(world_coords, dtype=np.float32)
+
     if len(points) < 3:
         return [], [], []
 
@@ -363,65 +373,65 @@ def _generate_grid_and_path(world_coords, camera_settings, velocita_x=4.0, veloc
     if width < height:
         width, height = height, width
         angle += 90
-    
-    # Limita il numero di righe e colonne (logica corretta)
-    num_cols_ideali = int(width / SPACING_X_MM) + 1
-    num_rows_ideali = int(height / SPACING_Y_MM) + 1
-    num_cols = min(num_cols_ideali, GRID_COLS)
-    num_rows = min(num_rows_ideali, GRID_ROWS)
-    
-    # --- LOGICA DI ANCORAGGIO CENTRATO (CORRETTA) ---
 
-    # 1. Ruota il punto centrale del rettangolo per trovarne la posizione nello spazio "raddrizzato"
-    #    (la tua funzione rotate_points è usata come previsto)
-    center_rot = rotate_points(np.array([center]), -angle, center)[0]
-    
-    # 2. Calcola le dimensioni totali della griglia da generare
-    grid_total_width = (num_cols - 1) * SPACING_X_MM
-    grid_total_height = (num_rows - 1) * SPACING_Y_MM
-    
-    # 3. Calcola il punto di ancoraggio (top-left) per una griglia centrata
-    anchor_point_rot = np.array([
-        center_rot[0] - grid_total_width / 2.0,
-        center_rot[1] - grid_total_height / 2.0
-    ])
+    width = min(width, MAX_RECT_WIDTH_MM)
+    height = min(height, MAX_RECT_HEIGHT_MM)
 
-    # 4. Genera la griglia nello spazio ruotato partendo dal nuovo ancoraggio centrato
+
+    num_cols = int(width / SPACING_X_MM) + 1
+    num_rows = int(height / SPACING_Y_MM) + 1
+
+    def rotate_points(pts, angle_deg, center_pt):
+        angle_rad = np.deg2rad(angle_deg)
+        R = np.array([[np.cos(angle_rad), -np.sin(angle_rad)], [np.sin(angle_rad), np.cos(angle_rad)]])
+        
+        return np.dot(pts - center_pt, R.T) + center_pt
+
+
+    points_rot = rotate_points(points, -angle, center)
+    min_x, min_y = np.min(points_rot, axis=0)
+    anchor_point_rot = np.array([min_x, min_y])
+
     ideal_grid_rot = []
     for r in range(num_rows):
         for c in range(num_cols):
             x = anchor_point_rot[0] + c * SPACING_X_MM
             y = anchor_point_rot[1] + r * SPACING_Y_MM
             ideal_grid_rot.append([x, y])
-    
-    # 5. Ruota indietro la griglia generata per riportarla nel sistema di coordinate del mondo
-    ideal_grid_world = rotate_points(np.array(ideal_grid_rot), angle, center)
 
-    # --- FINE LOGICA DI ANCORAGGIO ---
+    ideal_grid_rot = np.array(ideal_grid_rot, dtype=np.float32)
+    ideal_grid_world = rotate_points(ideal_grid_rot, angle, center)
 
-    # Filtro sull'asse X (invariato)
     extruder_start_x = camera_settings.get("origin_x", 0.0)
-    extruder_end_x = extruder_start_x + EXTRUDER_TRAVEL_DISTANCE
-    ideal_grid_world = [p for p in ideal_grid_world if extruder_start_x <= p[0] <= extruder_end_x]
+
+    # extruder_end_x = extruder_start_x + EXTRUDER_TRAVEL_DISTANCE
+
+    # ideal_grid_world = [p for p in ideal_grid_world if extruder_start_x <= p[0] <= extruder_end_x]
 
     if not ideal_grid_world:
+        print("[WARN] Nessun punto della griglia rispetta i vincoli dell'estrusore.")
         return [], [], []
-    
-    # Logica TSP (invariata)
+
+
     ordered_grid_points = ideal_grid_world
+
     origin_y = camera_settings.get("origin_y", 0.0)
-    origin = [extruder_start_x, origin_y]
+
+    origin = [extruder_start_x, origin_y] # L'origine è la posizione di partenza
+
     all_points = [origin] + ordered_grid_points
 
     graph = construct_graph([tuple(p) for p in all_points], velocita_x, velocita_y)
-    path_indices = nx.algorithms.approximation.greedy_tsp(graph, source=0)
-    
-    if len(path_indices) > 1 and path_indices[0] == path_indices[-1]:
-        path_indices = path_indices[:-1]
-        
-    final_ordered_path = [all_points[i] for i in path_indices]
+
+    path_nodes = nx.algorithms.approximation.greedy_tsp(graph, source=0)
+
+    if len(path_nodes) > 1 and path_nodes[0] == path_nodes[-1]:
+        path_nodes = path_nodes[:-1]
+
+    final_ordered_path = [all_points[i] for i in path_nodes]
 
     return ideal_grid_world, final_ordered_path, box_corners_world
+
 
 def get_graph_and_tsp_path_with_speeds(velocita_x=4.0, velocita_y=1.0):
     response = get_world_coordinates_data()
