@@ -359,7 +359,8 @@ def _generate_grid_and_path(world_coords, camera_settings, velocita_x=4.0, veloc
     rect = cv2.minAreaRect(points)
     box_corners_world = cv2.boxPoints(rect).tolist()
     center = rect[0]
-    width, height = rect[1]
+    # width, height = rect[1]
+    height, width = rect[1]
     angle = rect[2]
     if width < height:
         # width, height = height, width
