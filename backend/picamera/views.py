@@ -432,8 +432,8 @@ def _generate_grid_and_path(world_coords, camera_settings, velocita_x=4.0, veloc
     
     # --- Filtro e Logica TSP (invariati) ---
     extruder_start_x = camera_settings.get("origin_x", 0.0)
-    extruder_end_x = extruder_start_x + EXTRUDER_TRAVEL_DISTANCE
-    ideal_grid_world = [p for p in ideal_grid_world if extruder_start_x <= p[0] <= extruder_end_x]
+    # extruder_end_x = extruder_start_x + EXTRUDER_TRAVEL_DISTANCE
+    # ideal_grid_world = [p for p in ideal_grid_world if extruder_start_x <= p[0] <= extruder_end_x]
 
     if not ideal_grid_world:
         return [], [], []
