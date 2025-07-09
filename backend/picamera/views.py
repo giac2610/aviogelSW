@@ -364,31 +364,41 @@ def _generate_grid_and_path(world_coords, camera_settings, velocita_x=4.0, veloc
         width, height = height, width
         angle += 90
     
-    # --- BLOCCO MODIFICATO ---
-    # Calcola le colonne/righe IDEALI in base alle dimensioni reali del rettangolo
+    # Limita il numero di righe e colonne (logica corretta)
     num_cols_ideali = int(width / SPACING_X_MM) + 1
     num_rows_ideali = int(height / SPACING_Y_MM) + 1
-
-    # Applica i limiti MASSIMI usando le costanti GRID_COLS e GRID_ROWS
     num_cols = min(num_cols_ideali, GRID_COLS)
     num_rows = min(num_rows_ideali, GRID_ROWS)
-    # --- FINE BLOCCO MODIFICATO ---
     
-    # Ora la logica di generazione usa la griglia centrata (più stabile)
+    # --- LOGICA DI ANCORAGGIO CENTRATO (CORRETTA) ---
+
+    # 1. Ruota il punto centrale del rettangolo per trovarne la posizione nello spazio "raddrizzato"
+    #    (la tua funzione rotate_points è usata come previsto)
+    center_rot = rotate_points(np.array([center]), -angle, center)[0]
+    
+    # 2. Calcola le dimensioni totali della griglia da generare
     grid_total_width = (num_cols - 1) * SPACING_X_MM
     grid_total_height = (num_rows - 1) * SPACING_Y_MM
-    grid_local = []
+    
+    # 3. Calcola il punto di ancoraggio (top-left) per una griglia centrata
+    anchor_point_rot = np.array([
+        center_rot[0] - grid_total_width / 2.0,
+        center_rot[1] - grid_total_height / 2.0
+    ])
+
+    # 4. Genera la griglia nello spazio ruotato partendo dal nuovo ancoraggio centrato
+    ideal_grid_rot = []
     for r in range(num_rows):
         for c in range(num_cols):
-            x = (c * SPACING_X_MM) - (grid_total_width / 2.0)
-            y = (r * SPACING_Y_MM) - (grid_total_height / 2.0)
-            grid_local.append([x, y])
-
-    angle_rad = np.deg2rad(angle)
-    R = np.array([[np.cos(angle_rad), -np.sin(angle_rad)],
-                  [np.sin(angle_rad),  np.cos(angle_rad)]])
-    ideal_grid_world = np.dot(np.array(grid_local), R.T) + center
+            x = anchor_point_rot[0] + c * SPACING_X_MM
+            y = anchor_point_rot[1] + r * SPACING_Y_MM
+            ideal_grid_rot.append([x, y])
     
+    # 5. Ruota indietro la griglia generata per riportarla nel sistema di coordinate del mondo
+    ideal_grid_world = rotate_points(np.array(ideal_grid_rot), angle, center)
+
+    # --- FINE LOGICA DI ANCORAGGIO ---
+
     # Filtro sull'asse X (invariato)
     extruder_start_x = camera_settings.get("origin_x", 0.0)
     extruder_end_x = extruder_start_x + EXTRUDER_TRAVEL_DISTANCE
