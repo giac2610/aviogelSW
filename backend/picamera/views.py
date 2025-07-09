@@ -348,8 +348,8 @@ def rotate_points(points, angle_deg, center):
 def _generate_grid_and_path(world_coords, camera_settings, velocita_x=4.0, velocita_y=1.0):
     # --- Costanti di Base ---
     NOMINAL_SPACING_X, NOMINAL_SPACING_Y = 50.0, 50.0
-    SPACING_TOLERANCE = 1.5  # Tolleranza di +/- 5mm
-    MAX_COLS, MAX_ROWS = 6, 8 # Limiti massimi della griglia
+    SPACING_TOLERANCE = 1.5
+    MAX_COLS, MAX_ROWS = 6, 8
     EXTRUDER_TRAVEL_DISTANCE = 260.0
 
     points = np.array(world_coords, dtype=np.float32)
@@ -357,70 +357,56 @@ def _generate_grid_and_path(world_coords, camera_settings, velocita_x=4.0, veloc
         return [], [], []
 
     rect = cv2.minAreaRect(points)
-    # box_corners_world = cv2.boxPoints(rect).tolist()
+
+    # --- Gestione Dimensioni e Box ---
     center = rect[0]
-    # width, height = rect[1]
     width, height = rect[1]
-    width = min(width, 265.0)
-    height = min(height, 365.0)
     angle = rect[2]
-    if height < width:
+
+    if width < height:
+        width, height = height, width
         angle += 90
 
-    # ORA, crea un nuovo rettangolo con le dimensioni limitate
+    width = min(width, 265.0)
+    height = min(height, 365.0)
+    
     capped_rect = (center, (width, height), angle)
-    # E calcola gli angoli da questo nuovo rettangolo
     box_corners_world = cv2.boxPoints(capped_rect).tolist()
 
-    print("larghezza: ", width)
-    print("altezza: ", height)
-    # ========================================================================
-    # --- NUOVA LOGICA DI FITTING DELLA GRIGLIA CON TOLLERANZA ---
-    # ========================================================================
-
-    # --- Calcolo Colonne e Spacing X ---
-    final_spacing_x = NOMINAL_SPACING_X
-    num_cols = 0
-    # Cerca il fitting partendo dal numero massimo di colonne verso il basso
+    # --- Logica di Fitting per Spacing e Dimensioni Griglia ---
+    final_spacing_x, num_cols = NOMINAL_SPACING_X, 0
     for c in range(MAX_COLS, 1, -1):
-        if c - 1 == 0: 
-            continue
+        if c - 1 == 0: continue
         required_spacing = width / (c - 1)
-        print("Spacing richiesto per {} colonne: {:.2f}".format(c, required_spacing))
-        # Se lo spacing richiesto è nella tolleranza, abbiamo trovato il fitting perfetto
         if (NOMINAL_SPACING_X - SPACING_TOLERANCE) <= required_spacing <= (NOMINAL_SPACING_X + SPACING_TOLERANCE):
-            final_spacing_x = required_spacing
-            num_cols = c
-            break # Esci dal ciclo, abbiamo trovato la soluzione ottimale
-
-    # Se non è stato trovato un fitting, usa il fallback con spacing fisso
+            final_spacing_x, num_cols = required_spacing, c
+            break
     if num_cols == 0:
         num_cols = min(MAX_COLS, int(width / NOMINAL_SPACING_X) + 1)
 
-    # --- Calcolo Righe e Spacing Y ---
-    final_spacing_y = NOMINAL_SPACING_Y
-    num_rows = 0
-    # Cerca il fitting partendo dal numero massimo di righe verso il basso
+    final_spacing_y, num_rows = NOMINAL_SPACING_Y, 0
     for r in range(MAX_ROWS, 1, -1):
         if r - 1 == 0: continue
         required_spacing = height / (r - 1)
-        print("Spacing richiesto per {} righe: {:.2f}".format(r, required_spacing))
-        # Se lo spacing richiesto è nella tolleranza, abbiamo trovato il fitting perfetto
         if (NOMINAL_SPACING_Y - SPACING_TOLERANCE) <= required_spacing <= (NOMINAL_SPACING_Y + SPACING_TOLERANCE):
-            final_spacing_y = required_spacing
-            num_rows = r
-            break # Esci dal ciclo
-
-    # Se non è stato trovato un fitting, usa il fallback con spacing fisso
+            final_spacing_y, num_rows = required_spacing, r
+            break
     if num_rows == 0:
         num_rows = min(MAX_ROWS, int(height / NOMINAL_SPACING_Y) + 1)
-    
-    center_rot = rotate_points(np.array([center]), -angle, center)[0]
+
+    # --- Ancoraggio Centrato su un Punto Esistente ---
+    points_rot = rotate_points(points, -angle, center)
+    min_corner_rot = np.min(points_rot, axis=0)
+    distances = np.linalg.norm(points_rot - min_corner_rot, axis=1)
+    anchor_index = np.argmin(distances)
+    grid_center_rot = points_rot[anchor_index]
+
+    # --- Generazione della Griglia ---
     grid_total_width = (num_cols - 1) * final_spacing_x
     grid_total_height = (num_rows - 1) * final_spacing_y
     anchor_point_rot = np.array([
-        center_rot[0] - grid_total_width / 2.0,
-        center_rot[1] - grid_total_height / 2.0
+        grid_center_rot[0] - grid_total_width / 2.0,
+        grid_center_rot[1] - grid_total_height / 2.0
     ])
 
     ideal_grid_rot = []
@@ -432,7 +418,7 @@ def _generate_grid_and_path(world_coords, camera_settings, velocita_x=4.0, veloc
 
     ideal_grid_world = rotate_points(np.array(ideal_grid_rot), angle, center)
     
-    # --- Filtro e Logica TSP (invariati) ---
+    # --- Filtro e Logica TSP ---
     extruder_start_x = camera_settings.get("origin_x", 0.0)
     extruder_end_x = extruder_start_x + EXTRUDER_TRAVEL_DISTANCE
     ideal_grid_world = [p for p in ideal_grid_world if extruder_start_x <= p[0] <= extruder_end_x]
