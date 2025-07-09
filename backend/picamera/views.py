@@ -348,8 +348,8 @@ def rotate_points(points, angle_deg, center):
 def _generate_grid_and_path(world_coords, camera_settings, velocita_x=4.0, velocita_y=1.0):
     # --- Costanti di Base ---
     NOMINAL_SPACING_X, NOMINAL_SPACING_Y = 50.0, 50.0
-    SPACING_TOLERANCE = 1.5  # Tolleranza di +/- 1.5mm
-    MAX_COLS, MAX_ROWS = 6, 8
+    SPACING_TOLERANCE = 1.5  
+    MAX_COLS, MAX_ROWS = 6, 8 # Limiti massimi della griglia
     EXTRUDER_TRAVEL_DISTANCE = 260.0
 
     points = np.array(world_coords, dtype=np.float32)
@@ -357,7 +357,9 @@ def _generate_grid_and_path(world_coords, camera_settings, velocita_x=4.0, veloc
         return [], [], []
 
     rect = cv2.minAreaRect(points)
+    box_corners_world = cv2.boxPoints(rect).tolist()
     center = rect[0]
+    # width, height = rect[1]
     width, height = rect[1]
     width = min(width, 265.0)
     height = min(height, 365.0)
@@ -366,9 +368,9 @@ def _generate_grid_and_path(world_coords, camera_settings, velocita_x=4.0, veloc
         angle += 90
 
     # ORA, crea un nuovo rettangolo con le dimensioni limitate
-    capped_rect = (center, (width, height), angle)
-    # E calcola gli angoli da questo nuovo rettangolo
-    box_corners_world = cv2.boxPoints(capped_rect).tolist()
+    # capped_rect = (center, (width, height), angle)
+    # # E calcola gli angoli da questo nuovo rettangolo
+    # box_corners_world = cv2.boxPoints(capped_rect).tolist()
 
     print("larghezza: ", width)
     print("altezza: ", height)
