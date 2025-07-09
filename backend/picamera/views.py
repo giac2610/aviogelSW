@@ -362,7 +362,7 @@ def _generate_grid_and_path(world_coords, camera_settings, velocita_x=4.0, veloc
     width, height = rect[1]
     angle = rect[2]
     if width < height:
-        width, height = height, width
+        # width, height = height, width
         angle += 90
 
     print("larghezza: ", width)
