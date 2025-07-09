@@ -357,7 +357,7 @@ def _generate_grid_and_path(world_coords, camera_settings, velocita_x=4.0, veloc
         return [], [], []
 
     rect = cv2.minAreaRect(points)
-    box_corners_world = cv2.boxPoints(rect).tolist()
+    # box_corners_world = cv2.boxPoints(rect).tolist()
     center = rect[0]
     # width, height = rect[1]
     width, height = rect[1]
@@ -365,8 +365,12 @@ def _generate_grid_and_path(world_coords, camera_settings, velocita_x=4.0, veloc
     height = min(height, 365.0)
     angle = rect[2]
     if height < width:
-        # width, height = height, width
         angle += 90
+
+    # ORA, crea un nuovo rettangolo con le dimensioni limitate
+    capped_rect = (center, (width, height), angle)
+    # E calcola gli angoli da questo nuovo rettangolo
+    box_corners_world = cv2.boxPoints(capped_rect).tolist()
 
     print("larghezza: ", width)
     print("altezza: ", height)
