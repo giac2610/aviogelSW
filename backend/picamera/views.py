@@ -374,8 +374,10 @@ def _generate_grid_and_path(world_coords, camera_settings, velocita_x=4.0, veloc
     num_cols = 0
     # Cerca il fitting partendo dal numero massimo di colonne verso il basso
     for c in range(MAX_COLS, 1, -1):
-        if c - 1 == 0: continue
+        if c - 1 == 0: 
+            continue
         required_spacing = width / (c - 1)
+        print("Spacing richiesto per {} colonne: {:.2f}".format(c, required_spacing))
         # Se lo spacing richiesto è nella tolleranza, abbiamo trovato il fitting perfetto
         if (NOMINAL_SPACING_X - SPACING_TOLERANCE) <= required_spacing <= (NOMINAL_SPACING_X + SPACING_TOLERANCE):
             final_spacing_x = required_spacing
@@ -393,6 +395,7 @@ def _generate_grid_and_path(world_coords, camera_settings, velocita_x=4.0, veloc
     for r in range(MAX_ROWS, 1, -1):
         if r - 1 == 0: continue
         required_spacing = height / (r - 1)
+        print("Spacing richiesto per {} righe: {:.2f}".format(r, required_spacing))
         # Se lo spacing richiesto è nella tolleranza, abbiamo trovato il fitting perfetto
         if (NOMINAL_SPACING_Y - SPACING_TOLERANCE) <= required_spacing <= (NOMINAL_SPACING_Y + SPACING_TOLERANCE):
             final_spacing_y = required_spacing
