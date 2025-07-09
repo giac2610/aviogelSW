@@ -400,7 +400,7 @@ def _generate_grid_and_path(world_coords, camera_settings, velocita_x=4.0, veloc
     source_node = tuple(origin)
 
     graph = construct_graph([tuple(p) for p in all_points], velocita_x, velocita_y)
-    path_nodes = nx.algorithms.approximation.greedy_tsp(graph, source=source_node)
+    path_nodes = nx.algorithms.approximation.greedy_tsp(graph, source=0)
     
     if len(path_nodes) > 1 and path_nodes[0] == path_nodes[-1]:
         path_nodes = path_nodes[:-1]
