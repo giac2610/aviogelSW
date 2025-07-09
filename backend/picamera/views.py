@@ -408,9 +408,9 @@ def _generate_grid_and_path(world_coords, camera_settings, velocita_x=4.0, veloc
 
     # ideal_grid_world = [p for p in ideal_grid_world if extruder_start_x <= p[0] <= extruder_end_x]
 
-    if not ideal_grid_world:
-        print("[WARN] Nessun punto della griglia rispetta i vincoli dell'estrusore.")
-        return [], [], []
+    # if not ideal_grid_world:
+    #     print("[WARN] Nessun punto della griglia rispetta i vincoli dell'estrusore.")
+    #     return [], [], []
 
 
     ordered_grid_points = ideal_grid_world
