@@ -361,6 +361,8 @@ def _generate_grid_and_path(world_coords, camera_settings, velocita_x=4.0, veloc
     center = rect[0]
     # width, height = rect[1]
     height, width = rect[1]
+    width = min(width, 265.0)
+    height = min(height, 365.0)
     angle = rect[2]
     if width < height:
         # width, height = height, width
@@ -409,10 +411,6 @@ def _generate_grid_and_path(world_coords, camera_settings, velocita_x=4.0, veloc
     if num_rows == 0:
         num_rows = min(MAX_ROWS, int(height / NOMINAL_SPACING_Y) + 1)
     
-    # ========================================================================
-    # --- Generazione della Griglia Centrata (Usa la logica stabile) ---
-    # ========================================================================
-    
     center_rot = rotate_points(np.array([center]), -angle, center)[0]
     grid_total_width = (num_cols - 1) * final_spacing_x
     grid_total_height = (num_rows - 1) * final_spacing_y
@@ -432,8 +430,8 @@ def _generate_grid_and_path(world_coords, camera_settings, velocita_x=4.0, veloc
     
     # --- Filtro e Logica TSP (invariati) ---
     extruder_start_x = camera_settings.get("origin_x", 0.0)
-    # extruder_end_x = extruder_start_x + EXTRUDER_TRAVEL_DISTANCE
-    # ideal_grid_world = [p for p in ideal_grid_world if extruder_start_x <= p[0] <= extruder_end_x]
+    extruder_end_x = extruder_start_x + EXTRUDER_TRAVEL_DISTANCE
+    ideal_grid_world = [p for p in ideal_grid_world if extruder_start_x <= p[0] <= extruder_end_x]
 
     if not ideal_grid_world:
         return [], [], []
