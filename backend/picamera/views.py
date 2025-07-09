@@ -365,6 +365,8 @@ def _generate_grid_and_path(world_coords, camera_settings, velocita_x=4.0, veloc
         width, height = height, width
         angle += 90
 
+    print("larghezza: ", width)
+    print("altezza: ", height)
     # ========================================================================
     # --- NUOVA LOGICA DI FITTING DELLA GRIGLIA CON TOLLERANZA ---
     # ========================================================================
