@@ -343,10 +343,11 @@ def _generate_grid_and_path(world_coords, camera_settings, velocita_x=4.0, veloc
     
     points = np.array(world_coords, dtype=np.float32)
     if len(points) < 3:
-        return [], []
+        return [], [], []
 
     # --- Logica di generazione della griglia (invariata) ---
     rect = cv2.minAreaRect(points)
+    box_corners_world = cv2.boxPoints(rect).tolist()
     center = rect[0]
     width, height = rect[1]
     angle = rect[2]
@@ -378,8 +379,6 @@ def _generate_grid_and_path(world_coords, camera_settings, velocita_x=4.0, veloc
             ideal_grid_rot.append([x, y])
     ideal_grid_rot = np.array(ideal_grid_rot, dtype=np.float32)
     ideal_grid_world = rotate_points(ideal_grid_rot, angle, center)
-    
-    # ==================== INIZIO MODIFICA ====================
 
     # 1. Recupera la posizione di partenza dell'estrusore (limite inferiore)
     extruder_start_x = camera_settings.get("origin_x", 0.0)
@@ -387,14 +386,14 @@ def _generate_grid_and_path(world_coords, camera_settings, velocita_x=4.0, veloc
     # 2. Calcola il limite superiore sommando la corsa massima
     extruder_end_x = extruder_start_x + EXTRUDER_TRAVEL_DISTANCE
 
-    print(f"[INFO] Filtraggio punti nell'intervallo X: [{extruder_start_x:.2f}, {extruder_end_x:.2f}]")
+    # print(f"[INFO] Filtraggio punti nell'intervallo X: [{extruder_start_x:.2f}, {extruder_end_x:.2f}]")
 
     # 3. Filtra la griglia usando i limiti dinamici
     ideal_grid_world = [p for p in ideal_grid_world if extruder_start_x <= p[0] <= extruder_end_x]
 
     if not ideal_grid_world:
         print("[WARN] Nessun punto della griglia rispetta i vincoli dell'estrusore.")
-        return [], []
+        return [], [], []
     
     # --- Logica di calcolo del percorso (TSP) con i punti filtrati ---
     ordered_grid_points = ideal_grid_world
@@ -413,7 +412,7 @@ def _generate_grid_and_path(world_coords, camera_settings, velocita_x=4.0, veloc
         
     final_ordered_path = [all_points[i] for i in path_nodes]
 
-    return ideal_grid_world, final_ordered_path
+    return ideal_grid_world, final_ordered_path, box_corners_world
 
 
 def get_graph_and_tsp_path_with_speeds(velocita_x=4.0, velocita_y=1.0):
@@ -603,13 +602,22 @@ def reproject_points_feed(request):
                     world_coords_data = get_world_coordinates_data()
                     
                     if world_coords_data.get('status') == 'success' and world_coords_data.get('coordinates'):
-                        ideal_grid_world, ordered_path_world = _generate_grid_and_path(world_coords_data['coordinates'], camera_settings, velocita_x, velocita_y)
+                        ideal_grid_world, ordered_path_world, box_corners = _generate_grid_and_path(world_coords_data['coordinates'], camera_settings, velocita_x, velocita_y)
                         # 2. Per proiettare, dobbiamo riconvertire i punti nel sistema "top-left"
                         #    che la matrice di omografia (H_inv) si aspetta.
                         fixed_persp_cfg = camera_settings.get("fixed_perspective", {})
                         OUTPUT_WIDTH = fixed_persp_cfg.get("output_width", 1000)
                         OUTPUT_HEIGHT = fixed_persp_cfg.get("output_height", 800)
-
+                        
+                        if box_corners:
+                            box_to_project = [[OUTPUT_WIDTH - p[0], OUTPUT_HEIGHT - p[1]] for p in box_corners]
+                            box_world_pts_np = np.array(box_to_project, dtype=np.float32).reshape(-1, 1, 2)
+                            box_pixels_np = cv2.perspectiveTransform(box_world_pts_np, H_inv)
+                            if box_pixels_np is not None:
+                                # Disegna il contorno del rettangolo (es. in giallo)
+                                box_contour = box_pixels_np.astype(np.int32)
+                                cv2.drawContours(undistorted_frame, [box_contour], 0, (0, 255, 255), 2)
+    
                         # Riconverti la griglia nel sistema top-left SOLO per la proiezione
                         grid_to_project = [[OUTPUT_WIDTH - p[0], OUTPUT_HEIGHT - p[1]] for p in ideal_grid_world]
                         
