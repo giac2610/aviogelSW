@@ -348,7 +348,7 @@ def rotate_points(points, angle_deg, center):
 def _generate_grid_and_path(world_coords, camera_settings, velocita_x=4.0, velocita_y=1.0):
     # --- Costanti di Base ---
     NOMINAL_SPACING_X, NOMINAL_SPACING_Y = 50.0, 50.0
-    SPACING_TOLERANCE = 1.5  # Tolleranza di +/- 1.5mm
+    SPACING_TOLERANCE = 0.5  # Tolleranza di +/- 1.5mm
     MAX_COLS, MAX_ROWS = 6, 8
     EXTRUDER_TRAVEL_DISTANCE = 260.0
 
