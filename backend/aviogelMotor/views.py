@@ -238,7 +238,8 @@ class MotorController:
             if is_pressed:
                 self.last_move_interrupted = True
                 logging.warning(f"!!! FINE CORSA ATTIVATO: {switch_id.upper()} (GPIO: {gpio}) !!!")
-                if self.pi.wave_tx_busy(): self.pi.wave_tx_stop()
+                if self.pi.wave_tx_busy(): 
+                    self.pi.wave_tx_stop()
 
     def _prepare_waves_from_generator(self, pulse_generator: object) -> list[int]:
         if not self.pi or not self.pi.connected:
@@ -570,6 +571,7 @@ def home_motor_view(request):
 @api_view(['POST'])
 def execute_route_view(request):
     try:
+        motor_command_queue.put({"command": "home", "motor": "extruder"})
         data = json.loads(request.body)
         route = data.get("route", [])
         logging.info("ricevuta questa  rotta: " + str(route))
