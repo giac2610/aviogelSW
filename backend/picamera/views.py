@@ -361,12 +361,12 @@ def _generate_grid_and_path(world_coords, camera_settings, velocita_x=4.0, veloc
     center = rect[0]
     # width, height = rect[1]
     width, height = rect[1]
-    width = min(width, 265.0)
-    height = min(height, 365.0)
     angle = rect[2]
     if height < width:
         height, width = width, height
         angle += 90
+    width = min(width, 265.0)
+    height = min(height, 365.0)
 
     print("Altezza: {:.2f}, Larghezza: {:.2f}, Angolo: {:.2f}".format(height, width, angle))
     print("Centro: ({:.2f}, {:.2f})".format(center[0], center[1]))
