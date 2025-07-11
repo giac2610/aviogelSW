@@ -54,7 +54,8 @@ MOTORS = {
 
 SWITCHES = {
     "extruder": {"Start": 23, "End": 24},
-    "syringe": {"Start": 19, "End": 26},
+    # "syringe": {"Start": 19, "End": 26},
+    "syringe": {"Start": 26, "End": 19},
 }
 
 # ==============================================================================
@@ -327,22 +328,21 @@ class MotorController:
 
         self.pi.wave_delete(wave_id)
         cb_homing.cancel()
-        cb_end.cancel() # ## NUOVA AGGIUNTA ##
+        cb_end.cancel()
 
-        # ## NUOVA AGGIUNTA: Gestione dell'attivazione del finecorsa di END ##
         if end_switch_hit.is_set():
+            self.pi.write(config.en_pin, 1)
             self.motor_error_state[motor_name] = True # Imposta lo stato di errore/blocco
             self._callbacks[start_switch_pin] = self.pi.callback(start_switch_pin, pigpio.EITHER_EDGE, self._switch_callback)
             self._callbacks[end_switch_pin] = self.pi.callback(end_switch_pin, pigpio.EITHER_EDGE, self._switch_callback)
-            self.pi.write(config.en_pin, 1) # Disabilita il motore
             logging.error(f"Homing per '{motor_name}' fallito: Finecorsa di EMERGENZA (END) attivato!")
             logging.warning(f"Il motore '{motor_name}' è bloccato. Eseguire un nuovo homing per sbloccarlo.")
             return
 
         if not homing_hit.is_set():
+            self.pi.write(config.en_pin, 1)
             self._callbacks[start_switch_pin] = self.pi.callback(start_switch_pin, pigpio.EITHER_EDGE, self._switch_callback)
             self._callbacks[end_switch_pin] = self.pi.callback(end_switch_pin, pigpio.EITHER_EDGE, self._switch_callback)
-            self.pi.write(config.en_pin, 1)
             logging.error(f"Homing Fase 1 fallita per '{motor_name}': timeout.")
             return
 
