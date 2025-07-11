@@ -187,6 +187,7 @@ class MotorController:
         self.pi = self._get_pigpio_instance()
         self.motor_configs = motor_configs
         self.switch_states = {}
+        self.motor_error_state = {motor: False for motor in motor_configs.keys()}
         self._callbacks = {}
         self._pin_to_switch_map = {}
         self.last_move_interrupted = False
@@ -263,56 +264,56 @@ class MotorController:
         if motor_name not in SWITCHES:
             logging.error(f"Impossibile eseguire homing: '{motor_name}' non ha finecorsa.")
             return
-        
+
         # Resetta lo stato di errore all'avvio dell'homing ##
         # Questo sblocca il motore se era in stato di errore.
         self.motor_error_state[motor_name] = False
-    
+
         logging.info(f"Avvio sequenza di Homing per '{motor_name}'...")
         start_switch_pin = SWITCHES[motor_name]['Start']
         end_switch_pin = SWITCHES[motor_name]['End']
-        
+
         switch_id = f"{motor_name}_start"
         end_switch_id = f"{motor_name}_end"
         config = self.motor_configs[motor_name]
-    
+
         # --- FASE 1: Ricerca Veloce del Finecorsa ---
         logging.info("Homing: Fase 1 - Ricerca veloce del finecorsa...")
-        
+
         homing_hit = threading.Event()
         end_switch_hit = threading.Event()
-    
+
         # Callback per il finecorsa di START
         def homing_callback(gpio, level, tick):
             if level == 1:
                 self.pi.wave_tx_stop()
                 homing_hit.set()
-                
+
         # Callback per il finecorsa di END (emergenza) ##
         def end_switch_callback(gpio, level, tick):
             if level == 1:
                 self.pi.wave_tx_stop()
                 end_switch_hit.set()
-    
+
         # Cancella eventuali callback esistenti sui pin che useremo
         for pin in [start_switch_pin, end_switch_pin]:
             existing_cb = self._callbacks.pop(pin, None)
             if existing_cb: existing_cb.cancel()
-        
+
         # Imposta i nuovi callback temporanei per l'homing
         cb_homing = self.pi.callback(start_switch_pin, pigpio.RISING_EDGE, homing_callback)
         cb_end = self.pi.callback(end_switch_pin, pigpio.RISING_EDGE, end_switch_callback)
-        
+
         self.pi.write(config.en_pin, 0)
         self.pi.write(config.dir_pin, 0)
         self.pi.wave_clear()
-        
+
         period_us = int(1_000_000 / 2000) # 2000 Hz
         pulse = [pigpio.pulse(1 << config.step_pin, 0, period_us // 2), pigpio.pulse(0, 1 << config.step_pin, period_us // 2)]
         self.pi.wave_add_generic(pulse)
         wave_id = self.pi.wave_create()
         self.pi.wave_send_repeat(wave_id)
-    
+
         # ## MODIFICATO: Attesa di uno dei due eventi con timeout ##
         start_time = time.time()
         timeout = 10
@@ -321,11 +322,11 @@ class MotorController:
                 self.pi.wave_tx_stop() # Ferma il motore in caso di timeout
                 break
             time.sleep(0.01)
-    
+
         self.pi.wave_delete(wave_id)
         cb_homing.cancel()
         cb_end.cancel() # ## NUOVA AGGIUNTA ##
-    
+
         # ## NUOVA AGGIUNTA: Gestione dell'attivazione del finecorsa di END ##
         if end_switch_hit.is_set():
             self.motor_error_state[motor_name] = True # Imposta lo stato di errore/blocco
@@ -335,17 +336,17 @@ class MotorController:
             logging.error(f"Homing per '{motor_name}' fallito: Finecorsa di EMERGENZA (END) attivato!")
             logging.warning(f"Il motore '{motor_name}' è bloccato. Eseguire un nuovo homing per sbloccarlo.")
             return
-    
+
         if not homing_hit.is_set():
             self._callbacks[start_switch_pin] = self.pi.callback(start_switch_pin, pigpio.EITHER_EDGE, self._switch_callback)
             self._callbacks[end_switch_pin] = self.pi.callback(end_switch_pin, pigpio.EITHER_EDGE, self._switch_callback)
             self.pi.write(config.en_pin, 1)
             logging.error(f"Homing Fase 1 fallita per '{motor_name}': timeout.")
             return
-    
+
         logging.info("Homing: Finecorsa toccato.")
         time.sleep(0.1)
-    
+
         # --- FASE 2: Back-off lento dal finecorsa ---
         # Questa fase rimane invariata, viene eseguita solo se la Fase 1 ha successo.
         logging.info("Homing: Fase 2 - Back-off lento per rilascio sensore...")
@@ -354,33 +355,33 @@ class MotorController:
             if level == 0:
                 self.pi.wave_tx_stop()
                 backoff_done.set()
-    
+
         cb_backoff = self.pi.callback(start_switch_pin, pigpio.FALLING_EDGE, backoff_callback)
         self.pi.write(config.dir_pin, 1) # Inverte la direzione
-        
+
         period_us_slow = int(1_000_000 / 200) # 200 Hz
         pulse_slow = [pigpio.pulse(1 << config.step_pin, 0, period_us_slow // 2), pigpio.pulse(0, 1 << config.step_pin, period_us_slow // 2)]
         self.pi.wave_add_generic(pulse_slow)
         wave_id_slow = self.pi.wave_create()
         self.pi.wave_send_repeat(wave_id_slow)
-    
+
         backed_off = backoff_done.wait(timeout=10)
         self.pi.wave_tx_stop()
         self.pi.wave_delete(wave_id_slow)
         cb_backoff.cancel()
-    
+
         # Ripristina i callback principali per entrambi i finecorsa
         self._callbacks[start_switch_pin] = self.pi.callback(start_switch_pin, pigpio.EITHER_EDGE, self._switch_callback)
         self._callbacks[end_switch_pin] = self.pi.callback(end_switch_pin, pigpio.EITHER_EDGE, self._switch_callback)
         self.pi.write(config.en_pin, 1)
-    
+
         if not backed_off:
             self.switch_states[switch_id] = True
             logging.error(f"Homing Fase 2 (Back-off) fallita per '{motor_name}': timeout.")
         else:
             self.switch_states[switch_id] = False
             logging.info(f"Homing per '{motor_name}' completato con successo. Posizione zero definita.")
-        
+
         self.switch_states[end_switch_id] = False
     
 def load_system_config() -> dict[str, MotorConfig]:
