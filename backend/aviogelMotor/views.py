@@ -309,40 +309,7 @@ class MotorController:
         self.pi.wave_clear()
 
         if(MOTOR_CONTROLLER.switch_states.get(f"{motor_name}_start")):
-            logging.warning(f"Homing per '{motor_name}' già completato: finecorsa di START attivo.")
-        else:
-            period_us = int(1_000_000 / 2000) # 2000 Hz
-            pulse = [pigpio.pulse(1 << config.step_pin, 0, period_us // 2), pigpio.pulse(0, 1 << config.step_pin, period_us // 2)]
-            self.pi.wave_add_generic(pulse)
-            wave_id = self.pi.wave_create()
-            self.pi.wave_send_repeat(wave_id)
-            
-            start_time = time.time()
-            timeout = 10
-            while not (homing_hit.is_set() or end_switch_hit.is_set()):
-                if time.time() - start_time > timeout:
-                    self.pi.wave_tx_stop() # Ferma il motore in caso di timeout
-                    break
-                time.sleep(0.01)
-
-            self.pi.wave_delete(wave_id)
-            cb_homing.cancel()
-            cb_end.cancel()
-
-        if end_switch_hit.is_set():
-            self.pi.write(config.en_pin, 1)
-            self.motor_error_state[motor_name] = True
-            self._callbacks[start_switch_pin] = self.pi.callback(start_switch_pin, pigpio.EITHER_EDGE, self._switch_callback)
-            self._callbacks[end_switch_pin] = self.pi.callback(end_switch_pin, pigpio.EITHER_EDGE, self._switch_callback)
-            logging.warning(f"Homing per '{motor_name}' fallito: Finecorsa di EMERGENZA (END) attivato!")
-            logging.warning(f"Il motore '{motor_name}' è bloccato. Eseguire un nuovo homing per sbloccarlo.")
-            return
-
-        if not homing_hit.is_set():
-            self.pi.write(config.en_pin, 1)
-            self._callbacks[start_switch_pin] = self.pi.callback(start_switch_pin, pigpio.EITHER_EDGE, self._switch_callback)
-            self._callbacks[end_switch_pin] = self.pi.callback(end_switch_pin, pigpio.EITHER_EDGE, self._switch_callback)
-            logging.warning(f"Homing Fase 1 fallita per '{motor_name}': timeout.")
+            logging.warning(f"Fase 1 Homing per '{motor_name}' già completato: finecorsa di START attivo.")
             logging.warning("Homing: Fase 2 - Back-off lento per rilascio sensore...")
             backoff_done = threading.Event()
             def backoff_callback(gpio, level, tick):
@@ -376,6 +343,40 @@ class MotorController:
                 logging.warning(f"Homing per '{motor_name}' completato con successo. Posizione zero definita.")
     
             self.switch_states[end_switch_id] = False
+        else:
+            period_us = int(1_000_000 / 2000) # 2000 Hz
+            pulse = [pigpio.pulse(1 << config.step_pin, 0, period_us // 2), pigpio.pulse(0, 1 << config.step_pin, period_us // 2)]
+            self.pi.wave_add_generic(pulse)
+            wave_id = self.pi.wave_create()
+            self.pi.wave_send_repeat(wave_id)
+            
+            start_time = time.time()
+            timeout = 10
+            while not (homing_hit.is_set() or end_switch_hit.is_set()):
+                if time.time() - start_time > timeout:
+                    self.pi.wave_tx_stop() # Ferma il motore in caso di timeout
+                    break
+                time.sleep(0.01)
+
+            self.pi.wave_delete(wave_id)
+            cb_homing.cancel()
+            cb_end.cancel()
+
+        if end_switch_hit.is_set():
+            self.pi.write(config.en_pin, 1)
+            self.motor_error_state[motor_name] = True
+            self._callbacks[start_switch_pin] = self.pi.callback(start_switch_pin, pigpio.EITHER_EDGE, self._switch_callback)
+            self._callbacks[end_switch_pin] = self.pi.callback(end_switch_pin, pigpio.EITHER_EDGE, self._switch_callback)
+            logging.warning(f"Homing per '{motor_name}' fallito: Finecorsa di EMERGENZA (END) attivato!")
+            logging.warning(f"Il motore '{motor_name}' è bloccato. Eseguire un nuovo homing per sbloccarlo.")
+            return
+
+        if not homing_hit.is_set():
+            self.pi.write(config.en_pin, 1)
+            self._callbacks[start_switch_pin] = self.pi.callback(start_switch_pin, pigpio.EITHER_EDGE, self._switch_callback)
+            self._callbacks[end_switch_pin] = self.pi.callback(end_switch_pin, pigpio.EITHER_EDGE, self._switch_callback)
+            logging.warning(f"Homing Fase 1 fallita per '{motor_name}': timeout.")
+ 
             return
 
         logging.warning("Homing: Finecorsa toccato.")
