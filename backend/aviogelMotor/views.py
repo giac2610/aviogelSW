@@ -71,6 +71,8 @@ class MotorConfig:
     steps_per_mm: float
     max_freq_hz: float
     acceleration_mmss: float
+    homeDir: bool
+    
 class MotionPlanner:
     def __init__(self, motor_configs: dict[str, MotorConfig]):
         self.motor_configs = motor_configs
@@ -273,7 +275,6 @@ class MotorController:
         logging.info(f"Avvio sequenza di Homing per '{motor_name}'...")
         start_switch_pin = SWITCHES[motor_name]['Start']
         end_switch_pin = SWITCHES[motor_name]['End']
-
         switch_id = f"{motor_name}_start"
         end_switch_id = f"{motor_name}_end"
         config = self.motor_configs[motor_name]
@@ -306,7 +307,7 @@ class MotorController:
         cb_end = self.pi.callback(end_switch_pin, pigpio.RISING_EDGE, end_switch_callback)
 
         self.pi.write(config.en_pin, 0)
-        self.pi.write(config.dir_pin, 0)
+        self.pi.write(config.dir_pin, config.homeDir)
         self.pi.wave_clear()
 
         period_us = int(1_000_000 / 2000) # 2000 Hz
@@ -401,7 +402,7 @@ def load_system_config() -> dict[str, MotorConfig]:
                 acceleration_mmss = float(params.get("acceleration", 100.0))
                 steps_per_mm = (steps_per_rev * microsteps) / pitch
                 max_freq_hz = max_speed_mms * steps_per_mm
-
+                homeDir = bool(params.get("homeDir", True))
                 configs[name] = MotorConfig(
                     name=name,
                     step_pin=MOTORS[name]["STEP"],
@@ -409,7 +410,8 @@ def load_system_config() -> dict[str, MotorConfig]:
                     en_pin=MOTORS[name]["EN"],
                     steps_per_mm=steps_per_mm,
                     max_freq_hz=max_freq_hz,
-                    acceleration_mmss=acceleration_mmss
+                    acceleration_mmss=acceleration_mmss,
+                    homeDir=homeDir
                 )
             logging.info("Configurazione motori caricata.")
     except Exception as e:
