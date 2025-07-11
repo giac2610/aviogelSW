@@ -54,8 +54,8 @@ MOTORS = {
 
 SWITCHES = {
     "extruder": {"Start": 23, "End": 24},
-    "syringe": {"Start": 19, "End": 26},
-    # "syringe": {"Start": 26, "End": 19},
+    # "syringe": {"Start": 19, "End": 26},
+    "syringe": {"Start": 26, "End": 19},
 }
 
 # ==============================================================================
