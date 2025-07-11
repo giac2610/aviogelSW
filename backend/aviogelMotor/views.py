@@ -40,7 +40,7 @@ SETTINGS_FILE = os.path.join(CONFIG_DIR, 'setup.json')
 LOG_FILE = os.path.join(CURRENT_SCRIPT_DIR, 'motorLog.log')
 
 logging.basicConfig(
-    level=logging.INFO,
+    level=print,
     format='%(asctime)s - %(levelname)s - [%(threadName)s:%(funcName)s] - %(message)s',
     handlers=[logging.FileHandler(LOG_FILE, mode='w'), logging.StreamHandler()]
 )
@@ -77,7 +77,7 @@ class MotorConfig:
 class MotionPlanner:
     def __init__(self, motor_configs: dict[str, MotorConfig]):
         self.motor_configs = motor_configs
-        logging.info(f"MotionPlanner inizializzato con motori: {list(motor_configs.keys())}")
+        print(f"MotionPlanner inizializzato con motori: {list(motor_configs.keys())}")
 
     def _generate_trapezoidal_profile(self, total_steps: int, max_freq_hz: float, accel_mmss: float, steps_per_mm: float) -> list[float]:
         # Questa funzione è corretta
@@ -183,7 +183,7 @@ class MotionPlanner:
                     # La logica di Bresenham distribuisce i passi in modo proporzionale
                     steps_in_chunk[slave_id] = int((data["steps"] / master_steps_total) * master_steps_chunk)
 
-        logging.info(f"Pianificato blocco per '{master_id}' ({master_steps_chunk} passi). Motori attivi: {list(active_motors)}")
+        print(f"Pianificato blocco per '{master_id}' ({master_steps_chunk} passi). Motori attivi: {list(active_motors)}")
         return single_pulse_generator(), active_motors, directions_to_set, steps_in_chunk
 class MotorController:
     def __init__(self, motor_configs: dict[str, MotorConfig]):
@@ -197,18 +197,18 @@ class MotorController:
         self._initialize_gpio_pins()
 
     def _get_pigpio_instance(self):
-        logging.info("Tentativo di connessione a pigpio...")
+        print("Tentativo di connessione a pigpio...")
         try:
             if IS_RPI:
                 pi = pigpio.pi()
                 if not pi.connected: raise ConnectionError("Connessione a pigpiod fallita.")
-                logging.info("Connessione a pigpio stabilita.")
+                print("Connessione a pigpio stabilita.")
                 return pi
             else:
-                logging.info("Utilizzo di istanza pigpio simulata.")
+                print("Utilizzo di istanza pigpio simulata.")
                 return pigpio.pi()
         except Exception as e:
-            logging.error(f"Fallimento init pigpio: {e}")
+            print(f"Fallimento init pigpio: {e}")
             return None
 
     def _initialize_gpio_pins(self):
@@ -231,7 +231,7 @@ class MotorController:
                 self._pin_to_switch_map[pin] = switch_id
                 cb = self.pi.callback(pin, pigpio.EITHER_EDGE, self._switch_callback)
                 self._callbacks[pin] = cb
-        logging.info(f"Finecorsa inizializzati. Stato attuale: {self.switch_states}")
+        print(f"Finecorsa inizializzati. Stato attuale: {self.switch_states}")
 
     def _switch_callback(self, gpio, level, tick):
         switch_id = self._pin_to_switch_map.get(gpio)
@@ -266,19 +266,19 @@ class MotorController:
 
     def execute_homing_sequence(self, motor_name: str):
         if motor_name not in SWITCHES:
-            logging.error(f"Impossibile eseguire homing: '{motor_name}' non ha finecorsa.")
+            print(f"Impossibile eseguire homing: '{motor_name}' non ha finecorsa.")
             return
 
         self.motor_error_state[motor_name] = False
 
-        logging.info(f"Avvio sequenza di Homing per '{motor_name}'...")
+        print(f"Avvio sequenza di Homing per '{motor_name}'...")
         start_switch_pin = SWITCHES[motor_name]['Start']
         end_switch_pin = SWITCHES[motor_name]['End']
         switch_id = f"{motor_name}_start"
         end_switch_id = f"{motor_name}_end"
         config = self.motor_configs[motor_name]
         
-        logging.info("Homing: Fase 1 - Ricerca veloce del finecorsa...")
+        print("Homing: Fase 1 - Ricerca veloce del finecorsa...")
 
         homing_hit = threading.Event()
         end_switch_hit = threading.Event()
@@ -328,7 +328,7 @@ class MotorController:
 
         if end_switch_hit.is_set():
             self.pi.write(config.en_pin, 1)
-            self.motor_error_state[motor_name] = True # Imposta lo stato di errore/blocco
+            self.motor_error_state[motor_name] = True
             self._callbacks[start_switch_pin] = self.pi.callback(start_switch_pin, pigpio.EITHER_EDGE, self._switch_callback)
             self._callbacks[end_switch_pin] = self.pi.callback(end_switch_pin, pigpio.EITHER_EDGE, self._switch_callback)
             print(f"Homing per '{motor_name}' fallito: Finecorsa di EMERGENZA (END) attivato!")
@@ -342,11 +342,11 @@ class MotorController:
             print(f"Homing Fase 1 fallita per '{motor_name}': timeout.")
             return
 
-        logging.info("Homing: Finecorsa toccato.")
+        print("Homing: Finecorsa toccato.")
         time.sleep(0.1)
 
         # --- FASE 2: Back-off lento dal finecorsa ---
-        logging.info("Homing: Fase 2 - Back-off lento per rilascio sensore...")
+        print("Homing: Fase 2 - Back-off lento per rilascio sensore...")
         backoff_done = threading.Event()
         def backoff_callback(gpio, level, tick):
             if level == 0:
@@ -373,10 +373,10 @@ class MotorController:
 
         if not backed_off:
             self.switch_states[switch_id] = True
-            logging.error(f"Homing Fase 2 (Back-off) fallita per '{motor_name}': timeout.")
+            print(f"Homing Fase 2 (Back-off) fallita per '{motor_name}': timeout.")
         else:
             self.switch_states[switch_id] = False
-            logging.info(f"Homing per '{motor_name}' completato con successo. Posizione zero definita.")
+            print(f"Homing per '{motor_name}' completato con successo. Posizione zero definita.")
 
         self.switch_states[end_switch_id] = False
     
@@ -407,9 +407,9 @@ def load_system_config() -> dict[str, MotorConfig]:
                     acceleration_mmss=acceleration_mmss,
                     homeDir=homeDir
                 )
-            logging.info("Configurazione motori caricata.")
+            print("Configurazione motori caricata.")
     except Exception as e:
-        logging.error(f"Errore caricamento configurazione: {e}")
+        print(f"Errore caricamento configurazione: {e}")
     return configs
 
 # --- Blocco di Inizializzazione e Worker ---
@@ -420,7 +420,7 @@ motor_command_queue = queue.Queue()
 SYSTEM_CONFIG_LOCK = threading.Lock()
             
 def motor_worker():
-    logging.info("Motor worker avviato con architettura a cicli continui.")
+    print("Motor worker avviato con architettura a cicli continui.")
     while True:
         task = motor_command_queue.get()
         try:
@@ -456,7 +456,7 @@ def motor_worker():
                                     del remaining_targets[motor_id]
                         # Accoda solo se rimangono target validi
                         if any(abs(dist) > 0.001 for dist in remaining_targets.values()):
-                            logging.info(f"Accodo movimento residuo per motori non bloccati: {remaining_targets}")
+                            print(f"Accodo movimento residuo per motori non bloccati: {remaining_targets}")
                             motor_command_queue.put({"command": "move", "targets": remaining_targets.copy()})
                         break
                     with SYSTEM_CONFIG_LOCK:
@@ -466,7 +466,7 @@ def motor_worker():
                         )
 
                     if not active_motors or not pulse_generator:
-                        logging.info("Nessun movimento pianificato per i target rimanenti. Uscita dal ciclo.")
+                        print("Nessun movimento pianificato per i target rimanenti. Uscita dal ciclo.")
                         break
 
                     all_wave_ids = []
@@ -502,24 +502,24 @@ def motor_worker():
                         if motor_id in remaining_targets:
                             config = MOTOR_CONFIGS[motor_id]
                             distance_moved_mm = steps / config.steps_per_mm
-                            logging.info(f"Blocco da compiere. Distanza: {distance_moved_mm}")
+                            print(f"Blocco da compiere. Distanza: {distance_moved_mm}")
                             # Aggiorna sempre verso zero
                             if remaining_targets[motor_id] > 0:
                                 remaining_targets[motor_id] = max(0, remaining_targets[motor_id] - distance_moved_mm)
                             else:
                                 remaining_targets[motor_id] = min(0, remaining_targets[motor_id] + distance_moved_mm)
                     
-                    logging.info(f"Blocco completato. Distanze rimanenti: {remaining_targets}")
+                    print(f"Blocco completato. Distanze rimanenti: {remaining_targets}")
 
             elif command == "home":
                 motor_to_home = task.get("motor")
                 if motor_to_home:
                     MOTOR_CONTROLLER.execute_homing_sequence(motor_to_home)
             
-            logging.info(f"Worker: task '{task.get('command')}' completato.")
+            print(f"Worker: task '{task.get('command')}' completato.")
 
         except Exception as e:
-            logging.error(f"Errore critico nel motor_worker su task {task}: {e}", exc_info=True)
+            print(f"Errore critico nel motor_worker su task {task}: {e}", exc_info=True)
         finally:
             motor_command_queue.task_done()
             time.sleep(0.1)
@@ -527,14 +527,14 @@ def motor_worker():
 def handle_exception(e):
     import traceback
     error_details = traceback.format_exc()
-    logging.error(f"Errore interno API: {error_details}")
+    print(f"Errore interno API: {error_details}")
     return JsonResponse({"log": f"Errore interno: {type(e).__name__}", "error": str(e)}, status=500)
 
 if os.environ.get('RUN_MAIN') == 'true':
-    logging.info("Processo principale di Django rilevato. Avvio del MotorWorker...")
+    print("Processo principale di Django rilevato. Avvio del MotorWorker...")
     threading.Thread(target=motor_worker, daemon=True, name="MotorWorker").start()
 else:
-    logging.info("Processo di reload rilevato. Il MotorWorker non verrà avviato qui.")
+    print("Processo di reload rilevato. Il MotorWorker non verrà avviato qui.")
 
 # ==============================================================================
 # API VIEWS (Interfaccia esterna preservata)
@@ -559,7 +559,7 @@ def home_motor_view(request):
         motor_to_home = data.get("motor")
         if not motor_to_home or motor_to_home not in MOTORS:
             return JsonResponse({"log": "Input non valido", "error": f"Specificare un motore valido: {list(MOTORS.keys())}"}, status=400)
-        logging.info(f"Richiesta API di Homing per il motore: {motor_to_home}")
+        print(f"Richiesta API di Homing per il motore: {motor_to_home}")
         motor_command_queue.put({"command": "home", "motor": motor_to_home})
         return JsonResponse({"log": f"Comando di Homing per '{motor_to_home}' messo in coda.", "status": "queued"})
     except Exception as e: return handle_exception(e)
@@ -570,10 +570,10 @@ def execute_route_view(request):
         motor_command_queue.put({"command": "home", "motor": "extruder"})
         data = json.loads(request.body)
         route = data.get("route", [])
-        logging.info("ricevuta questa  rotta: " + str(route))
+        print("ricevuta questa  rotta: " + str(route))
         if not isinstance(route, list):
             return JsonResponse({"log": "Percorso non valido", "error": "Input non valido"}, status=400)
-        logging.info(f"Accodamento rotta con {len(route)} passi.")
+        print(f"Accodamento rotta con {len(route)} passi.")
         for step in route:
             if isinstance(step, dict): 
                 motor_command_queue.put({"command": "move", "targets": step})
@@ -584,13 +584,13 @@ def execute_route_view(request):
 @api_view(['POST'])
 def stop_motor_view(request):
     try:
-        logging.info("Richiesta di STOP motori ricevuta.")
+        print("Richiesta di STOP motori ricevuta.")
         while not motor_command_queue.empty():
             try: motor_command_queue.get_nowait(); motor_command_queue.task_done()
             except queue.Empty: continue
         if MOTOR_CONTROLLER.pi and MOTOR_CONTROLLER.pi.connected:
             MOTOR_CONTROLLER.pi.wave_tx_stop()
-        logging.info("Movimento fermato e coda di comandi pulita.")
+        print("Movimento fermato e coda di comandi pulita.")
         return JsonResponse({"log": "Comando di stop inviato.", "status": "success"})
     except Exception as e: return handle_exception(e)
 
@@ -603,7 +603,7 @@ def update_config_view(request):
             if MOTOR_CONTROLLER.pi and MOTOR_CONTROLLER.pi.connected and MOTOR_CONTROLLER.pi.wave_tx_busy():
                 MOTOR_CONTROLLER.pi.wave_tx_stop()
                 MOTOR_CONTROLLER.pi.wave_clear()
-            logging.info("Movimento corrente interrotto per aggiornamento configurazione.")
+            print("Movimento corrente interrotto per aggiornamento configurazione.")
             
             if MOTOR_CONTROLLER and MOTOR_CONTROLLER.pi and MOTOR_CONTROLLER.pi.connected:
                 for pin, cb in MOTOR_CONTROLLER._callbacks.items():
@@ -617,10 +617,10 @@ def update_config_view(request):
             MOTION_PLANNER = MotionPlanner(new_configs)
             MOTOR_CONTROLLER = MotorController(new_configs)
             
-            logging.info("Hot-Reload completato. Il sistema ora usa la nuova configurazione.")
+            print("Hot-Reload completato. Il sistema ora usa la nuova configurazione.")
             return JsonResponse({"log": "Configurazione aggiornata e ricaricata con successo.", "status": "success"})
         except Exception as e:
-            logging.error(f"Fallimento durante la procedura di Hot-Reload: {e}", exc_info=True)
+            print(f"Fallimento durante la procedura di Hot-Reload: {e}", exc_info=True)
             MOTOR_CONFIGS = load_system_config()
             MOTION_PLANNER = MotionPlanner(MOTOR_CONFIGS)
             MOTOR_CONTROLLER = MotorController(MOTOR_CONFIGS)
@@ -637,9 +637,9 @@ def start_simulation_view(request):
                 simulation_steps.append({"extruder": 50 * extruder_direction})
             extruder_direction *= -1
             simulation_steps.append({"conveyor": 50})
-        logging.info("Avvio simulazione predefinita...")
+        print("Avvio simulazione predefinita...")
         for i, step in enumerate(simulation_steps):
-            logging.info(f"Accodamento passo simulazione {i+1}: {step}")
+            print(f"Accodamento passo simulazione {i+1}: {step}")
             motor_command_queue.put({"command": "move", "targets": step})
         return JsonResponse({"log": "Simulazione accodata.", "status": "queued"})
     except Exception as e: return handle_exception(e)
@@ -655,7 +655,7 @@ def save_motor_config_view(request):
     with open(SETTINGS_FILE, 'w') as f:
         json.dump(full_config, f, indent=4)
     msg = "Configurazione motori salvata. Chiamare /motors/update_config/ per applicare le modifiche."
-    logging.info(msg)
+    print(msg)
     return JsonResponse({"log": msg, "success": True})
 
 @csrf_exempt
