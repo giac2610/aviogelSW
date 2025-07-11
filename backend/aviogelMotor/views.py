@@ -343,6 +343,39 @@ class MotorController:
             self._callbacks[start_switch_pin] = self.pi.callback(start_switch_pin, pigpio.EITHER_EDGE, self._switch_callback)
             self._callbacks[end_switch_pin] = self.pi.callback(end_switch_pin, pigpio.EITHER_EDGE, self._switch_callback)
             logging.warning(f"Homing Fase 1 fallita per '{motor_name}': timeout.")
+            logging.warning("Homing: Fase 2 - Back-off lento per rilascio sensore...")
+            backoff_done = threading.Event()
+            def backoff_callback(gpio, level, tick):
+                if level == 0:
+                    self.pi.wave_tx_stop()
+                    backoff_done.set()
+    
+            cb_backoff = self.pi.callback(start_switch_pin, pigpio.FALLING_EDGE, backoff_callback)
+            self.pi.write(config.dir_pin, not config.homeDir) 
+    
+            period_us_slow = int(1_000_000 / 200) # 200 Hz
+            pulse_slow = [pigpio.pulse(1 << config.step_pin, 0, period_us_slow // 2), pigpio.pulse(0, 1 << config.step_pin, period_us_slow // 2)]
+            self.pi.wave_add_generic(pulse_slow)
+            wave_id_slow = self.pi.wave_create()
+            self.pi.wave_send_repeat(wave_id_slow)
+    
+            backed_off = backoff_done.wait(timeout=10)
+            self.pi.wave_tx_stop()
+            self.pi.wave_delete(wave_id_slow)
+            cb_backoff.cancel()
+    
+            self._callbacks[start_switch_pin] = self.pi.callback(start_switch_pin, pigpio.EITHER_EDGE, self._switch_callback)
+            self._callbacks[end_switch_pin] = self.pi.callback(end_switch_pin, pigpio.EITHER_EDGE, self._switch_callback)
+            self.pi.write(config.en_pin, 1)
+    
+            if not backed_off:
+                self.switch_states[switch_id] = True
+                logging.warning(f"Homing Fase 2 (Back-off) fallita per '{motor_name}': timeout.")
+            else:
+                self.switch_states[switch_id] = False
+                logging.warning(f"Homing per '{motor_name}' completato con successo. Posizione zero definita.")
+    
+            self.switch_states[end_switch_id] = False
             return
 
         logging.warning("Homing: Finecorsa toccato.")
