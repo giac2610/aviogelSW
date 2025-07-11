@@ -269,8 +269,6 @@ class MotorController:
             logging.error(f"Impossibile eseguire homing: '{motor_name}' non ha finecorsa.")
             return
 
-        # Resetta lo stato di errore all'avvio dell'homing ##
-        # Questo sblocca il motore se era in stato di errore.
         self.motor_error_state[motor_name] = False
 
         logging.info(f"Avvio sequenza di Homing per '{motor_name}'...")
@@ -359,7 +357,7 @@ class MotorController:
                 backoff_done.set()
 
         cb_backoff = self.pi.callback(start_switch_pin, pigpio.FALLING_EDGE, backoff_callback)
-        self.pi.write(config.dir_pin, 1) # Inverte la direzione
+        self.pi.write(config.dir_pin, not config.homeDir) # Inverte la direzione
 
         period_us_slow = int(1_000_000 / 200) # 200 Hz
         pulse_slow = [pigpio.pulse(1 << config.step_pin, 0, period_us_slow // 2), pigpio.pulse(0, 1 << config.step_pin, period_us_slow // 2)]
