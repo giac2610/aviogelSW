@@ -412,13 +412,23 @@ def _generate_grid_and_path(world_coords, camera_settings, velocita_x=4.0, veloc
     if num_rows == 0:
         num_rows = min(MAX_ROWS, int(height / NOMINAL_SPACING_Y) + 1)
     
-    center_rot = rotate_points(np.array([center]), -angle, center)[0]
-    grid_total_width = (num_cols - 1) * final_spacing_x
-    grid_total_height = (num_rows - 1) * final_spacing_y
+    ### ANCHOR DOWN LEFT POINT
+    # Ruota gli spigoli del rettangolo per allinearli agli assi
+    box_corners_rot = rotate_points(np.array(box_corners_world), -angle, center)
+    # Trova lo spigolo in basso a sinistra (min x, min y) del rettangolo allineato
     anchor_point_rot = np.array([
-        center_rot[0] - grid_total_width / 2.0,
-        center_rot[1] - grid_total_height / 2.0
+        np.min(box_corners_rot[:, 0]),
+        np.min(box_corners_rot[:, 1])
     ])
+    
+    ### ANCHOR CENTER POINT
+    # center_rot = rotate_points(np.array([center]), -angle, center)[0]
+    # grid_total_width = (num_cols - 1) * final_spacing_x
+    # grid_total_height = (num_rows - 1) * final_spacing_y
+    # anchor_point_rot = np.array([
+    #     center_rot[0] - grid_total_width / 2.0,
+    #     center_rot[1] - grid_total_height / 2.0
+    # ])
 
     ideal_grid_rot = []
     for r in range(num_rows):
