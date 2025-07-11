@@ -368,9 +368,9 @@ def _generate_grid_and_path(world_coords, camera_settings, velocita_x=4.0, veloc
     width = min(width, 265.0)
     height = min(height, 365.0)
 
-    print("Altezza: {:.2f}, Larghezza: {:.2f}, Angolo: {:.2f}".format(height, width, angle))
-    print("Centro: ({:.2f}, {:.2f})".format(center[0], center[1]))
-    print("Box Corners World: {}".format(box_corners_world))
+    # print("Altezza: {:.2f}, Larghezza: {:.2f}, Angolo: {:.2f}".format(height, width, angle))
+    # print("Centro: ({:.2f}, {:.2f})".format(center[0], center[1]))
+    # print("Box Corners World: {}".format(box_corners_world))
     # ========================================================================
     # --- NUOVA LOGICA DI FITTING DELLA GRIGLIA CON TOLLERANZA ---
     # ========================================================================
@@ -401,7 +401,7 @@ def _generate_grid_and_path(world_coords, camera_settings, velocita_x=4.0, veloc
     for r in range(MAX_ROWS, 1, -1):
         if r - 1 == 0: continue
         required_spacing = height / (r - 1)
-        print("Spacing richiesto per {} righe: {:.2f}".format(r, required_spacing))
+        # print("Spacing richiesto per {} righe: {:.2f}".format(r, required_spacing))
         # Se lo spacing richiesto è nella tolleranza, abbiamo trovato il fitting perfetto
         if (NOMINAL_SPACING_Y - SPACING_TOLERANCE) <= required_spacing <= (NOMINAL_SPACING_Y + SPACING_TOLERANCE):
             final_spacing_y = required_spacing
