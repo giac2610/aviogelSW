@@ -317,18 +317,17 @@ class MotorController:
             wave_id = self.pi.wave_create()
             self.pi.wave_send_repeat(wave_id)
             
+            start_time = time.time()
+            timeout = 10
+            while not (homing_hit.is_set() or end_switch_hit.is_set()):
+                if time.time() - start_time > timeout:
+                    self.pi.wave_tx_stop() # Ferma il motore in caso di timeout
+                    break
+                time.sleep(0.01)
 
-        start_time = time.time()
-        timeout = 10
-        while not (homing_hit.is_set() or end_switch_hit.is_set()):
-            if time.time() - start_time > timeout:
-                self.pi.wave_tx_stop() # Ferma il motore in caso di timeout
-                break
-            time.sleep(0.01)
-
-        self.pi.wave_delete(wave_id)
-        cb_homing.cancel()
-        cb_end.cancel()
+            self.pi.wave_delete(wave_id)
+            cb_homing.cancel()
+            cb_end.cancel()
 
         if end_switch_hit.is_set():
             self.pi.write(config.en_pin, 1)
