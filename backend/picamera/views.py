@@ -367,6 +367,9 @@ def _generate_grid_and_path(world_coords, camera_settings, velocita_x=4.0, veloc
     if height < width:
         angle += 90
 
+    print("Altezza: {:.2f}, Larghezza: {:.2f}, Angolo: {:.2f}".format(height, width, angle))
+    print("Centro: ({:.2f}, {:.2f})".format(center[0], center[1]))
+    print("Box Corners World: {}".format(box_corners_world))
     # ========================================================================
     # --- NUOVA LOGICA DI FITTING DELLA GRIGLIA CON TOLLERANZA ---
     # ========================================================================
