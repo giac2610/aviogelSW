@@ -308,11 +308,15 @@ class MotorController:
         self.pi.write(config.dir_pin, config.homeDir)
         self.pi.wave_clear()
 
-        period_us = int(1_000_000 / 2000) # 2000 Hz
-        pulse = [pigpio.pulse(1 << config.step_pin, 0, period_us // 2), pigpio.pulse(0, 1 << config.step_pin, period_us // 2)]
-        self.pi.wave_add_generic(pulse)
-        wave_id = self.pi.wave_create()
-        self.pi.wave_send_repeat(wave_id)
+        if(MOTOR_CONTROLLER.switch_states.get(f"{motor_name}_start")):
+            logging.warning(f"Homing per '{motor_name}' già completato: finecorsa di START attivo.")
+        else:
+            period_us = int(1_000_000 / 2000) # 2000 Hz
+            pulse = [pigpio.pulse(1 << config.step_pin, 0, period_us // 2), pigpio.pulse(0, 1 << config.step_pin, period_us // 2)]
+            self.pi.wave_add_generic(pulse)
+            wave_id = self.pi.wave_create()
+            self.pi.wave_send_repeat(wave_id)
+            
 
         start_time = time.time()
         timeout = 10
@@ -497,7 +501,7 @@ def motor_worker():
                                 try: MOTOR_CONTROLLER.pi.write(config.en_pin, 0)
                                 except Exception: pass
                     
-                    # 🎯 Aggiorna le distanze rimanenti
+                    # Aggiorna le distanze rimanenti
                     for motor_id, steps in steps_executed.items():
                         if motor_id in remaining_targets:
                             config = MOTOR_CONFIGS[motor_id]
