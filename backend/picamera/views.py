@@ -256,12 +256,12 @@ def get_world_coordinates_data():
     
     world_coords_tl = world_coords_tl.reshape(-1, 2).tolist()
     
-        # 1. Recupera la posizione di partenza dell'estrusore
+    # 1. Recupera la posizione di partenza dell'estrusore
     extruder_origin_x = camera_settings.get("origin_x", 0.0)
     
     # 2. Definisci i limiti di filtraggio
     min_x_bound = extruder_origin_x
-    max_x_bound = extruder_origin_x + 265.5
+    max_x_bound = extruder_origin_x + 260
 
     # 3. Filtra le coordinate nel sistema "top-left"
     filtered_coords_tl = [
