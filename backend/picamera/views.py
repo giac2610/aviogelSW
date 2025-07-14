@@ -409,7 +409,7 @@ def _generate_grid_and_path(world_coords, camera_settings, velocita_x=4.0, veloc
     ### ANCHOR DOWN LEFT POINT
     # Ruota gli spigoli del rettangolo per allinearli agli assi
     # box_corners_rot = rotate_points(np.array(box_corners_world), -angle, center)
-    box_corners_rot = rotate_points(np.array(box_corners_world), 0, center)
+    box_corners_rot = rotate_points(np.array(box_corners_world), angle, center)
     # Trova lo spigolo in basso a sinistra (min x, min y) del rettangolo allineato
     anchor_point_rot = np.array([
         np.max(box_corners_rot[:, 0]),
