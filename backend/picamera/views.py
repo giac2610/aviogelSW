@@ -264,17 +264,19 @@ def get_world_coordinates_data():
     max_x_bound = extruder_origin_x + 270
 
     # 3. Filtra le coordinate nel sistema "top-left"
-    filtered_coords_tl = [
-        p for p in world_coords_tl if min_x_bound <= p[0] <= max_x_bound
-    ]
+  
     
     fixed_persp_cfg = camera_settings.get("fixed_perspective", {})
     OUTPUT_WIDTH = fixed_persp_cfg.get("output_width", 1000)
     OUTPUT_HEIGHT = fixed_persp_cfg.get("output_height", 800)
     
-    world_coords_br = [[OUTPUT_WIDTH - x, OUTPUT_HEIGHT - y] for x, y in filtered_coords_tl]
+    world_coords_br = [[OUTPUT_WIDTH - x, OUTPUT_HEIGHT - y] for x, y in world_coords_tl]
     
-    return {"status": "success", "coordinates": world_coords_br}
+    filtered_coords_bl = [
+        p for p in world_coords_br if min_x_bound <= p[0] <= max_x_bound
+    ]
+      
+    return {"status": "success", "coordinates": filtered_coords_bl}
 
 @contextmanager
 def stream_context():
