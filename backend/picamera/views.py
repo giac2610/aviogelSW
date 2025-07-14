@@ -412,24 +412,17 @@ def _generate_grid_and_path(world_coords, camera_settings, velocita_x=4.0, veloc
     box_corners_rot = rotate_points(np.array(box_corners_world), -angle, center)
     
     anchor_point_rot = np.array([
-        np.min(box_corners_rot[:, 0]),
-        np.min(box_corners_rot[:, 1])
+        np.max(box_corners_rot[:, 0]),
+        np.max(box_corners_rot[:, 1])
     ])
     
-    ### ANCHOR CENTER POINT
-    # center_rot = rotate_points(np.array([center]), -angle, center)[0]
-    # grid_total_width = (num_cols - 1) * final_spacing_x
-    # grid_total_height = (num_rows - 1) * final_spacing_y
-    # anchor_point_rot = np.array([
-    #     center_rot[0] - grid_total_width / 2.0,
-    #     center_rot[1] - grid_total_height / 2.0
-    # ])
-
     ideal_grid_rot = []
     for r in range(num_rows):
         for c in range(num_cols):
-            x = anchor_point_rot[0] + c * final_spacing_x
-            y = anchor_point_rot[1] + r * final_spacing_y
+            x = anchor_point_rot[0] - c * final_spacing_x
+            # x = anchor_point_rot[0] + c * final_spacing_x
+            y = anchor_point_rot[1] - r * final_spacing_y
+            # y = anchor_point_rot[1] + r * final_spacing_y
             ideal_grid_rot.append([x, y])
 
     ideal_grid_world = rotate_points(np.array(ideal_grid_rot), angle, center)
