@@ -656,6 +656,29 @@ def reproject_points_feed(request):
                         OUTPUT_WIDTH = fixed_persp_cfg.get("output_width", 1000)
                         OUTPUT_HEIGHT = fixed_persp_cfg.get("output_height", 800)
                         
+                        # 1. Controlla se il percorso esiste e prendi la coordinata X del primo punto
+                        if ordered_path_world:
+                            start_x_world = ordered_path_world[0][0]
+
+                            # 2. Definisci i due punti della linea verticale nel sistema di coordinate del mondo
+                            #    La linea va da y=0 a y=OUTPUT_HEIGHT alla stessa coordinata x.
+                            line_points_world = [
+                                [start_x_world, 0],
+                                [start_x_world, OUTPUT_HEIGHT]
+                            ]
+
+                            # 3. Converti i punti per la proiezione (dal sistema bottom-left a top-left)
+                            line_to_project = [[OUTPUT_WIDTH - p[0], OUTPUT_HEIGHT - p[1]] for p in line_points_world]
+
+                            line_world_pts_np = np.array(line_to_project, dtype=np.float32).reshape(-1, 1, 2)
+                            line_pixels_np = cv2.perspectiveTransform(line_world_pts_np, H_inv)
+
+                            # 4. Disegna la linea proiettata sul frame
+                            if line_pixels_np is not None:
+                                pt1_pixel = tuple(line_pixels_np[0][0].astype(int))
+                                pt2_pixel = tuple(line_pixels_np[1][0].astype(int))
+                                cv2.line(undistorted_frame, pt1_pixel, pt2_pixel, (0, 255, 255), 2) # Giallo
+
                         if box_corners:
                             box_to_project = [[OUTPUT_WIDTH - p[0], OUTPUT_HEIGHT - p[1]] for p in box_corners]
                             box_world_pts_np = np.array(box_to_project, dtype=np.float32).reshape(-1, 1, 2)
