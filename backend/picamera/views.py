@@ -418,7 +418,7 @@ def _generate_grid_and_path(world_coords, camera_settings, velocita_x=4.0, veloc
     # Trova lo spigolo in basso a sinistra (min x, min y) del rettangolo allineato
     anchor_point_rot = np.array([
         np.min(box_corners_rot[:, 0]),
-        np.max(box_corners_rot[:, 1])
+        np.min(box_corners_rot[:, 1])
     ])
     
     ### ANCHOR CENTER POINT
