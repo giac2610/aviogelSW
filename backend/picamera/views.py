@@ -264,7 +264,6 @@ def get_world_coordinates_data():
     max_x_bound = extruder_origin_x + 270
 
     # 3. Filtra le coordinate nel sistema "top-left"
-  
     
     fixed_persp_cfg = camera_settings.get("fixed_perspective", {})
     OUTPUT_WIDTH = fixed_persp_cfg.get("output_width", 1000)
@@ -275,7 +274,7 @@ def get_world_coordinates_data():
     filtered_coords_bl = [
         p for p in world_coords_br if min_x_bound <= p[0] <= max_x_bound
     ]
-      
+
     return {"status": "success", "coordinates": filtered_coords_bl}
 
 @contextmanager
@@ -370,13 +369,6 @@ def _generate_grid_and_path(world_coords, camera_settings, velocita_x=4.0, veloc
     width = min(width, 265.0)
     height = min(height, 365.0)
 
-    # print("Altezza: {:.2f}, Larghezza: {:.2f}, Angolo: {:.2f}".format(height, width, angle))
-    # print("Centro: ({:.2f}, {:.2f})".format(center[0], center[1]))
-    # print("Box Corners World: {}".format(box_corners_world))
-    # ========================================================================
-    # --- NUOVA LOGICA DI FITTING DELLA GRIGLIA CON TOLLERANZA ---
-    # ========================================================================
-
     # --- Calcolo Colonne e Spacing X ---
     final_spacing_x = NOMINAL_SPACING_X
     num_cols = 0
@@ -419,8 +411,8 @@ def _generate_grid_and_path(world_coords, camera_settings, velocita_x=4.0, veloc
     box_corners_rot = rotate_points(np.array(box_corners_world), -angle, center)
     # Trova lo spigolo in basso a sinistra (min x, min y) del rettangolo allineato
     anchor_point_rot = np.array([
-        np.min(box_corners_rot[:, 0]),
-        np.min(box_corners_rot[:, 1])
+        np.max(box_corners_rot[:, 0]),
+        np.max(box_corners_rot[:, 1])
     ])
     
     ### ANCHOR CENTER POINT
