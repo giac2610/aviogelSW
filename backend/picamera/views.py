@@ -261,7 +261,7 @@ def get_world_coordinates_data():
     
     # 2. Definisci i limiti di filtraggio
     min_x_bound = extruder_origin_x
-    max_x_bound = extruder_origin_x + 260
+    max_x_bound = extruder_origin_x + 270
 
     # 3. Filtra le coordinate nel sistema "top-left"
     filtered_coords_tl = [
@@ -350,7 +350,7 @@ def _generate_grid_and_path(world_coords, camera_settings, velocita_x=4.0, veloc
     NOMINAL_SPACING_X, NOMINAL_SPACING_Y = 50.0, 50.0
     SPACING_TOLERANCE = 1.5  
     MAX_COLS, MAX_ROWS = 6, 8 # Limiti massimi della griglia
-    EXTRUDER_TRAVEL_DISTANCE = 260.0
+    EXTRUDER_TRAVEL_DISTANCE = 270.0
 
     points = np.array(world_coords, dtype=np.float32)
     if len(points) < 3:
