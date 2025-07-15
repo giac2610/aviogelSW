@@ -550,7 +550,7 @@ def compute_route(request):
         extruder_mm = nodi[i][0] - nodi[i-1][0]
         conveyor_mm = nodi[i][1] - nodi[i-1][1]
         motor_commands.append({"extruder": round(extruder_mm, 4), "conveyor": round(conveyor_mm, 4)})
-        motor_commands.append({"syringe": -5})
+        motor_commands.append({"syringe": -0.75})
 
     # Genera il plot come immagine base64 (opzionale)
     plt.figure(figsize=(8, 6))

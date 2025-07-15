@@ -473,14 +473,28 @@ def motor_worker():
                         blocked = []
                         for motor_id in list(remaining_targets.keys()):
                             if motor_id != "conveyor":
-                                if (remaining_targets[motor_id] < 0 and MOTOR_CONTROLLER.switch_states.get(f"{motor_id}_end")) or \
-                                   (remaining_targets[motor_id] > 0 and MOTOR_CONTROLLER.switch_states.get(f"{motor_id}_start")):
+                                # Recupera la distanza e la configurazione del motore
+                                distance = remaining_targets[motor_id]
+                                config = MOTOR_CONFIGS[motor_id] 
+                                # Calcola la direzione (0 o 1) del movimento residuo
+                                direction_for_pin = 1 if distance >= 0 else 0
+
+                                # Recupera la direzione "verso start" (0 o 1) dalla configurazione
+                                config_dir_to_start = config.get("homeDir", 1)
+
+                                # Controlla se il movimento è verso un finecorsa attivo
+                                is_moving_towards_start = (direction_for_pin == config_dir_to_start)
+                                is_moving_towards_end = (direction_for_pin != config_dir_to_start)
+
+                                is_blocked_at_start = is_moving_towards_start and MOTOR_CONTROLLER.switch_states.get(f"{motor_id}_start")
+                                is_blocked_at_end = is_moving_towards_end and MOTOR_CONTROLLER.switch_states.get(f"{motor_id}_end")
+
+                                if is_blocked_at_start or is_blocked_at_end:
                                     blocked.append(motor_id)
                         for motor_id in blocked:
                             logging.warning(f"Motore '{motor_id}' bloccato da finecorsa: rimosso dai target.")
                             del remaining_targets[motor_id]
                         MOTOR_CONTROLLER.last_move_interrupted = False
-                        # Se non ci sono più target, esci
                         if not remaining_targets:
                             logging.warning("Tutti i motori bloccati da finecorsa. Uscita dal ciclo.")
                             break
@@ -540,7 +554,6 @@ def motor_worker():
                             config = MOTOR_CONFIGS[motor_id]
                             distance_moved_mm = steps / config.steps_per_mm
                             logging.warning(f"Blocco da compiere. Distanza: {distance_moved_mm}")
-                            # Aggiorna sempre verso zero
                             if remaining_targets[motor_id] > 0:
                                 remaining_targets[motor_id] = max(0, remaining_targets[motor_id] - distance_moved_mm)
                             else:
