@@ -119,15 +119,34 @@ class MotionPlanner:
 
         move_data = {}
         for motor_id, distance in targets.items():
-            if distance == 0 or motor_id not in self.motor_configs: continue
+            if distance == 0 or motor_id not in self.motor_configs:
+                continue
+            
+            # Recupera la configurazione del motore all'inizio del ciclo
+            config = self.motor_configs[motor_id]
             direction = 1 if distance >= 0 else 0
+        
             if motor_id != "conveyor":
-                if (direction == 0 and switch_states.get(f"{motor_id}_start")) or \
-                   (direction == 1 and switch_states.get(f"{motor_id}_end")):
+                # La direzione (0 o 1) che porta al finecorsa di START
+                dir_to_start = config.homeDir 
+        
+                # Condizione 1: Il movimento è verso START e il finecorsa START è attivo?
+                is_moving_to_start_and_blocked = (direction == dir_to_start and switch_states.get(f"{motor_id}_start"))
+                
+                # Condizione 2: Il movimento è verso END e il finecorsa END è attivo?
+                # La direzione verso END è l'opposto di dir_to_start
+                is_moving_to_end_and_blocked = (direction != dir_to_start and switch_states.get(f"{motor_id}_end"))
+        
+                if is_moving_to_start_and_blocked or is_moving_to_end_and_blocked:
                     logging.warning(f"Movimento per '{motor_id}' bloccato da finecorsa attivo.")
                     continue
-            config = self.motor_configs[motor_id]
-            move_data[motor_id] = {"steps": int(abs(distance) * config.steps_per_mm), "dir": direction, "config": config}
+                
+            # Se il codice arriva qui, il movimento è consentito
+            move_data[motor_id] = {
+        "steps": int(abs(distance) * config.steps_per_mm), 
+        "dir": direction, 
+        "config": config
+    }
 
         if not move_data: return None, set(), {}, {}
 
