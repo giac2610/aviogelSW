@@ -475,7 +475,8 @@ def motor_worker():
                             if motor_id != "conveyor":
                                 # Recupera la distanza e la configurazione del motore
                                 distance = remaining_targets[motor_id]
-                                config = MOTOR_CONFIGS[motor_id] 
+                                # config = MOTOR_CONFIGS[motor_id] 
+                                config = MOTOR_CONTROLLER.motor_configs.get(motor_id, None)
                                 # Calcola la direzione (0 o 1) del movimento residuo
                                 direction_for_pin = 1 if distance >= 0 else 0
                                 # Recupera la direzione "verso start" (0 o 1) dalla configurazione
