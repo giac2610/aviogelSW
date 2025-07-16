@@ -480,7 +480,7 @@ def motor_worker():
                                 # Calcola la direzione (0 o 1) del movimento residuo
                                 direction_for_pin = 1 if distance >= 0 else 0
                                 # Recupera la direzione "verso start" (0 o 1) dalla configurazione
-                                config_dir_to_start = config.get("homeDir", 1)
+                                config_dir_to_start = config.homeDir
                                 # Controlla se il movimento è verso un finecorsa attivo
                                 is_moving_towards_start = (direction_for_pin == config_dir_to_start)
                                 is_moving_towards_end = (direction_for_pin != config_dir_to_start)
