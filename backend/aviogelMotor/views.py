@@ -478,17 +478,14 @@ def motor_worker():
                                 config = MOTOR_CONFIGS[motor_id] 
                                 # Calcola la direzione (0 o 1) del movimento residuo
                                 direction_for_pin = 1 if distance >= 0 else 0
-
                                 # Recupera la direzione "verso start" (0 o 1) dalla configurazione
                                 config_dir_to_start = config.get("homeDir", 1)
-
                                 # Controlla se il movimento è verso un finecorsa attivo
                                 is_moving_towards_start = (direction_for_pin == config_dir_to_start)
                                 is_moving_towards_end = (direction_for_pin != config_dir_to_start)
-
+                                # final check for end switches
                                 is_blocked_at_start = is_moving_towards_start and MOTOR_CONTROLLER.switch_states.get(f"{motor_id}_start")
                                 is_blocked_at_end = is_moving_towards_end and MOTOR_CONTROLLER.switch_states.get(f"{motor_id}_end")
-
                                 if is_blocked_at_start or is_blocked_at_end:
                                     blocked.append(motor_id)
                         for motor_id in blocked:
