@@ -648,8 +648,11 @@ def stop_motor_view(request):
     try:
         logging.warning("Richiesta di STOP motori ricevuta.")
         while not motor_command_queue.empty():
-            try: motor_command_queue.get_nowait(); motor_command_queue.task_done()
-            except queue.Empty: continue
+            try: 
+                motor_command_queue.get_nowait() 
+                motor_command_queue.task_done()
+            except queue.Empty: 
+                continue
         if MOTOR_CONTROLLER.pi and MOTOR_CONTROLLER.pi.connected:
             MOTOR_CONTROLLER.pi.wave_tx_stop()
         logging.warning("Movimento fermato e coda di comandi pulita.")
