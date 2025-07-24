@@ -1,6 +1,7 @@
 
 import { Component } from '@angular/core';
 import { AlertController, ToastController } from '@ionic/angular';
+import { MotorsControlService } from 'src/app/services/motors-control.service';
 
 @Component({
   selector: 'tutorial-page',
@@ -10,7 +11,7 @@ import { AlertController, ToastController } from '@ionic/angular';
 })
 export class TutorialPage {
 
-  constructor(private toastController: ToastController, private alertController: AlertController){}
+  constructor(private toastController: ToastController, private alertController: AlertController, private motorsService: MotorsControlService,){}
 
   steps = ["Start", "Step 1", "Step 2", "Step 3", "Finish", "end", "end2"];
   currentStep = 0;
@@ -18,18 +19,25 @@ export class TutorialPage {
   toastMessage = "null";
 
   nextStep() {
+    if(this.currentStep == 4){
+      this.extruderBool = false;
+    }
     if (this.currentStep < this.steps.length - 1) {
       this.currentStep++;
     }
   }
 
   prevStep() {
+    if(this.currentStep == 4){
+      this.extruderBool = false;
+    }
     if (this.currentStep > 0) {
       this.currentStep--;
     }
   }
 
   extruderToggle(type: 'play' | 'pause'){
+    // SAREBBE SYRINGE IN REALTA
     // inviare una POST al backend per poi avviare l'erogazione
     this.extruderBool = !this.extruderBool;
     this.presentToast(type)
@@ -38,7 +46,17 @@ export class TutorialPage {
       setTimeout(() => {
         this.showAlert();
       }, 5000);
-
+      if(this.extruderBool){      
+        this.motorsService.syringeExtrusionStart().subscribe({
+          next: (response) => console.log('Syringe extrusion started:', response),
+          error: (err) => console.error('Error starting syringe extrusion:', err)
+        });
+      } else {
+        this.motorsService.stopMotor().subscribe({
+          next: (response) => console.log('Syringe extrusion stopped:', response),
+          error: (err) => console.error('Error stopping syringe extrusion:', err)
+        });
+      }
     }
   }
 
@@ -46,10 +64,10 @@ export class TutorialPage {
     
     if(messageType=='play'){
 
-      this.toastMessage = "Avviata l'estrusione";
+      this.toastMessage = "Extrution Started";
     }
     if(messageType == 'pause'){
-      this.toastMessage = "estrusione ferma"
+      this.toastMessage = "Estruxion Paused";
     }
     const toast = await this.toastController.create({
       message: this.toastMessage,
@@ -61,9 +79,9 @@ export class TutorialPage {
 
   async showAlert(){
     const alert = await this.alertController.create({
-      header: 'Sei ancora li?',
+      header: 'Are you still there?',
       cssClass: 'custom-alert',
-      message: 'Se è fuoriuscito liquido in maniera costante dall\'ugello puoi continuare, altrimenti clicca annulla',
+      message: 'If liquid is flowing steadily from the nozzle, you can continue. Otherwise, click cancel.',
       buttons: [
         {
           text: 'annulla',
@@ -79,6 +97,7 @@ export class TutorialPage {
           cssClass: 'alert-button-confirm',
           handler: () => {
             console.log('Alert confirmed');
+            this.extruderBool = false;
           },
         },
       ]

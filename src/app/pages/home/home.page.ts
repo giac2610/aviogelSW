@@ -25,16 +25,15 @@ export class HomePage {
   };
 
   constructor(
-    private usersService: RestAPIfromDjangoService,  
-    private modalCtrl: ModalController, 
+    private usersService: RestAPIfromDjangoService,
+    private modalCtrl: ModalController,
     private router: Router,
     private ledService: LedService,
-    private alertCtrl: AlertController
   ) {}
   
   ngOnInit() {
     this.ledService.startWaveEffect().subscribe({
-      next: (response) => console.log('Wave effect response:', response), // Stampa la risposta JSON
+      next: (response) => console.log('Wave effect response:', response),
       error: (err) => console.error('Error starting wave effect:', err)
     });
     this.loadUsers();
@@ -44,15 +43,15 @@ export class HomePage {
       this.usersService.getUsers().subscribe((data: User[]) => {
         if (data.length > 0) {
           this.users = data;
-          this.isLoading = false; // I dati sono stati caricati
-          clearInterval(interval); // Ferma il controllo
+          this.isLoading = false;
+          clearInterval(interval);
         } else {
           console.log("Nessun dato disponibile, riprovo tra 5 secondi...");
         }
       }, (error) => {
         console.error("Errore durante il caricamento degli utenti:", error);
       });
-    }, 5000); // Controlla ogni 5 secondi
+    }, 5000);
   }
 
 addUser(name: string, gender: string = 'male', expertUser: boolean = false) {
@@ -63,16 +62,13 @@ addUser(name: string, gender: string = 'male', expertUser: boolean = false) {
 }
 
 navigateNextPage(user: User){
-  // fare set di user.id nel backend per raccogliere dati
   this.usersService.setCurrentUser(user)
-  // navigazione in base all'attributo
   user.expertUser ? this.router.navigate(['/expert']) : this.router.navigate(['/tutorial'])
 
 }
 
 enterSetup(){
   this.numberOfTap++;
-  // console.log(this.numberOfTap)
   if(this.numberOfTap == this.requiredTap){
     this.router.navigate(['/setup'])
     this.numberOfTap = 0;
@@ -87,8 +83,7 @@ async openAddUserModal() {
     }
   });
   modal.onDidDismiss().then(result => {
-    if (result.data && result.data.action === 'save') {
-      // Chiamata al service per aggiungere l’utente
+    if (result.data && result.data.action === 'save'){
       this.addUser(
         result.data.user.name,
         result.data.user.gender,
@@ -98,8 +93,8 @@ async openAddUserModal() {
   });
   await modal.present();
 }
-async openEditUserModal(user: User, event: Event) {
-  event.stopPropagation(); // Evita il click sulla card
+async openEditUserModal(user: User, event: Event){
+  event.stopPropagation();
   const modal = await this.modalCtrl.create({
     component: EditUserModalComponent,
     componentProps: { user }
@@ -107,8 +102,6 @@ async openEditUserModal(user: User, event: Event) {
   modal.onDidDismiss().then(result => {
     if (result.data) {
       if (result.data.action === 'save') {
-        // Aggiorna l'utente (implementa updateUser nel service se necessario)
-        // this.usersService.updateUser(result.data.user).subscribe(...);
         this.usersService.modifyUser(result.data.user).subscribe({
           next: (response) => {
             console.log('User updated successfully', response);
@@ -117,7 +110,7 @@ async openEditUserModal(user: User, event: Event) {
             console.error('Error updating user', error);
           }
         })
-        Object.assign(user, result.data.user); // Aggiorna localmente
+        Object.assign(user, result.data.user);
       } else if (result.data.action === 'delete') {
         this.deleteUser(user);
       }
@@ -126,9 +119,7 @@ async openEditUserModal(user: User, event: Event) {
   await modal.present();
 }
 
-  deleteUser(user: User) {
-    // Qui dovrai implementare la chiamata API per eliminare l'utente
-    // Esempio:
+  deleteUser(user: User){
     this.usersService.deleteUser(user.id).subscribe({
       next: () => {
         this.users = this.users.filter(u => u.id !== user.id);

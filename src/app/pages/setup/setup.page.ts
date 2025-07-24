@@ -19,17 +19,15 @@ export class SetupPage implements OnInit, OnDestroy {
   settings!: Settings;
   testMode: boolean = false;
   isLoading = true; 
-  globalGranularity: number = 1; // Variabile globale per la granularità degli input numerici
-
+  globalGranularity: number = 1; 
   selectedPreset: string = '';
-  isThreshold: boolean = false; // Variabile per gestire la visualizzazione threshold
-
+  isThreshold: boolean = false; 
   thresholdStreamUrl: string = this.configService.getThresholdStreamUrl();
   normalStreamUrl: string = 'http://localhost:8000/camera/stream/';
-  selectedStream: string = 'normal'; // Default stream type
-  currentStreamUrl: string = this.normalStreamUrl; // Default stream URL
+  selectedStream: string = 'normal';
+  currentStreamUrl: string = this.normalStreamUrl; 
 
- // Oggetto che contiene le posizioni dei motori
+
 positions: { [key in "syringe" | "extruder" | "conveyor"]: number } = {
   syringe: 0,
   extruder: 0,
@@ -149,8 +147,6 @@ speedPollingSubscription!: Subscription;
     });
   }
 
-
-
 onPresetChange() {
   const [resolution, fps] = this.selectedPreset.split('@');
   const [width, height] = resolution.split('x').map(Number);
@@ -161,8 +157,7 @@ onPresetChange() {
 
   this.onCameraSettingChange();
 }
-  // Funzione per far muovere il motore
-  // selezionando il motore e la distanza
+
   goToPosition(motor: "syringe" | "extruder" | "conveyor", distance: number) {
     const maxTravel = this.settings.motors[motor].maxTravel;
 
@@ -172,12 +167,12 @@ onPresetChange() {
         console.log("request: ", targets);
         this.configService.moveMotor(targets).subscribe({
             next: (response) => {
-                // Mostra il messaggio JSON restituito dal backend
+                
                 this.presentToast(`Successo: ${response.status} - Target: ${JSON.stringify(response.targets)}`, 'success');
                 console.log('Risposta dal backend:', response);
             },
             error: (error) => {
-                // Mostra l'errore JSON restituito dal backend
+                
                 const errorMessage = error.error.detail || error.error.error || error.message;
                 this.presentToast(`Errore: ${errorMessage}`, 'danger');
             }
@@ -208,11 +203,9 @@ onPresetChange() {
   stopMotors() {
     this.configService.stopMotors().subscribe({
       next: (response) => {
-        // Mostra il messaggio dal backend
         this.presentToast(`Successo: ${response.status}`, 'success');
       },
       error: (error) => {
-        // Mostra l'errore dal backend
         this.presentToast(`Errore: ${error.error.detail || error.message}`, 'danger');
       }
     });
@@ -224,14 +217,13 @@ onPresetChange() {
   }
 
   saveSettings() {
-    // Aggiorna gli hertz e gli stepsPerMm per tutti i motori prima di salvare
     ["syringe", "extruder", "conveyor"].forEach((motor) => {
       const motorSettings = this.settings.motors[motor as "syringe" | "extruder" | "conveyor"];
       motorSettings.hertz = (motorSettings.maxSpeed * motorSettings.stepOneRev * motorSettings.microstep) / motorSettings.pitch;
       motorSettings.stepsPerMm = (motorSettings.stepOneRev * motorSettings.microstep) / motorSettings.pitch;
     });
 
-    console.log("Dati inviati al backend:", this.settings); // Log dei dati
+    console.log("Dati inviati al backend:", this.settings);
     this.configService.updateSettings(this.settings).subscribe({
       next: (response) => {
         console.log('Impostazioni salvate:', response);
@@ -284,20 +276,17 @@ onPresetChange() {
   updateStreamUrl() {
     switch (this.selectedStream) {
       case 'fixed':
-        // this.currentStreamUrl = `${this.normalStreamUrl}?mode=fixed&keyframe=true`; // Modalità fissa con keyframe
         this.currentStreamUrl = this.configService.getFixedPerspectiveStreamUrl(); // Modalità fissa con keyframe
         break
       case 'threshold':
-        // this.currentStreamUrl = `${this.normalStreamUrl}?mode=threshold&keyframe=true`; // Modalità threshold con keyframe
         this.currentStreamUrl = this.configService.getThresholdStreamUrl(); // Modalità threshold con keyframe
         break;
       case 'normal':
       default:
-        // this.currentStreamUrl = `${this.normalStreamUrl}?mode=normal&keyframe=true`; // Modalità normale con keyframe
         this.currentStreamUrl = this.configService.getNormalStreamUrl(); // Modalità normale con keyframe
         break;
     }
-    console.log(`Stream URL aggiornato a: ${this.currentStreamUrl}`); // Debug log
+    console.log(`Stream URL aggiornato a: ${this.currentStreamUrl}`);
   }
 
   onImageError() {

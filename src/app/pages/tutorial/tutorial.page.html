@@ -21,7 +21,7 @@
     <div class="index">
       <ion-card class="instruction" *ngIf="currentStep==1-1">
         <img  src="../../assets/icon/visual-inspection-icon.png" alt="visual inspection" style="flex-grow: 4;">
-        <p> make sure you have <b>visually inspected</b> the machinery and that there are no impediments to the process</p>
+        <p> Make sure you have <b>visually inspected</b> the machinery and that there are no impediments to the process</p>
       </ion-card>
       
       <ion-card class="instruction" *ngIf="currentStep==2-1">
@@ -33,6 +33,7 @@
         <img src="../../assets/icon/bucket-icon.png" alt="Chemical Reactor" style="flex-grow: 4;">
         <p > Inserisci un <b>contenitore</b> al di sotto dell'ugello per non far andare il prodotto sul tappeto quando uscirà dall'ugello.</p>
       </ion-card>
+
       <ion-card class="instruction" *ngIf="currentStep==4-1" style="flex-grow: 3;">
         <img src="../../assets/icon/extruder-icon.png" alt="Chemical Reactor">
         <p > Premere il pulsante <b>qui affianco</b> per avviare il processo di riempimento del condotto dell'ugello.</p>
@@ -41,8 +42,9 @@
         <img *ngIf="extruderBool==false" src="../../assets/icon/play-button-icon.png" alt="start"(click)="extruderToggle('play')">
         <img *ngIf="extruderBool==true" src="../../assets/icon/pause-button-icon.png" alt="pause" (click)="extruderToggle('pause')">
       </ion-card>
+      
     </div>
-    <!-- Pulsanti di controllo -->
+
     <div class="buttons-container">
       <ion-button (click)="prevStep()" [disabled]="currentStep === 0">Back</ion-button>
       <ion-button (click)="nextStep()" [disabled]="currentStep === steps.length - 1">Next</ion-button>
