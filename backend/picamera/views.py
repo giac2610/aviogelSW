@@ -460,10 +460,11 @@ def _generate_grid_and_path(world_coords, camera_settings, velocita_x=4.0, veloc
     print(f"Grid analysis results: {grid_analysis}")
     grid_analysis_spacing_x = grid_analysis.get('mean_spacing_x', 50.0)
     grid_analysis_spacing_y = grid_analysis.get('mean_spacing_y', 50.0)
-    if(grid_analysis_spacing_x < 40.0 or grid_analysis_spacing_y < 40.0 or grid_analysis_spacing_x > 55.0 or grid_analysis_spacing_y > 55.0):
-        return [], [], []
-    else:
-        NOMINAL_SPACING_X, NOMINAL_SPACING_Y = grid_analysis_spacing_x, grid_analysis_spacing_y
+    # if(grid_analysis_spacing_x < 40.0 or grid_analysis_spacing_y < 40.0 or grid_analysis_spacing_x > 55.0 or grid_analysis_spacing_y > 55.0):
+    #     return [], [], []
+    # else:
+    #     NOMINAL_SPACING_X, NOMINAL_SPACING_Y = grid_analysis_spacing_x, grid_analysis_spacing_y
+    NOMINAL_SPACING_X, NOMINAL_SPACING_Y = 50.0, 50.0
         
     rect = cv2.minAreaRect(points)
     box_corners_world = cv2.boxPoints(rect).tolist()
