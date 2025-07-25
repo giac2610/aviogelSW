@@ -346,45 +346,91 @@ def rotate_points(points, angle_deg, center):
     ])
     return np.dot(points - center, R.T) + center
 
-def check_grid_structure(points, std_dev_threshold=0.1):
+def _cluster_1d_coordinates(coords, tolerance):
+    """
+    Raggruppa coordinate 1D vicine in cluster e restituisce il centro di ogni cluster.
+    Questo serve a identificare le righe/colonne della griglia anche con dati rumorosi.
+    """
+    if len(coords) == 0:
+        return np.array([])
+    
+    # Ordina le coordinate per iniziare
+    coords = np.sort(coords)
+    
+    clusters = []
+    current_cluster = [coords[0]]
+    
+    for i in range(1, len(coords)):
+        # Se il punto attuale è vicino all'ultimo punto del cluster corrente...
+        if coords[i] - current_cluster[-1] < tolerance:
+            # ...lo aggiungiamo al cluster.
+            current_cluster.append(coords[i])
+        else:
+            # Altrimenti, il cluster precedente è completo. Calcoliamo la sua media.
+            clusters.append(np.mean(current_cluster))
+            # E iniziamo un nuovo cluster.
+            current_cluster = [coords[i]]
+            
+    # Aggiunge l'ultimo cluster
+    clusters.append(np.mean(current_cluster))
+    
+    return np.array(clusters)
+
+
+def check_grid_structure(points, std_dev_threshold=0.1, clustering_tolerance=2.0):
+    """
+    Analizza se un set di punti forma una griglia, con tolleranza per il rumore.
+
+    Args:
+        points (np.array): Array di coordinate (x, y).
+        std_dev_threshold (float): Soglia di deviazione standard normalizzata per la regolarità.
+        clustering_tolerance (float): La massima distanza tra due punti per considerarli
+                                      nella stessa riga o colonna.
+    Returns:
+        dict: Un dizionario con i risultati dell'analisi.
+    """
     if len(points) < 4:
-        # Need at least a 2x2 grid to have measurable spacing
-        return {'is_grid': False}
+        return {'is_grid': False, 'reason': 'Not enough points'}
 
     points = np.array(points, dtype=np.float32)
 
-    # 1. Find the orientation of the point cloud
+    # 1. Trova l'orientamento e allinea i punti (invariato)
     rect = cv2.minAreaRect(points)
     angle = rect[2]
-    
-    # Adjust angle for tall vs. wide rectangles
     width, height = rect[1]
     if height < width:
+        height, width = width, height
         angle += 90
-
-    # 2. Rotate the points to be axis-aligned
+    
     rotation_matrix = cv2.getRotationMatrix2D(tuple(rect[0]), angle, 1)
     aligned_points = cv2.transform(points.reshape(-1, 1, 2), rotation_matrix).reshape(-1, 2)
 
-    # 3. Analyze spacing on each axis
-    x_coords = np.sort(np.unique(aligned_points[:, 0].round(decimals=2)))
-    y_coords = np.sort(np.unique(aligned_points[:, 1].round(decimals=2)))
+    x_coords = aligned_points[:, 0]
+    y_coords = aligned_points[:, 1]
+    
+    # 2. USA IL CLUSTERING invece di np.unique
+    # Trova le posizioni delle righe e delle colonne raggruppando i punti vicini
+    grid_lines_x = _cluster_1d_coordinates(x_coords, clustering_tolerance)
+    grid_lines_y = _cluster_1d_coordinates(y_coords, clustering_tolerance)
 
-    # Calculate differences between consecutive unique coordinates
-    x_spacings = np.diff(x_coords)
-    y_spacings = np.diff(y_coords)
+    # Continua solo se abbiamo almeno una griglia 2x2
+    if len(grid_lines_x) < 2 or len(grid_lines_y) < 2:
+        return {
+            'is_grid': False, 
+            'reason': f'Not a 2D grid after clustering. Found {len(grid_lines_x)} cols and {len(grid_lines_y)} rows.'
+        }
+        
+    # 3. Calcola le spaziature tra le linee della griglia trovate
+    x_spacings = np.diff(grid_lines_x)
+    y_spacings = np.diff(grid_lines_y)
 
-    if len(x_spacings) == 0 or len(y_spacings) == 0:
-        return {'is_grid': False} # Not a 2D grid
-
-    # Calculate statistics
+    # Calcola statistiche (invariato)
     mean_spacing_x = np.mean(x_spacings)
     std_dev_x = np.std(x_spacings)
     mean_spacing_y = np.mean(y_spacings)
     std_dev_y = np.std(y_spacings)
 
-    # 4. Check if standard deviation is within tolerance
-    # We use a normalized standard deviation (Coefficient of Variation)
+    # 4. Controlla la regolarità (invariato)
     is_grid_x = (std_dev_x / mean_spacing_x) < std_dev_threshold if mean_spacing_x > 0 else True
     is_grid_y = (std_dev_y / mean_spacing_y) < std_dev_threshold if mean_spacing_y > 0 else True
     
@@ -394,6 +440,8 @@ def check_grid_structure(points, std_dev_threshold=0.1):
         'std_dev_x': std_dev_x,
         'mean_spacing_y': mean_spacing_y,
         'std_dev_y': std_dev_y,
+        'grid_lines_x_count': len(grid_lines_x),
+        'grid_lines_y_count': len(grid_lines_y)
     }
 
     return results
