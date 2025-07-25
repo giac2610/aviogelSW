@@ -363,7 +363,7 @@ onPresetChange() {
       next: (response) => {
         this.presentToast('Frame calibration saved successfully', 'success');
         console.log('Response from backend:', response);
-        this.router.navigate(['/blob-simulation']);
+        
       },
       error: (error) => {
         const errorMessage = error.error.detail || error.error.error || error.message;
