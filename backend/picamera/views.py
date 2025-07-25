@@ -346,21 +346,75 @@ def rotate_points(points, angle_deg, center):
     ])
     return np.dot(points - center, R.T) + center
 
+def check_grid_structure(points, std_dev_threshold=0.1):
+    if len(points) < 4:
+        # Need at least a 2x2 grid to have measurable spacing
+        return {'is_grid': False}
+
+    points = np.array(points, dtype=np.float32)
+
+    # 1. Find the orientation of the point cloud
+    rect = cv2.minAreaRect(points)
+    angle = rect[2]
+    
+    # Adjust angle for tall vs. wide rectangles
+    width, height = rect[1]
+    if height < width:
+        angle += 90
+
+    # 2. Rotate the points to be axis-aligned
+    rotation_matrix = cv2.getRotationMatrix2D(tuple(rect[0]), angle, 1)
+    aligned_points = cv2.transform(points.reshape(-1, 1, 2), rotation_matrix).reshape(-1, 2)
+
+    # 3. Analyze spacing on each axis
+    x_coords = np.sort(np.unique(aligned_points[:, 0].round(decimals=2)))
+    y_coords = np.sort(np.unique(aligned_points[:, 1].round(decimals=2)))
+
+    # Calculate differences between consecutive unique coordinates
+    x_spacings = np.diff(x_coords)
+    y_spacings = np.diff(y_coords)
+
+    if len(x_spacings) == 0 or len(y_spacings) == 0:
+        return {'is_grid': False} # Not a 2D grid
+
+    # Calculate statistics
+    mean_spacing_x = np.mean(x_spacings)
+    std_dev_x = np.std(x_spacings)
+    mean_spacing_y = np.mean(y_spacings)
+    std_dev_y = np.std(y_spacings)
+
+    # 4. Check if standard deviation is within tolerance
+    # We use a normalized standard deviation (Coefficient of Variation)
+    is_grid_x = (std_dev_x / mean_spacing_x) < std_dev_threshold if mean_spacing_x > 0 else True
+    is_grid_y = (std_dev_y / mean_spacing_y) < std_dev_threshold if mean_spacing_y > 0 else True
+    
+    results = {
+        'is_grid': is_grid_x and is_grid_y,
+        'mean_spacing_x': mean_spacing_x,
+        'std_dev_x': std_dev_x,
+        'mean_spacing_y': mean_spacing_y,
+        'std_dev_y': std_dev_y,
+    }
+
+    return results
+
 def _generate_grid_and_path(world_coords, camera_settings, velocita_x=4.0, velocita_y=1.0):
     # --- Costanti di Base ---
     NOMINAL_SPACING_X, NOMINAL_SPACING_Y = 50.0, 50.0
     SPACING_TOLERANCE = 1.5  
-    MAX_COLS, MAX_ROWS = 6, 8 # Limiti massimi della griglia
+    MAX_COLS, MAX_ROWS = 6, 8
     EXTRUDER_TRAVEL_DISTANCE = 270.0
 
     points = np.array(world_coords, dtype=np.float32)
     if len(points) < 3:
         return [], [], []
 
+    grid_analysis = check_grid_structure(world_coords)
+    print(f"Grid analysis results: {grid_analysis}")
+    
     rect = cv2.minAreaRect(points)
     box_corners_world = cv2.boxPoints(rect).tolist()
     center = rect[0]
-    # width, height = rect[1]
     width, height = rect[1]
     angle = rect[2]
     if height < width:
