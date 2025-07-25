@@ -369,6 +369,7 @@ def _generate_grid_and_path(world_coords, camera_settings, velocita_x=4.0, veloc
     width = min(width, 265.0)
     height = min(height, 365.0)
 
+    print(f"box width: {width}, height: {height}, angle: {angle}")
     # --- Calcolo Colonne e Spacing X ---
     final_spacing_x = NOMINAL_SPACING_X
     num_cols = 0
@@ -818,7 +819,7 @@ def set_fixed_perspective_view(request):
     dist_coeffs = np.array(cam_calib.get("distortion_coefficients"))
     if cam_matrix.size == 0 or dist_coeffs.size == 0:
         return JsonResponse({"status": "error", "message": "Camera not calibrated."}, status=400)
-        
+    
     frame = get_frame(release_after=True)
     if frame is None: return JsonResponse({"status": "error", "message": "Could not get frame."}, status=500)
     
