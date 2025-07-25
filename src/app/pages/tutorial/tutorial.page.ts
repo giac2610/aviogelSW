@@ -62,7 +62,7 @@ export class TutorialPage {
 
   async presentToast(messageType: string) {
     
-    if(messageType=='play'){
+    if(messageType=='play'){ 
 
       this.toastMessage = "Extrution Started";
     }
