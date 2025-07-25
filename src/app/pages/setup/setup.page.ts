@@ -356,8 +356,20 @@ onPresetChange() {
   }
 
   goToImageCalGen(){
-    this.router.navigate(['/blob-simulation']).then(() => {
-      window.location.reload();
+    // this.router.navigate(['/blob-simulation']).then(() => {
+    //   window.location.reload();
+    // });
+    this.configService.saveFrameCalibration().subscribe({
+      next: (response) => {
+        this.presentToast('Frame calibration saved successfully', 'success');
+        console.log('Response from backend:', response);
+        this.router.navigate(['/blob-simulation']);
+      },
+      error: (error) => {
+        const errorMessage = error.error.detail || error.error.error || error.message;
+        this.presentToast(`Error saving frame calibration: ${errorMessage}`, 'danger');
+        console.log('Response from backend:', errorMessage);
+      }
     });
   }
 
