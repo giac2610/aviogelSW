@@ -1,11 +1,3 @@
-# -*- coding: utf-8 -*-
-
-# ==============================================================================
-# ARCHITETTURA STREAMING con Accelerazione per Motore (Versione Finale Stabile)
-# Questa versione implementa la pianificazione a macro-movimenti e
-# un'esecuzione "a tappe" continua per la massima stabilità e fluidità.
-# ==============================================================================
-
 import numpy as np
 import json
 import os
@@ -58,7 +50,11 @@ SWITCHES = {
 }
 
 # ==============================================================================
-# ARCHITETTURA REFACTORING: Classi per la Gestione del Movimento
+# ARCHITETTURA: Classi per la Gestione del Movimento:
+# - MotorConfig: Struttura dati per la configurazione di un motore.
+# - MotionPlanner: Pianificazione dei movimenti con profili trapezoidali.
+# - MotorController: Gestione dei motori e interazione con pigpio.
+# - motor_worker: Worker per eseguire i movimenti in un ciclo continuo.
 # ==============================================================================
 
 @dataclass
@@ -79,7 +75,6 @@ class MotionPlanner:
         logging.warning(f"MotionPlanner inizializzato con motori: {list(motor_configs.keys())}")
 
     def _generate_trapezoidal_profile(self, total_steps: int, max_freq_hz: float, accel_mmss: float, steps_per_mm: float) -> list[float]:
-        # Questa funzione è corretta
         if total_steps == 0: return []
         v_max = max_freq_hz / steps_per_mm
         if accel_mmss <= 0: accel_mmss = 1.0
@@ -138,18 +133,17 @@ class MotionPlanner:
                 
             # Se il codice arriva qui, il movimento è consentito
             move_data[motor_id] = {
-        "steps": int(abs(distance) * config.steps_per_mm), 
-        "dir": direction, 
-        "config": config
-    }
+                "steps": int(abs(distance) * config.steps_per_mm), 
+                "dir": direction, 
+                "config": config
+            }
 
         if not move_data: return None, set(), {}, {}
 
         master_id = max(move_data, key=lambda k: move_data[k]["steps"])
         master_data = move_data[master_id]
 
-        # --- MODIFICA CHIAVE ---
-        # Salviamo i passi totali del master PRIMA di troncarli. Questo è il valore corretto per l'algoritmo.
+        # Salviamo i passi totali del master PRIMA di troncarli
         master_steps_total = master_data["steps"]
 
         # Ora possiamo tranquillamente troncare il numero di passi per il blocco corrente.
@@ -169,19 +163,18 @@ class MotionPlanner:
         directions_to_set = {mid: move['dir'] for mid, move in move_data.items()}
 
         def single_pulse_generator():
-            # --- MODIFICA CHIAVE ---
-            # L'algoritmo di Bresenham ora usa master_steps_total per il calcolo della proporzione.
+            # L'algoritmo di Bresenham usa master_steps_total per il calcolo della proporzione.
             bresenham_errors = {mid: -master_steps_total / 2 for mid in move_data if mid != master_id}
 
-            # Il ciclo for, invece, itera solo per la lunghezza del blocco corrente.
+            # Il ciclo for itera solo per la lunghezza del blocco corrente.
             for i in range(master_steps_chunk):
                 on_mask = 1 << master_data["config"].step_pin
                 for slave_id in bresenham_errors:
-                    # L'incremento usa ancora i passi totali dello slave (corretto).
+                    # L'incremento usa ancora i passi totali dello slave.
                     bresenham_errors[slave_id] += move_data[slave_id]["steps"]
                     if bresenham_errors[slave_id] > 0:
                         on_mask |= 1 << move_data[slave_id]["config"].step_pin
-                        # Il decremento usa i passi totali del master (ora è corretto!).
+                        # Il decremento usa i passi totali del master.
                         bresenham_errors[slave_id] -= master_steps_total
 
                 total_period_us = periods_list[i]
@@ -303,7 +296,7 @@ class MotorController:
                 self.pi.wave_tx_stop()
                 homing_hit.set()
 
-        # Callback per il finecorsa di END (emergenza) ##
+        # Callback per il finecorsa di END
         def end_switch_callback(gpio, level, tick):
             if level == 1:
                 self.pi.wave_tx_stop()
@@ -518,6 +511,7 @@ def motor_worker():
                                     logging.warning(f"Motore '{motor_id}' ancora bloccato da finecorsa: non verrà accodato nel residuo.")
                                     del remaining_targets[motor_id]
                         # Accoda solo se rimangono target validi
+                        #TODO: Così accoda alla fine di tutti i movimenti, non mettere in coda ma in testa
                         if any(abs(dist) > 0.001 for dist in remaining_targets.values()):
                             logging.warning(f"Accodo movimento residuo per motori non bloccati: {remaining_targets}")
                             motor_command_queue.put({"command": "move", "targets": remaining_targets.copy()})
@@ -538,7 +532,6 @@ def motor_worker():
                         if not all_wave_ids:
                             continue
                         
-                        # Esecuzione del blocco
                         for motor_id, direction in directions.items():
                             MOTOR_CONTROLLER.pi.write(MOTOR_CONTROLLER.motor_configs[motor_id].dir_pin, direction)
                         for motor_name in active_motors:
@@ -599,10 +592,8 @@ else:
     logging.warning("Processo di reload rilevato. Il MotorWorker non verrà avviato qui.")
 
 # ==============================================================================
-# API VIEWS (Interfaccia esterna preservata)
+# API VIEWS
 # ==============================================================================
-# Le API Views rimangono invariate. Sono state omesse per brevità ma sono identiche
-# a quelle nel tuo file.
 @api_view(['POST'])
 def move_motor_view(request):
     try:

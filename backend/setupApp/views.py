@@ -8,7 +8,6 @@ from .serializers import SettingsSerializer
 from aviogelMotor.views import load_system_config
 # Percorso del file settings.json
 SETTINGS_FILE = os.path.join(settings.BASE_DIR, 'config', 'setup.json')
-# print(SETTINGS_FILE)
 
 def read_settings():
     """Legge il file settings.json e restituisce i dati"""
@@ -33,12 +32,10 @@ def update_settings(request):
     """Aggiorna il file settings.json con nuovi dati"""
     settings_data = read_settings()
     serializer = SettingsSerializer(data=request.data, partial=True)
-    # print("Dati ricevuti dal frontend:", request.data)  # Log dei dati ricevuti
     if serializer.is_valid():
         settings_data.update(serializer.validated_data)  # Aggiorna solo i campi forniti
         write_settings(settings_data)
         load_system_config()
         return Response({"success": True, "settings": settings_data})
     
-    # print("Errori del serializer:", serializer.errors)  # Log degli errori
     return Response(serializer.errors, status=400)

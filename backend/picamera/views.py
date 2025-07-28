@@ -517,7 +517,6 @@ def _generate_grid_and_path(world_coords, camera_settings, velocita_x=4.0, veloc
     
     ### ANCHOR DOWN LEFT POINT
     # Ruota gli spigoli del rettangolo per allinearli agli assi
-    # box_corners_rot = rotate_points(np.array(box_corners_world), -angle, center)
     box_corners_rot = rotate_points(np.array(box_corners_world), -angle, center)
     
     anchor_point_rot = np.array([
@@ -529,9 +528,7 @@ def _generate_grid_and_path(world_coords, camera_settings, velocita_x=4.0, veloc
     for r in range(num_rows):
         for c in range(num_cols):
             x = anchor_point_rot[0] - c * final_spacing_x
-            # x = anchor_point_rot[0] + c * final_spacing_x
             y = anchor_point_rot[1] - r * final_spacing_y
-            # y = anchor_point_rot[1] + r * final_spacing_y
             ideal_grid_rot.append([x, y])
 
     ideal_grid_world = rotate_points(np.array(ideal_grid_rot), angle, center)
@@ -598,8 +595,10 @@ def deinitialize_camera_endpoint(request):
                 if sys.platform == "darwin":
                     camera_instance.release()
                 else:
-                    if hasattr(camera_instance, 'stop'): camera_instance.stop()
-                    if hasattr(camera_instance, 'close'): camera_instance.close()
+                    if hasattr(camera_instance, 'stop'): 
+                        camera_instance.stop()
+                    if hasattr(camera_instance, 'close'): 
+                        camera_instance.close()
                 camera_instance = None
                 print("[INFO] Camera deinitialized.")
                 return JsonResponse({"status": "success", "message": "Camera deinitialized."})
@@ -648,7 +647,6 @@ def compute_route(request):
         print(f"Errore richiesta velocità motori: {e}")
         velocita_x, velocita_y = 4.0, 1.0
 
-    # Usa la stessa funzione di plot_graph!
     graph, hamiltonian_path, info = get_graph_and_tsp_path(velocita_x, velocita_y)
     if graph is None or hamiltonian_path is None:
         return JsonResponse({"status": "error", "message": info.get("message", "Errore generico")}, status=500)
@@ -661,7 +659,7 @@ def compute_route(request):
         motor_commands.append({"extruder": round(extruder_mm, 4), "conveyor": round(conveyor_mm, 4)})
         motor_commands.append({"syringe": -0.75})
 
-    # Genera il plot come immagine base64 (opzionale)
+    # Genera il plot come immagine base64
     plt.figure(figsize=(8, 6))
     pos = nx.get_node_attributes(graph, 'pos')
     nx.draw_networkx_nodes(graph, pos, node_color='skyblue', node_size=500)
@@ -749,30 +747,26 @@ def reproject_points_feed(request):
                     
                     if world_coords_data.get('status') == 'success' and world_coords_data.get('coordinates'):
                         ideal_grid_world, ordered_path_world, box_corners = _generate_grid_and_path(world_coords_data['coordinates'], camera_settings, velocita_x, velocita_y)
-                        # 2. Per proiettare, dobbiamo riconvertire i punti nel sistema "top-left"
-                        #    che la matrice di omografia (H_inv) si aspetta.
+                        # Per proiettare, dobbiamo riconvertire i punti nel sistema "top-left" che la matrice di omografia (H_inv) si aspetta.
                         fixed_persp_cfg = camera_settings.get("fixed_perspective", {})
                         OUTPUT_WIDTH = fixed_persp_cfg.get("output_width", 1000)
                         OUTPUT_HEIGHT = fixed_persp_cfg.get("output_height", 800)
                         
-                        # 1. Controlla se il percorso esiste e prendi la coordinata X del primo punto
+                        # Controlla se il percorso esiste e prendi la coordinata X del primo punto
                         if ordered_path_world:
                             start_x_world = ordered_path_world[0][0]
 
-                            # 2. Definisci i due punti della linea verticale nel sistema di coordinate del mondo
-                            #    La linea va da y=0 a y=OUTPUT_HEIGHT alla stessa coordinata x.
+                            # Definisci i due punti della linea verticale nel sistema di coordinate del mondo
                             line_points_world = [
                                 [start_x_world, 0],
                                 [start_x_world, OUTPUT_HEIGHT]
                             ]
-
-                            # 3. Converti i punti per la proiezione (dal sistema bottom-left a top-left)
+                            # Converti i punti per la proiezione (dal sistema bottom-left a top-left)
                             line_to_project = [[OUTPUT_WIDTH - p[0], OUTPUT_HEIGHT - p[1]] for p in line_points_world]
-
                             line_world_pts_np = np.array(line_to_project, dtype=np.float32).reshape(-1, 1, 2)
                             line_pixels_np = cv2.perspectiveTransform(line_world_pts_np, H_inv)
 
-                            # 4. Disegna la linea proiettata sul frame
+                            # Disegna la linea proiettata sul frame
                             if line_pixels_np is not None:
                                 pt1_pixel = tuple(line_pixels_np[0][0].astype(int))
                                 pt2_pixel = tuple(line_pixels_np[1][0].astype(int))
@@ -782,8 +776,7 @@ def reproject_points_feed(request):
                             box_to_project = [[OUTPUT_WIDTH - p[0], OUTPUT_HEIGHT - p[1]] for p in box_corners]
                             box_world_pts_np = np.array(box_to_project, dtype=np.float32).reshape(-1, 1, 2)
                             box_pixels_np = cv2.perspectiveTransform(box_world_pts_np, H_inv)
-                            if box_pixels_np is not None:
-                                # Disegna il contorno del rettangolo (es. in giallo)
+                            if box_pixels_np is not None:                                
                                 box_contour = box_pixels_np.astype(np.int32)
                                 cv2.drawContours(undistorted_frame, [box_contour], 0, (0, 255, 255), 2)
     
@@ -799,7 +792,6 @@ def reproject_points_feed(request):
                         # Riconverti il percorso nel sistema top-left SOLO per la proiezione
                         path_to_project = [[OUTPUT_WIDTH - p[0], OUTPUT_HEIGHT - p[1]] for p in ordered_path_world]
                         path_world_pts_np = np.array(path_to_project, dtype=np.float32).reshape(-1, 1, 2)
-                        # path_world_pts_np = np.array(ordered_path_world, dtype=np.float32).reshape(-1, 1, 2)
                         path_pixels_np = cv2.perspectiveTransform(path_world_pts_np, H_inv)
                         if path_pixels_np is not None:
                             path_pixel_coords = [tuple(p[0].astype(int)) for p in path_pixels_np]
@@ -1112,7 +1104,6 @@ def fixed_perspective_stream(request):
                         if H_ref is None: cv2.putText(err_f_loop, "Fixed View Not Set", (30,30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255,255,0),1)
                         _, buf_err = cv2.imencode('.jpg', err_f_loop)
                         yield (b'--frame\r\nContent-Type: image/jpeg\r\n\r\n' + buf_err.tobytes() + b'\r\n')
-                        # time.sleep(0.1)
                         continue
 
                     undistorted_live = cv2.undistort(frame_live, cam_matrix, dist_coeffs, None, new_cam_matrix_stream)
@@ -1121,7 +1112,7 @@ def fixed_perspective_stream(request):
                     if H_ref is not None:
                         output_img = cv2.warpPerspective(undistorted_live, H_ref, (OUT_W, OUT_H))
                         
-                        # LOGICA BLOB DETECTION A INTERVALLI (MODO FIXED)
+                        # LOGICA BLOB DETECTION A INTERVALLI
                         if frame_count % blob_detection_interval == 0:
                             original_height_undistorted, original_width_undistorted = undistorted_live.shape[:2]
                             blob_processing_height = int(original_height_undistorted * (blob_processing_width / original_width_undistorted))
@@ -1138,10 +1129,8 @@ def fixed_perspective_stream(request):
                                 blob_params_for_stream.get("maxThreshold", 255),
                                 cv2.THRESH_BINARY
                             )
-                            # Passiamo i fattori di scala a detect_blobs_from_params
                             keypoints_resized = detect_blobs_from_params(thresh_for_blobs, blob_params_for_stream, scale_x, scale_y)
                             
-                            # Riscala i keypoint alle coordinate dell'immagine undistorta originale
                             last_keypoints_undistorted_for_drawing = []
                             for kp in keypoints_resized:
                                 new_x = kp.pt[0] * scale_x
@@ -1149,10 +1138,7 @@ def fixed_perspective_stream(request):
                                 new_size = kp.size * ((scale_x + scale_y) / 2)
                                 last_keypoints_undistorted_for_drawing.append(cv2.KeyPoint(new_x, new_y, new_size, kp.angle, kp.response, kp.octave, kp.class_id))
                         
-                        # Usa gli ultimi keypoint rilevati (o i nuovi) per disegnare
                         if last_keypoints_undistorted_for_drawing:
-                            # Questi keypoint sono già nelle coordinate dell'immagine undistorta.
-                            # Quindi non serve undistortPoints su di essi. Basta trasformarli con H_ref.
                             pts_undist = np.array([kp.pt for kp in last_keypoints_undistorted_for_drawing], dtype=np.float32).reshape(-1,1,2)
                             pts_warped = cv2.perspectiveTransform(pts_undist, H_ref)
                             

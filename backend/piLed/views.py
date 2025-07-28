@@ -73,7 +73,7 @@ def wave_effect_with_logs(strip, debug_logs):
             if stop_event.is_set():  # Controlla il flag durante il ciclo
                 debug_logs.append("Wave effect stopped")
                 return
-            # Accendi un gruppo di LED
+            # Accendi il gruppo di LED
             for j in range(group_size):
                 if i + j < LED_COUNT:
                     strip[i + j] = (0, 0, 255)  # Blu
@@ -85,9 +85,9 @@ def wave_effect_with_logs(strip, debug_logs):
             # Spegni il gruppo di LED
             for j in range(group_size):
                 if i + j < LED_COUNT:
-                    strip[i + j] = (0, 0, 0)  # Spegni il LED
+                    strip[i + j] = (0, 0, 0) 
         for i in reversed(range(LED_COUNT)):
-            if stop_event.is_set():  # Controlla il flag durante il ciclo
+            if stop_event.is_set():
                 debug_logs.append("Wave effect stopped")
                 return
             # Accendi un gruppo di LED
@@ -102,7 +102,7 @@ def wave_effect_with_logs(strip, debug_logs):
             # Spegni il gruppo di LED
             for j in range(group_size):
                 if i - j >= 0:
-                    strip[i - j] = (0, 0, 0)  # Spegni il LED
+                    strip[i - j] = (0, 0, 0)
 @csrf_exempt
 def stop_led_effect(request):
     if request.method == 'POST':
@@ -116,7 +116,7 @@ def green_loading_with_logs(strip, debug_logs):
         if stop_event.is_set():  # Controlla il flag durante il ciclo
             debug_logs.append("Green loading effect stopped")
             return
-        strip[i] = (0, 255, 0)  # Verde
+        strip[i] = (0, 255, 0)
         try:
             strip.show()
         except Exception as e:
@@ -126,7 +126,7 @@ def green_loading_with_logs(strip, debug_logs):
         if stop_event.is_set():  # Controlla il flag durante il ciclo
             debug_logs.append("Green loading effect stopped")
             return
-        strip[i] = (0, 0, 0)  # Spegni il LED
+        strip[i] = (0, 0, 0)
         try:
             strip.show()
         except Exception as e:
@@ -141,7 +141,7 @@ def yellow_blink_with_logs(strip, debug_logs):
             debug_logs.append("Yellow blink effect stopped")
             return
         for i in range(LED_COUNT):
-            strip[i] = (255, 255, 0)  # Giallo
+            strip[i] = (255, 255, 0)
         try:
             strip.show()
         except Exception as e:
@@ -151,7 +151,7 @@ def yellow_blink_with_logs(strip, debug_logs):
             debug_logs.append("Yellow blink effect stopped")
             return
         for i in range(LED_COUNT):
-            strip[i] = (0, 0, 0)  # Spegni il LED
+            strip[i] = (0, 0, 0)
         try:
             strip.show()
         except Exception as e:
@@ -165,7 +165,7 @@ def red_static_with_logs(strip, debug_logs):
         if stop_event.is_set():  # Controlla il flag durante il ciclo
             debug_logs.append("Red static effect stopped")
             return
-        strip[i] = (255, 0, 0)  # Rosso
+        strip[i] = (255, 0, 0)
     try:
         strip.show()
     except Exception as e:
