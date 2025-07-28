@@ -3,7 +3,6 @@ import { MotorsControlService } from '../../services/motors-control.service';
 import { ToastController, AlertController } from '@ionic/angular';
 import { SetupAPIService } from 'src/app/services/setup-api.service';
 import { switchMap, tap, catchError } from 'rxjs/operators';
-import { of } from 'rxjs';
 
 @Component({
   selector: 'app-blob-simulation',
@@ -16,7 +15,6 @@ export class BlobSimulationPage implements OnInit {
   coordinates: [number, number][] = [];
   error: string | null = null;
   streamUrl: string = '';
-  // graphUrl: string = 'http://localhost:8000/camera/plot_graph/';
   graphUrl: string = '';
   isCameraInit: boolean = false;
 
@@ -33,16 +31,6 @@ export class BlobSimulationPage implements OnInit {
   }
 
   ngOnInit() {
-    // this.configService.initializeCamera().subscribe({
-    //   next: (res) => {
-    //     if (res.success) {
-    //       this.presentToast('Camera inizializzata con successo');
-    //     } else {
-    //       this.presentToast('Errore nell\'inizializzazione della camera', 'danger');
-    //     }
-    //   },
-    // });
-    // this.getRealCoordinates();
   }
 
 
