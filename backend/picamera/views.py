@@ -377,7 +377,7 @@ def _cluster_1d_coordinates(coords, tolerance):
     return np.array(clusters)
 
 
-def check_grid_structure(points, std_dev_threshold=0.1, clustering_tolerance=2.0):
+def check_grid_structure(points, std_dev_threshold=0.3, clustering_tolerance=3.0):
     """
     Analizza se un set di punti forma una griglia, con tolleranza per il rumore.
 
@@ -455,7 +455,7 @@ def _generate_grid_and_path(world_coords, camera_settings, velocita_x=4.0, veloc
     # --- Costanti di Base ---
     SPACING_TOLERANCE = 1.5  
     MAX_COLS, MAX_ROWS = 6, 8
-    EXTRUDER_TRAVEL_DISTANCE = 270.0
+    EXTRUDER_TRAVEL_DISTANCE = 290.0
 
     points = np.array(world_coords, dtype=np.float32)
     if len(points) < 4:
