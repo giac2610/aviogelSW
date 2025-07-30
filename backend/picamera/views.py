@@ -261,7 +261,7 @@ def get_world_coordinates_data():
     
     # 2. Definisci i limiti di filtraggio
     min_x_bound = extruder_origin_x
-    max_x_bound = extruder_origin_x + 270
+    max_x_bound = extruder_origin_x + 290
 
     # 3. Filtra le coordinate nel sistema "top-left"
     
@@ -384,8 +384,7 @@ def check_grid_structure(points, std_dev_threshold=0.1, clustering_tolerance=2.0
     Args:
         points (np.array): Array di coordinate (x, y).
         std_dev_threshold (float): Soglia di deviazione standard normalizzata per la regolarità.
-        clustering_tolerance (float): La massima distanza tra due punti per considerarli
-                                      nella stessa riga o colonna.
+        clustering_tolerance (float): La massima distanza tra due punti per considerarli nella stessa riga o colonna.
     Returns:
         dict: Un dizionario con i risultati dell'analisi.
     """
