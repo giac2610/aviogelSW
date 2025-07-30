@@ -434,9 +434,15 @@ def check_grid_structure(points, std_dev_threshold=0.1, clustering_tolerance=2.0
     is_grid_x = (std_dev_x / mean_spacing_x) < std_dev_threshold if mean_spacing_x > 0 else True
     is_grid_y = (std_dev_y / mean_spacing_y) < std_dev_threshold if mean_spacing_y > 0 else True
     
+    ideal_grid_rot = []
+    for y_pos in grid_lines_y:
+        for x_pos in grid_lines_x:
+            ideal_grid_rot.append([x_pos, y_pos])
+        
     results = {
         'is_grid': is_grid_x and is_grid_y,
         'mean_spacing_x': mean_spacing_x,
+        'ideal_grid_rot': ideal_grid_rot,
         'std_dev_x': std_dev_x,
         'mean_spacing_y': mean_spacing_y,
         'std_dev_y': std_dev_y,
@@ -453,7 +459,7 @@ def _generate_grid_and_path(world_coords, camera_settings, velocita_x=4.0, veloc
     EXTRUDER_TRAVEL_DISTANCE = 270.0
 
     points = np.array(world_coords, dtype=np.float32)
-    if len(points) < 3:
+    if len(points) < 4:
         return [], [], []
 
     grid_analysis = check_grid_structure(world_coords)
@@ -531,6 +537,8 @@ def _generate_grid_and_path(world_coords, camera_settings, velocita_x=4.0, veloc
             y = anchor_point_rot[1] - r * final_spacing_y
             ideal_grid_rot.append([x, y])
 
+    ideal_grid_rot = grid_analysis.get('ideal_grid_rot', ideal_grid_rot)
+    
     ideal_grid_world = rotate_points(np.array(ideal_grid_rot), angle, center)
     
     # --- Filtro e Logica TSP (invariati) ---
@@ -573,7 +581,6 @@ def get_graph_and_tsp_path(velocita_x=4.0, velocita_y=1.0):
     return get_graph_and_tsp_path_with_speeds(velocita_x, velocita_y)
 
 # --- Django Endpoints ---
-
 @csrf_exempt
 @require_POST
 def initialize_camera_endpoint(request):
@@ -658,7 +665,7 @@ def compute_route(request):
         conveyor_mm = nodi[i][1] - nodi[i-1][1]
         motor_commands.append({"extruder": round(extruder_mm, 4), "conveyor": round(conveyor_mm, 4)})
         motor_commands.append({"syringe": -0.75})
-
+ 
     # Genera il plot come immagine base64
     plt.figure(figsize=(8, 6))
     pos = nx.get_node_attributes(graph, 'pos')
