@@ -377,7 +377,7 @@ def _cluster_1d_coordinates(coords, tolerance):
     return np.array(clusters)
 
 
-def check_grid_structure(points, std_dev_threshold=0.3, clustering_tolerance=3.0):
+def check_grid_structure(points, std_dev_threshold=0.1, clustering_tolerance=5.0):
     """
     Analizza se un set di punti forma una griglia, con tolleranza per il rumore.
 
@@ -465,11 +465,11 @@ def _generate_grid_and_path(world_coords, camera_settings, velocita_x=4.0, veloc
     print(f"Grid analysis results: {grid_analysis}")
     grid_analysis_spacing_x = grid_analysis.get('mean_spacing_x', 50.0)
     grid_analysis_spacing_y = grid_analysis.get('mean_spacing_y', 50.0)
-    # if(grid_analysis_spacing_x < 40.0 or grid_analysis_spacing_y < 40.0 or grid_analysis_spacing_x > 55.0 or grid_analysis_spacing_y > 55.0):
-    #     return [], [], []
-    # else:
-    #     NOMINAL_SPACING_X, NOMINAL_SPACING_Y = grid_analysis_spacing_x, grid_analysis_spacing_y
-    NOMINAL_SPACING_X, NOMINAL_SPACING_Y = 50.0, 50.0
+    if(grid_analysis_spacing_x < 40.0 or grid_analysis_spacing_y < 40.0 or grid_analysis_spacing_x > 55.0 or grid_analysis_spacing_y > 55.0):
+        return [], [], []
+    else:
+        NOMINAL_SPACING_X, NOMINAL_SPACING_Y = grid_analysis_spacing_x, grid_analysis_spacing_y
+    # NOMINAL_SPACING_X, NOMINAL_SPACING_Y = 50.0, 50.0
         
     rect = cv2.minAreaRect(points)
     box_corners_world = cv2.boxPoints(rect).tolist()
@@ -536,6 +536,7 @@ def _generate_grid_and_path(world_coords, camera_settings, velocita_x=4.0, veloc
             y = anchor_point_rot[1] - r * final_spacing_y
             ideal_grid_rot.append([x, y])
 
+    # using the ideal grid from the analysis
     ideal_grid_rot = grid_analysis.get('ideal_grid_rot', ideal_grid_rot)
     
     ideal_grid_world = rotate_points(np.array(ideal_grid_rot), angle, center)
