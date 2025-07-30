@@ -437,6 +437,13 @@ def check_grid_structure(points, std_dev_threshold=0.1, clustering_tolerance=5.0
     is_grid_x = (std_dev_x / mean_spacing_x) < std_dev_threshold if mean_spacing_x > 0 else True
     is_grid_y = (std_dev_y / mean_spacing_y) < std_dev_threshold if mean_spacing_y > 0 else True
     
+    is_grid_x = is_grid_x and ( 45 < mean_spacing_x < 55)
+    is_grid_y = is_grid_y and ( 45 < mean_spacing_y < 55)
+    if not (is_grid_x and is_grid_y):
+        return {
+            'is_grid': False, 
+            'reason': f'Grid lines irregular: mean spacing x={mean_spacing_x}, std dev x={std_dev_x}, mean spacing y={mean_spacing_y}, std dev y={std_dev_y}.'
+        }
     ideal_grid_rot = []
     for y_pos in grid_lines_y:
         for x_pos in grid_lines_x:
@@ -468,6 +475,7 @@ def _generate_grid_and_path(world_coords, camera_settings, velocita_x=4.0, veloc
     grid_analysis = check_grid_structure(world_coords)
     print(f"Grid analysis results: {grid_analysis}")
     if grid_analysis.get('is_grid') is False:
+        print(f"Grid analysis failed: {grid_analysis.get('reason', 'Unknown reason')}")
         return [], [], []
     grid_analysis_spacing_x = grid_analysis.get('mean_spacing_x', 50.0)
     grid_analysis_spacing_y = grid_analysis.get('mean_spacing_y', 50.0)
@@ -924,40 +932,40 @@ def calibrate_camera_endpoint(request):
     else:
         return JsonResponse({"status": "error", "message": "cv2.calibrateCamera failed."}, status=500)
 
-@csrf_exempt
-@require_POST
-def set_fixed_perspective_view(request):
-    cam_calib = camera_settings.get("calibration", {})
-    cam_matrix = np.array(cam_calib.get("camera_matrix"))
-    dist_coeffs = np.array(cam_calib.get("distortion_coefficients"))
-    if cam_matrix.size == 0 or dist_coeffs.size == 0:
-        return JsonResponse({"status": "error", "message": "Camera not calibrated."}, status=400)
+# @csrf_exempt
+# @require_POST
+# def set_fixed_perspective_view(request):
+#     cam_calib = camera_settings.get("calibration", {})
+#     cam_matrix = np.array(cam_calib.get("camera_matrix"))
+#     dist_coeffs = np.array(cam_calib.get("distortion_coefficients"))
+#     if cam_matrix.size == 0 or dist_coeffs.size == 0:
+#         return JsonResponse({"status": "error", "message": "Camera not calibrated."}, status=400)
     
-    frame = get_frame(release_after=True)
-    if frame is None: return JsonResponse({"status": "error", "message": "Could not get frame."}, status=500)
+#     frame = get_frame(release_after=True)
+#     if frame is None: return JsonResponse({"status": "error", "message": "Could not get frame."}, status=500)
     
-    h, w = frame.shape[:2]
-    new_cam_matrix, _ = cv2.getOptimalNewCameraMatrix(cam_matrix, dist_coeffs, (w,h), 1.0, (w,h))
-    undistorted_frame = cv2.undistort(frame, cam_matrix, dist_coeffs, None, new_cam_matrix)
+#     h, w = frame.shape[:2]
+#     new_cam_matrix, _ = cv2.getOptimalNewCameraMatrix(cam_matrix, dist_coeffs, (w,h), 1.0, (w,h))
+#     undistorted_frame = cv2.undistort(frame, cam_matrix, dist_coeffs, None, new_cam_matrix)
     
-    calib_settings = camera_settings.get("calibration_settings", {})
-    H_canonical, canonical_dims = get_board_and_canonical_homography_for_django(undistorted_frame, new_cam_matrix, calib_settings)
+#     calib_settings = camera_settings.get("calibration_settings", {})
+#     H_canonical, canonical_dims = get_board_and_canonical_homography_for_django(undistorted_frame, new_cam_matrix, calib_settings)
     
-    if H_canonical is not None:
-        fixed_persp_cfg = camera_settings.get("fixed_perspective", {})
-        FIXED_WIDTH = fixed_persp_cfg.get("output_width", 1000)
-        FIXED_HEIGHT = fixed_persp_cfg.get("output_height", 800)
-        cb_w, cb_h = canonical_dims
-        offset_x = max(0, (FIXED_WIDTH - cb_w) / 2.0)
-        offset_y = max(0, (FIXED_HEIGHT - cb_h) / 2.0)
-        M_translate = np.array([[1,0,offset_x], [0,1,offset_y], [0,0,1]], dtype=np.float32)
-        H_ref = M_translate @ H_canonical
-        if save_fixed_perspective_homography_to_config(H_ref):
-            return JsonResponse({"status": "success", "message": "Fixed perspective view established."})
-        else:
-            return JsonResponse({"status": "error", "message": "Error saving homography."}, status=500)
-    else:
-        return JsonResponse({"status": "error", "message": "Chessboard pattern not detected."}, status=400)
+#     if H_canonical is not None:
+#         fixed_persp_cfg = camera_settings.get("fixed_perspective", {})
+#         FIXED_WIDTH = fixed_persp_cfg.get("output_width", 1000)
+#         FIXED_HEIGHT = fixed_persp_cfg.get("output_height", 800)
+#         cb_w, cb_h = canonical_dims
+#         offset_x = max(0, (FIXED_WIDTH - cb_w) / 2.0)
+#         offset_y = max(0, (FIXED_HEIGHT - cb_h) / 2.0)
+#         M_translate = np.array([[1,0,offset_x], [0,1,offset_y], [0,0,1]], dtype=np.float32)
+#         H_ref = M_translate @ H_canonical
+#         if save_fixed_perspective_homography_to_config(H_ref):
+#             return JsonResponse({"status": "success", "message": "Fixed perspective view established."})
+#         else:
+#             return JsonResponse({"status": "error", "message": "Error saving homography."}, status=500)
+#     else:
+#         return JsonResponse({"status": "error", "message": "Chessboard pattern not detected."}, status=400)
 
 @csrf_exempt
 @require_GET
