@@ -418,7 +418,11 @@ def check_grid_structure(points, std_dev_threshold=0.1, clustering_tolerance=5.0
             'is_grid': False, 
             'reason': f'Not a 2D grid after clustering. Found {len(grid_lines_x)} cols and {len(grid_lines_y)} rows.'
         }
-        
+    if len(grid_lines_x) > 6 or len(grid_lines_y) > 8:
+        return {
+            'is_grid': False, 
+            'reason': f'Too many grid lines detected: {len(grid_lines_x)} cols and {len(grid_lines_y)} rows.'
+        }
     # 3. Calcola le spaziature tra le linee della griglia trovate
     x_spacings = np.diff(grid_lines_x)
     y_spacings = np.diff(grid_lines_y)
