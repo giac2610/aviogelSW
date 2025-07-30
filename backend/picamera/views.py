@@ -473,7 +473,6 @@ def _generate_grid_and_path(world_coords, camera_settings, velocita_x=4.0, veloc
         return [], [], []
 
     grid_analysis = check_grid_structure(world_coords)
-    
     # print(f"Grid analysis results: {grid_analysis}")
     if grid_analysis.get('is_grid') is False:
         print(f"Grid analysis failed: {grid_analysis.get('reason', 'Unknown reason')}")
