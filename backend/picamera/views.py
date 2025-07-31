@@ -510,7 +510,7 @@ def _generate_grid_and_path(world_coords, camera_settings, velocita_x=4.0, veloc
         if (NOMINAL_SPACING_X - SPACING_TOLERANCE) <= required_spacing <= (NOMINAL_SPACING_X + SPACING_TOLERANCE):
             final_spacing_x = required_spacing
             num_cols = c
-            break # Esci dal ciclo, abbiamo trovato la soluzione ottimale
+            break
 
     # Se non è stato trovato un fitting, usa il fallback con spacing fisso
     if num_cols == 0:
@@ -528,7 +528,7 @@ def _generate_grid_and_path(world_coords, camera_settings, velocita_x=4.0, veloc
         if (NOMINAL_SPACING_Y - SPACING_TOLERANCE) <= required_spacing <= (NOMINAL_SPACING_Y + SPACING_TOLERANCE):
             final_spacing_y = required_spacing
             num_rows = r
-            break # Esci dal ciclo
+            break 
 
     # Se non è stato trovato un fitting, usa il fallback con spacing fisso
     if num_rows == 0:
