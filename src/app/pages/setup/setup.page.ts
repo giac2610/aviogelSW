@@ -74,7 +74,7 @@ speedPollingSubscription!: Subscription;
       });
     });
 
-    // homing extrduer e syringe all'avvio della pagina, # TODO syringe homing at start
+    // homing extrduer e syringe all'avvio della pagina
     this.motorsService.goHome({ motor: 'extruder' }).subscribe({
       next: (response) => {
         console.log('Risposta dal backend:', response);
@@ -84,6 +84,17 @@ speedPollingSubscription!: Subscription;
         const errorMessage = error.error.detail || error.error.error || error.message;
         this.presentToast(`Errore durante il ritorno a casa dell'extruder: ${errorMessage}`, 'danger');
         console.error('Errore durante il ritorno a casa dell\'extruder:', error);
+      }
+    });
+        this.motorsService.goHome({ motor: 'syringe' }).subscribe({
+      next: (response) => {
+        console.log('Risposta dal backend:', response);
+        this.positions.syringe = 0; // Reset della posizione della siringa
+      },
+      error: (error) => {
+        const errorMessage = error.error.detail || error.error.error || error.message;
+        this.presentToast(`Errore durante il ritorno a casa della siringa: ${errorMessage}`, 'danger');
+        console.error('Errore durante il ritorno a casa della siringa:', error);
       }
     });
   }
