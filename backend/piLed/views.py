@@ -25,6 +25,8 @@ strip = neopixel.NeoPixel(LED_PIN, LED_COUNT, brightness=LED_BRIGHTNESS, auto_wr
 # Definizione di stop_event prima del suo utilizzo
 stop_event = threading.Event()
 
+current_effect = "none"
+
 @csrf_exempt
 def control_leds(request):
     if request.method == 'POST':
@@ -37,24 +39,29 @@ def control_leds(request):
             stop_event.set()  # Imposta il flag per fermare i thread
             time.sleep(0.1)  # Attendi un breve intervallo per assicurarti che i thread si fermino
             stop_event.clear()  # Resetta il flag per consentire nuovi effetti
-
+            global current_effect
             if effect == 'wave':
+                current_effect = "wave"
                 debug_logs.append("Starting wave effect...")
                 threading.Thread(target=wave_effect_with_logs, args=(strip, debug_logs), daemon=True).start()
                 return JsonResponse({'status': 'success', 'message': 'Wave effect started in loop', 'logs': debug_logs})
             elif effect == 'green_loading':
+                current_effect = "green_loading"
                 debug_logs.append("Starting green loading effect...")
                 threading.Thread(target=green_loading_with_logs, args=(strip, debug_logs), daemon=True).start()
                 return JsonResponse({'status': 'success', 'message': 'Green loading started', 'logs': debug_logs})
             elif effect == 'yellow_blink':
+                current_effect = "yellow_blink"
                 debug_logs.append("Starting yellow blink effect...")
                 threading.Thread(target=yellow_blink_with_logs, args=(strip, debug_logs), daemon=True).start()
                 return JsonResponse({'status': 'success', 'message': 'Yellow blinking started', 'logs': debug_logs})
             elif effect == 'red_static':
+                current_effect = "red_static"
                 debug_logs.append("Starting red static effect...")
                 threading.Thread(target=red_static_with_logs, args=(strip, debug_logs), daemon=True).start()
                 return JsonResponse({'status': 'success', 'message': 'Red static started', 'logs': debug_logs})
             elif effect == 'stop':
+                current_effect = "none"
                 # Ferma gli effetti LED
                 stop_event.set()
                 return JsonResponse({'status': 'success', 'message': 'LED effects stopped'})
@@ -62,6 +69,14 @@ def control_leds(request):
                 return JsonResponse({'status': 'error', 'message': 'Invalid effect'}, status=400)
         except json.JSONDecodeError:
             return JsonResponse({'status': 'error', 'message': 'Invalid JSON'}, status=400)
+    return JsonResponse({'status': 'error', 'message': 'Invalid request method'}, status=400)
+
+def get_led_status(request):
+    if request.method == 'GET':
+        status = {
+            'current_effect': current_effect,
+        }
+        return JsonResponse({'status': 'success', 'led_status': status})
     return JsonResponse({'status': 'error', 'message': 'Invalid request method'}, status=400)
 
 def wave_effect_with_logs(strip, debug_logs):
