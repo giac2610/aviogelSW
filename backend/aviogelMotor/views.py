@@ -9,7 +9,7 @@ import queue
 import math
 from shutil import copyfile
 
-from models import MotorConfig, MotionPlanner, MotorController
+from .models import MotorConfig, MotionPlanner, MotorController
 
 from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
