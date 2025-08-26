@@ -473,13 +473,17 @@ def _generate_grid_and_path(world_coords, camera_settings, velocita_x=4.0, veloc
         return [], [], []
 
     grid_analysis = check_grid_structure(world_coords)
-    # print(f"Grid analysis results: {grid_analysis}")
-    if grid_analysis.get('is_grid') is False:
-        print(f"Grid analysis failed: {grid_analysis.get('reason', 'Unknown reason')}")
-        return [], [], []
+    mean_spacing_x = grid_analysis.get('mean_spacing_x', 0)
+    mean_spacing_y = grid_analysis.get('mean_spacing_y', 0)
+    std_dev_x = grid_analysis.get('std_dev_x', 999)
+    std_dev_y = grid_analysis.get('std_dev_y', 999)
     grid_analysis_spacing_x = grid_analysis.get('mean_spacing_x', 50.0)
     grid_analysis_spacing_y = grid_analysis.get('mean_spacing_y', 50.0)
-    if(grid_analysis_spacing_x < 40.0 or grid_analysis_spacing_y < 40.0 or grid_analysis_spacing_x > 55.0 or grid_analysis_spacing_y > 55.0):
+
+    if not grid_analysis.get('is_grid') or \
+       not (40 <= mean_spacing_x <= 55) or not (40 <= mean_spacing_y <= 55) or \
+       std_dev_x > 1.5 or std_dev_y > 1.5:
+        print(f"Grid analysis failed: mean_spacing_x={mean_spacing_x}, std_dev_x={std_dev_x}, mean_spacing_y={mean_spacing_y}, std_dev_y={std_dev_y}")
         return [], [], []
     else:
         NOMINAL_SPACING_X, NOMINAL_SPACING_Y = grid_analysis_spacing_x, grid_analysis_spacing_y
@@ -1167,11 +1171,11 @@ def fixed_perspective_stream(request):
                                 for i, pt_w in enumerate(pts_warped.reshape(-1,2)):
                                     x, y = pt_w[0], pt_w[1]
                                     cv2.circle(output_img, (int(round(x)), int(round(y))), 8, (0,0,255), 2)
-                                    cv2.putText(
-                                        output_img, f"{x:.1f},{y:.1f}",
-                                        (int(round(x))+10, int(round(y))-10),
-                                        cv2.FONT_HERSHEY_SIMPLEX, 0.4, (0,255,0), 1
-                                    )
+                                    # cv2.putText(
+                                    #     output_img, f"{x:.1f},{y:.1f}",
+                                    #     (int(round(x))+10, int(round(y))-10),
+                                    #     cv2.FONT_HERSHEY_SIMPLEX, 0.4, (0,255,0), 1
+                                    # )
                         
                         frame_count += 1
 
