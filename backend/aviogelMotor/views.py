@@ -9,7 +9,7 @@ import queue
 import math
 from shutil import copyfile
 
-from .models import MotorConfig, MotionPlanner, MotorController
+from .models import MotorConfig
 
 from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
@@ -288,6 +288,130 @@ class MotorController:
             logging.warning(f"Homing per '{motor_name}' completato con successo. Posizione zero definita.")
 
         self.switch_states[end_switch_id] = False
+
+class MotionPlanner:
+    def __init__(self, motor_configs: dict[str, MotorConfig]):
+        self.motor_configs = motor_configs
+        logging.warning(f"MotionPlanner inizializzato con motori: {list(motor_configs.keys())}")
+
+    def _generate_trapezoidal_profile(self, total_steps: int, max_freq_hz: float, accel_mmss: float, steps_per_mm: float) -> list[float]:
+        if total_steps == 0: return []
+        v_max = max_freq_hz / steps_per_mm
+        if accel_mmss <= 0: accel_mmss = 1.0
+        t_accel = v_max / accel_mmss
+        s_accel = 0.5 * accel_mmss * t_accel**2
+        steps_accel = int(s_accel * steps_per_mm)
+        steps_accel = min(steps_accel, total_steps // 2)
+        if steps_accel == 0 and total_steps > 0: steps_accel = 1
+        if steps_accel * 2 > total_steps:
+            steps_accel = total_steps // 2
+            v_peak = math.sqrt(2 * accel_mmss * (steps_accel / steps_per_mm))
+            v_max = v_peak
+        i = np.arange(1, total_steps + 1, dtype=np.float64)
+        freq = np.full(total_steps, v_max * steps_per_mm, dtype=np.float64)
+        if steps_accel > 0:
+            accel_mask = i <= steps_accel
+            v_i_accel = np.sqrt(2 * accel_mmss * (i[accel_mask] / steps_per_mm))
+            freq[accel_mask] = v_i_accel * steps_per_mm
+            decel_start_step = total_steps - steps_accel
+            decel_mask = i > decel_start_step
+            steps_from_end = total_steps - i[decel_mask] + 1
+            v_i_decel = np.sqrt(2 * accel_mmss * (steps_from_end / steps_per_mm))
+            freq[decel_mask] = v_i_decel * steps_per_mm
+        np.maximum(freq, 1.0, out=freq)
+        periods_us = 1_000_000.0 / freq
+        return periods_us.tolist()
+
+    def plan_move_streamed(self, targets: dict[str, float], switch_states: dict, pi=None):
+        if not targets: return None, set(), {}, {}
+        if pi:
+            for motor, pins in SWITCHES.items():
+                for name, pin in pins.items():
+                    switch_id = f"{motor}_{name.lower()}"
+                    is_pressed = pi.read(pin) == 1
+                    switch_states[switch_id] = is_pressed
+
+        move_data = {}
+        for motor_id, distance in targets.items():
+            if distance == 0 or motor_id not in self.motor_configs:
+                continue
+            
+            # Recupera la configurazione del motore all'inizio del ciclo
+            config = self.motor_configs[motor_id]
+            direction = 1 if distance >= 0 else 0
+
+            if motor_id != "conveyor":
+                # La direzione (0 o 1) che porta al finecorsa di START
+                dir_to_start = config.homeDir 
+                # Condizione 1: Il movimento è verso START e il finecorsa START è attivo?
+                is_moving_to_start_and_blocked = (direction == dir_to_start and switch_states.get(f"{motor_id}_start"))
+                # Condizione 2: Il movimento è verso END e il finecorsa END è attivo?
+                is_moving_to_end_and_blocked = (direction != dir_to_start and switch_states.get(f"{motor_id}_end"))
+                if is_moving_to_start_and_blocked or is_moving_to_end_and_blocked:
+                    logging.warning(f"Movimento per '{motor_id}' bloccato da finecorsa attivo.")
+                    continue
+                
+            # Se il codice arriva qui, il movimento è consentito
+            move_data[motor_id] = {
+                "steps": int(abs(distance) * config.steps_per_mm), 
+                "dir": direction, 
+                "config": config
+            }
+
+        if not move_data: return None, set(), {}, {}
+
+        master_id = max(move_data, key=lambda k: move_data[k]["steps"])
+        master_data = move_data[master_id]
+
+        # Salviamo i passi totali del master PRIMA di troncarli
+        master_steps_total = master_data["steps"]
+
+        # Ora possiamo tranquillamente troncare il numero di passi per il blocco corrente.
+        master_steps_chunk = master_steps_total
+
+        MAX_STEPS_PER_COMMAND = 5500
+        if master_steps_chunk > MAX_STEPS_PER_COMMAND:
+            logging.warning(f"MOVIMENTO TROPPO LUNGO ({master_steps_chunk} passi)! Troncato al limite di sicurezza di {MAX_STEPS_PER_COMMAND} passi per questo blocco.")
+            master_steps_chunk = MAX_STEPS_PER_COMMAND
+
+        if master_steps_chunk == 0: return None, set(), {}, {}
+
+        periods_list = self._generate_trapezoidal_profile(
+            master_steps_chunk, master_data["config"].max_freq_hz, master_data["config"].acceleration_mmss, master_data["config"].steps_per_mm
+        )
+        active_motors = {m["config"].name for m in move_data.values()}
+        directions_to_set = {mid: move['dir'] for mid, move in move_data.items()}
+
+        def single_pulse_generator():
+            # L'algoritmo di Bresenham usa master_steps_total per il calcolo della proporzione.
+            bresenham_errors = {mid: -master_steps_total / 2 for mid in move_data if mid != master_id}
+
+            # Il ciclo for itera solo per la lunghezza del blocco corrente.
+            for i in range(master_steps_chunk):
+                on_mask = 1 << master_data["config"].step_pin
+                for slave_id in bresenham_errors:
+                    # L'incremento usa ancora i passi totali dello slave.
+                    bresenham_errors[slave_id] += move_data[slave_id]["steps"]
+                    if bresenham_errors[slave_id] > 0:
+                        on_mask |= 1 << move_data[slave_id]["config"].step_pin
+                        # Il decremento usa i passi totali del master.
+                        bresenham_errors[slave_id] -= master_steps_total
+
+                total_period_us = periods_list[i]
+                pulse_width_us = max(1, int(total_period_us / 2))
+                yield pigpio.pulse(on_mask, 0, pulse_width_us)
+                yield pigpio.pulse(0, on_mask, max(1, int(total_period_us - pulse_width_us)))
+
+        # Calcoliamo i passi effettivi per ogni motore in questo blocco
+        steps_in_chunk = {master_id: master_steps_chunk}
+        if master_steps_total > 0: # Evita divisione per zero se il movimento è nullo
+            for slave_id, data in move_data.items():
+                if slave_id != master_id:
+                    # La logica di Bresenham distribuisce i passi in modo proporzionale
+                    steps_in_chunk[slave_id] = int((data["steps"] / master_steps_total) * master_steps_chunk)
+
+        logging.warning(f"Pianificato blocco per '{master_id}' ({master_steps_chunk} passi). Motori attivi: {list(active_motors)}")
+        return single_pulse_generator(), active_motors, directions_to_set, steps_in_chunk
     
 def load_system_config() -> dict[str, MotorConfig]:
     configs = {}
