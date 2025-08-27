@@ -565,6 +565,33 @@ def _generate_grid_and_path(world_coords, camera_settings, velocita_x=4.0, veloc
     
     ideal_grid_world = rotate_points(np.array(ideal_grid_rot), angle, center)
     
+    
+    # --- INIZIO CODICE DA AGGIUNGERE ---
+    # Carica i fattori di scala dalla configurazione
+    scale_factor_x = camera_settings.get("calibration_scale_factor_x", 1.0417)
+    scale_factor_y = camera_settings.get("calibration_scale_factor_y", 1.0417)
+
+    # Applica la scala solo se i fattori sono diversi da 1.0
+    if scale_factor_x != 1.0 or scale_factor_y != 1.0:
+        print(f"[INFO] Applicazione fattori di scala: X={scale_factor_x}, Y={scale_factor_y}")
+        
+        # Converte la griglia e il centro in array numpy per i calcoli
+        ideal_grid_np = np.array(ideal_grid_world)
+        center_np = np.array(center)
+
+        # 1. Sposta la griglia in modo che il suo centro sia l'origine (0,0)
+        translated_points = ideal_grid_np - center_np
+
+        # 2. "Stira" la griglia applicando i fattori di scala
+        scaled_translated_points = translated_points * np.array([scale_factor_x, scale_factor_y])
+
+        # 3. Risposta la griglia alla sua posizione originale
+        scaled_grid_world = scaled_translated_points + center_np
+        
+        # Usa la nuova griglia scalata per tutti i calcoli successivi
+        ideal_grid_world = scaled_grid_world.tolist()
+    # --- FINE CODICE DA AGGIUNGERE ---
+    
     # --- Filtro e Logica TSP ---
     extruder_start_x = camera_settings.get("origin_x", 0.0)
     extruder_end_x = extruder_start_x + EXTRUDER_TRAVEL_DISTANCE
