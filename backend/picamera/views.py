@@ -399,7 +399,8 @@ def check_grid_structure(points, std_dev_threshold=0.1, clustering_tolerance=5.0
     if height < width:
         height, width = width, height
         angle += 90
-    
+    width = width*1.029
+    height = height*1.041
     rotation_matrix = cv2.getRotationMatrix2D(tuple(rect[0]), angle, 1)
     aligned_points = cv2.transform(points.reshape(-1, 1, 2), rotation_matrix).reshape(-1, 2)
 
