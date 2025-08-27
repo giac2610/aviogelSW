@@ -489,8 +489,8 @@ def _generate_grid_and_path(world_coords, camera_settings, velocita_x=4.0, veloc
         print(f"Motivo: {grid_analysis.get('reason', 'Regolarità non rispettata')}")
         return [], [], []
     else:
-        NOMINAL_SPACING_X, NOMINAL_SPACING_Y = grid_analysis_spacing_x, grid_analysis_spacing_y
-    # NOMINAL_SPACING_X, NOMINAL_SPACING_Y = 50.0, 50.0
+        # NOMINAL_SPACING_X, NOMINAL_SPACING_Y = grid_analysis_spacing_x, grid_analysis_spacing_y
+        NOMINAL_SPACING_X, NOMINAL_SPACING_Y = 50.0, 50.0
         
     rect = cv2.minAreaRect(points)
     box_corners_world = cv2.boxPoints(rect).tolist()
