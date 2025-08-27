@@ -482,15 +482,14 @@ def _generate_grid_and_path(world_coords, camera_settings, velocita_x=4.0, veloc
 
     print(f"Grid analysis: {grid_analysis}")
     
-    if not grid_analysis.get('is_grid') or \
-       not (40 <= mean_spacing_x <= 55) or not (40 <= mean_spacing_y <= 55) or \
-       std_dev_x > 1.5 or std_dev_y > 1.5:
+    if not grid_analysis.get('is_grid') or not (40 <= mean_spacing_x <= 55) or not (40 <= mean_spacing_y <= 55) or std_dev_x > 1.5 or std_dev_y > 1.5:
         print(f"Grid analysis failed: mean_spacing_x={mean_spacing_x}, std_dev_x={std_dev_x}, mean_spacing_y={mean_spacing_y}, std_dev_y={std_dev_y}")
         print(f"Motivo: {grid_analysis.get('reason', 'Regolarità non rispettata')}")
         return [], [], []
     else:
         # NOMINAL_SPACING_X, NOMINAL_SPACING_Y = grid_analysis_spacing_x, grid_analysis_spacing_y
-        NOMINAL_SPACING_X, NOMINAL_SPACING_Y = 50.0, 50.0
+        pass
+    NOMINAL_SPACING_X, NOMINAL_SPACING_Y = 50.0, 50.0
         
     rect = cv2.minAreaRect(points)
     box_corners_world = cv2.boxPoints(rect).tolist()
@@ -561,7 +560,7 @@ def _generate_grid_and_path(world_coords, camera_settings, velocita_x=4.0, veloc
             ideal_grid_rot.append([x, y])
 
     # using the ideal grid from the analysis
-    ideal_grid_rot = grid_analysis.get('ideal_grid_rot', ideal_grid_rot)
+    # ideal_grid_rot = grid_analysis.get('ideal_grid_rot', ideal_grid_rot)
     
     ideal_grid_world = rotate_points(np.array(ideal_grid_rot), angle, center)
     
