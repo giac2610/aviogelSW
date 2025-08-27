@@ -533,9 +533,11 @@ def _generate_grid_and_path(world_coords, camera_settings, velocita_x=4.0, veloc
         required_spacing = height / (r - 1)
         # print("Spacing richiesto per {} righe: {:.2f}".format(r, required_spacing))
         # Se lo spacing richiesto è nella tolleranza, abbiamo trovato il fitting perfetto
+        print("Spacing richiesto per {} righe: {:.2f}".format(r, required_spacing))
         if (NOMINAL_SPACING_Y - SPACING_TOLERANCE) <= required_spacing <= (NOMINAL_SPACING_Y + SPACING_TOLERANCE):
             final_spacing_y = required_spacing
             num_rows = r
+            print("Fitting trovato: {} righe con spacing {:.2f}".format(r, final_spacing_y))
             break 
 
     # Se non è stato trovato un fitting, usa il fallback con spacing fisso
