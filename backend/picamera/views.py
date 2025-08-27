@@ -571,26 +571,33 @@ def _generate_grid_and_path(world_coords, camera_settings, velocita_x=4.0, veloc
     scale_factor_x = camera_settings.get("calibration_scale_factor_x", 1.1417)
     scale_factor_y = camera_settings.get("calibration_scale_factor_y", 1.0417)
 
-    # Applica la scala solo se i fattori sono diversi da 1.0
+# Applica la scala solo se i fattori sono diversi da 1.0
     if scale_factor_x != 1.0 or scale_factor_y != 1.0:
-        print(f"[INFO] Applicazione fattori di scala: X={scale_factor_x}, Y={scale_factor_y}")
-        
-        # Converte la griglia e il centro in array numpy per i calcoli
-        ideal_grid_np = np.array(ideal_grid_world)
-        center_np = np.array(center)
+        print(f"[INFO] Applicazione fattori di scala ASIMMETRICA: X={scale_factor_x} (da origine estrusore), Y={scale_factor_y} (da centro Y)")
 
-        # 1. Sposta la griglia in modo che il suo centro sia l'origine (0,0)
-        translated_points = ideal_grid_np - center_np
+        # Carica la posizione di origine dell'estrusore per l'ancoraggio X
+        extruder_origin_x = camera_settings.get("origin_x", 0.0)
+        
+        # Converte la griglia in un array numpy per i calcoli
+        ideal_grid_np = np.array(ideal_grid_world)
+        
+        # Definisce il punto di ancoraggio per la scala:
+        # Asse X: usa l'origine dell'estrusore.
+        # Asse Y: usa il centro della griglia rilevata (scala simmetrica in Y).
+        anchor_point = np.array([extruder_origin_x, center[1]])
+
+        # 1. Sposta la griglia in modo che l'ancoraggio sia l'origine (0,0)
+        translated_points = ideal_grid_np - anchor_point
 
         # 2. "Stira" la griglia applicando i fattori di scala
         scaled_translated_points = translated_points * np.array([scale_factor_x, scale_factor_y])
 
-        # 3. Risposta la griglia alla sua posizione originale
-        scaled_grid_world = scaled_translated_points + center_np
+        # 3. Risposta la griglia alla sua posizione originale, basandosi sull'ancoraggio
+        scaled_grid_world = scaled_translated_points + anchor_point
         
         # Usa la nuova griglia scalata per tutti i calcoli successivi
         ideal_grid_world = scaled_grid_world.tolist()
-    # --- FINE CODICE DA AGGIUNGERE ---
+    # --- FINE NUOVO CODICE MODIFICATO ---
     
     # --- Filtro e Logica TSP ---
     extruder_start_x = camera_settings.get("origin_x", 0.0)
