@@ -439,8 +439,8 @@ def check_grid_structure(points, std_dev_threshold=0.1, clustering_tolerance=5.0
     is_grid_x = (std_dev_x / mean_spacing_x) < std_dev_threshold if mean_spacing_x > 0 else True
     is_grid_y = (std_dev_y / mean_spacing_y) < std_dev_threshold if mean_spacing_y > 0 else True
     
-    is_grid_x = is_grid_x and ( 48 < mean_spacing_x < 52)
-    is_grid_y = is_grid_y and ( 48 < mean_spacing_y < 52)
+    is_grid_x = is_grid_x and ( 49 < mean_spacing_x < 51)
+    is_grid_y = is_grid_y and ( 49 < mean_spacing_y < 51)
     if not (is_grid_x and is_grid_y):
         return {
             'is_grid': False, 
@@ -484,7 +484,7 @@ def _generate_grid_and_path(world_coords, camera_settings, velocita_x=4.0, veloc
 
     print(f"Grid analysis: {grid_analysis}")
     
-    if not grid_analysis.get('is_grid') or not (40 <= mean_spacing_x <= 55) or not (40 <= mean_spacing_y <= 55) or std_dev_x > 1.5 or std_dev_y > 1.5:
+    if not grid_analysis.get('is_grid') or not (49 <= mean_spacing_x <= 51) or not (49 <= mean_spacing_y <= 51) or std_dev_x > 1.5 or std_dev_y > 1.5:
         print(f"Grid analysis failed: mean_spacing_x={mean_spacing_x}, std_dev_x={std_dev_x}, mean_spacing_y={mean_spacing_y}, std_dev_y={std_dev_y}")
         print(f"Motivo: {grid_analysis.get('reason', 'Regolarità non rispettata')}")
         return [], [], []
@@ -567,42 +567,7 @@ def _generate_grid_and_path(world_coords, camera_settings, velocita_x=4.0, veloc
     # ideal_grid_rot = grid_analysis.get('ideal_grid_rot', ideal_grid_rot)
     
     ideal_grid_world = rotate_points(np.array(ideal_grid_rot), angle, center)
-    
-    
-    # --- INIZIO CODICE DA AGGIUNGERE ---
-    # Carica i fattori di scala dalla configurazione
-    # scale_factor_x = camera_settings.get("calibration_scale_factor_x", 1.1417)
-    # scale_factor_y = camera_settings.get("calibration_scale_factor_y", 1.0407)
-    scale_factor_x = camera_settings.get("calibration_scale_factor_x", 1.0)
-    scale_factor_y = camera_settings.get("calibration_scale_factor_y", 1.0)
 
-    # Applica la scala solo se i fattori sono diversi da 1.0
-    if scale_factor_x != 1.0 or scale_factor_y != 1.0:
-        print(f"[INFO] Applicazione fattori di scala ASIMMETRICA: X={scale_factor_x} (da origine estrusore), Y={scale_factor_y} (da centro Y)")
-
-        # Carica la posizione di origine dell'estrusore per l'ancoraggio X
-        extruder_origin_x = camera_settings.get("origin_x", 0.0)
-        
-        # Converte la griglia in un array numpy per i calcoli
-        ideal_grid_np = np.array(ideal_grid_world)
-        
-        # Definisce il punto di ancoraggio per la scala:
-        # Asse X: usa l'origine dell'estrusore.
-        # Asse Y: usa il centro della griglia rilevata (scala simmetrica in Y).
-        anchor_point = np.array([extruder_origin_x, center[1]])
-
-        # 1. Sposta la griglia in modo che l'ancoraggio sia l'origine (0,0)
-        translated_points = ideal_grid_np - anchor_point
-
-        # 2. "Stira" la griglia applicando i fattori di scala
-        scaled_translated_points = translated_points * np.array([scale_factor_x, scale_factor_y])
-
-        # 3. Risposta la griglia alla sua posizione originale, basandosi sull'ancoraggio
-        scaled_grid_world = scaled_translated_points + anchor_point
-        
-        # Usa la nuova griglia scalata per tutti i calcoli successivi
-        ideal_grid_world = scaled_grid_world.tolist()
-    # --- FINE NUOVO CODICE MODIFICATO ---
     
     # --- Filtro e Logica TSP ---
     extruder_start_x = camera_settings.get("origin_x", 0.0)
