@@ -517,11 +517,13 @@ def _generate_grid_and_path(world_coords, camera_settings, velocita_x=4.0, veloc
         if (NOMINAL_SPACING_X - SPACING_TOLERANCE) <= required_spacing <= (NOMINAL_SPACING_X + SPACING_TOLERANCE):
             final_spacing_x = required_spacing
             num_cols = c
+            print("Fitting trovato: {} colonne con spacing {:.2f}".format(c, final_spacing_x))
             break
 
     # Se non è stato trovato un fitting, usa il fallback con spacing fisso
     if num_cols == 0:
         num_cols = min(MAX_COLS, int(width / NOMINAL_SPACING_X) + 1)
+        print("Nessun fitting trovato, usando fallback: {} colonne con spacing {:.2f}".format(num_cols, final_spacing_x))
 
     # --- Calcolo Righe e Spacing Y ---
     final_spacing_y = NOMINAL_SPACING_Y
@@ -562,7 +564,7 @@ def _generate_grid_and_path(world_coords, camera_settings, velocita_x=4.0, veloc
     
     ideal_grid_world = rotate_points(np.array(ideal_grid_rot), angle, center)
     
-    # --- Filtro e Logica TSP (invariati) ---
+    # --- Filtro e Logica TSP ---
     extruder_start_x = camera_settings.get("origin_x", 0.0)
     extruder_end_x = extruder_start_x + EXTRUDER_TRAVEL_DISTANCE
     ideal_grid_world = [p for p in ideal_grid_world if extruder_start_x <= p[0] <= extruder_end_x]
