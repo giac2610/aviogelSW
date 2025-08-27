@@ -568,7 +568,7 @@ def _generate_grid_and_path(world_coords, camera_settings, velocita_x=4.0, veloc
     
     # --- INIZIO CODICE DA AGGIUNGERE ---
     # Carica i fattori di scala dalla configurazione
-    scale_factor_x = camera_settings.get("calibration_scale_factor_x", 1.0417)
+    scale_factor_x = camera_settings.get("calibration_scale_factor_x", 1.1417)
     scale_factor_y = camera_settings.get("calibration_scale_factor_y", 1.0417)
 
     # Applica la scala solo se i fattori sono diversi da 1.0
