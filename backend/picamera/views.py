@@ -500,9 +500,8 @@ def _generate_grid_and_path(world_coords, camera_settings, velocita_x=4.0, veloc
     if height < width:
         height, width = width, height
         angle += 90
-    width = min(width, 265.0)
-    height = min(height, 365.0)
-
+    width = min(width*1.029, 265.0)
+    height = min(height*1.041, 365.0)
     print(f"box width: {width}, height: {height}, angle: {angle}")
     # --- Calcolo Colonne e Spacing X ---
     final_spacing_x = NOMINAL_SPACING_X
