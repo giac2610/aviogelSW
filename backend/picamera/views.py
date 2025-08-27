@@ -399,8 +399,10 @@ def check_grid_structure(points, std_dev_threshold=0.1, clustering_tolerance=5.0
     if height < width:
         height, width = width, height
         angle += 90
-    width = width*1.029
-    height = height*1.041
+    # width = width*1.029
+    # height = height*1.041
+    width = max(50, min(250, round(width / 50) * 50))
+    height = max(50, min(350, round(height / 50) * 50))
     rotation_matrix = cv2.getRotationMatrix2D(tuple(rect[0]), angle, 1)
     aligned_points = cv2.transform(points.reshape(-1, 1, 2), rotation_matrix).reshape(-1, 2)
 
@@ -499,8 +501,10 @@ def _generate_grid_and_path(world_coords, camera_settings, velocita_x=4.0, veloc
     if height < width:
         height, width = width, height
         angle += 90
-    width = min(width*1.029, 265.0)
-    height = min(height*1.041, 365.0)
+    # width = min(width*1.029, 250.0)
+    # height = min(height*1.041, 350.0)
+    width = max(50, min(250, round(width / 50) * 50))
+    height = max(50, min(350, round(height / 50) * 50))
     print(f"box width: {width}, height: {height}, angle: {angle}")
     # --- Calcolo Colonne e Spacing X ---
     final_spacing_x = NOMINAL_SPACING_X
