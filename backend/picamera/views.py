@@ -264,7 +264,6 @@ def get_world_coordinates_data():
     max_x_bound = extruder_origin_x + 290
 
     # 3. Filtra le coordinate nel sistema "top-left"
-    
     fixed_persp_cfg = camera_settings.get("fixed_perspective", {})
     OUTPUT_WIDTH = fixed_persp_cfg.get("output_width", 1000)
     OUTPUT_HEIGHT = fixed_persp_cfg.get("output_height", 800)
@@ -437,8 +436,8 @@ def check_grid_structure(points, std_dev_threshold=0.1, clustering_tolerance=5.0
     is_grid_x = (std_dev_x / mean_spacing_x) < std_dev_threshold if mean_spacing_x > 0 else True
     is_grid_y = (std_dev_y / mean_spacing_y) < std_dev_threshold if mean_spacing_y > 0 else True
     
-    is_grid_x = is_grid_x and ( 45 < mean_spacing_x < 55)
-    is_grid_y = is_grid_y and ( 45 < mean_spacing_y < 55)
+    is_grid_x = is_grid_x and ( 48 < mean_spacing_x < 52)
+    is_grid_y = is_grid_y and ( 48 < mean_spacing_y < 52)
     if not (is_grid_x and is_grid_y):
         return {
             'is_grid': False, 
