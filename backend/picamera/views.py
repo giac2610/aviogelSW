@@ -405,8 +405,9 @@ def check_grid_structure(points, std_dev_threshold=0.1, clustering_tolerance=5.0
         angle += 90
     # width = width*1.029
     # height = height*1.041
-    width = max(50, min(250, round(width / 50) * 50))
-    height = max(50, min(350, round(height / 50) * 50))
+    width = max(100, min(250, round(width / 50) * 50))
+    height = max(100, min(350, round(height / 50) * 50))
+    
     rotation_matrix = cv2.getRotationMatrix2D(tuple(rect[0]), angle, 1)
     aligned_points = cv2.transform(points.reshape(-1, 1, 2), rotation_matrix).reshape(-1, 2)
 
@@ -433,6 +434,8 @@ def check_grid_structure(points, std_dev_threshold=0.1, clustering_tolerance=5.0
     x_spacings = np.diff(grid_lines_x)
     y_spacings = np.diff(grid_lines_y)
 
+    print(grid_lines_x)
+    print(grid_lines_y)
     # Calcola statistiche (invariato)
     mean_spacing_x = np.mean(x_spacings)
     std_dev_x = np.std(x_spacings)
@@ -746,6 +749,7 @@ def camera_feed(request):
 @csrf_exempt
 @require_GET
 def reproject_points_feed(request):
+    # debug view
     try:
         resp = requests.get("http://localhost:8000/motors/maxSpeeds/")
         data = resp.json()
