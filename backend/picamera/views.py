@@ -19,6 +19,8 @@ from django.views.decorators.http import require_POST, require_GET
 import traceback
 import requests #type: ignore
 
+#TODO Variabili fisse per lo stampo così da non cambiare per stampi diversi
+
 # --- File Configuration ---
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CONFIG_DIR = os.path.join(BASE_DIR, 'config')
@@ -299,10 +301,12 @@ def get_board_and_canonical_homography_for_django(undistorted_frame, new_camera_
     criteria_cv = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 30, 0.001)
     gray = cv2.cvtColor(undistorted_frame, cv2.COLOR_BGR2GRAY)
     ret, corners = cv2.findChessboardCorners(gray, chessboard_dim_cv, None)
-    if not ret: return None, None
+    if not ret: 
+        return None, None
     corners2 = cv2.cornerSubPix(gray, corners, (11, 11), (-1, -1), criteria_cv)
     success, rvec, tvec = cv2.solvePnP(objp_cv, corners2, new_camera_matrix_cv, None, flags=cv2.SOLVEPNP_ITERATIVE)
-    if not success: return None, None
+    if not success: 
+        return None, None
     
     obj_board_perimeter_pts = np.array([
         [0,0,0], [ (cs_cols-1)*sq_size, 0, 0], 
@@ -491,7 +495,7 @@ def _generate_grid_and_path(world_coords, camera_settings, velocita_x=4.0, veloc
     else:
         # NOMINAL_SPACING_X, NOMINAL_SPACING_Y = grid_analysis_spacing_x, grid_analysis_spacing_y
         pass
-    NOMINAL_SPACING_X, NOMINAL_SPACING_Y = 49.0, 49.0
+    NOMINAL_SPACING_X, NOMINAL_SPACING_Y = 50.0, 50.0
         
     rect = cv2.minAreaRect(points)
     box_corners_world = cv2.boxPoints(rect).tolist()
