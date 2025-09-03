@@ -18,6 +18,7 @@ from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_POST, require_GET
 import traceback
 import requests #type: ignore
+import logging
 
 #TODO Variabili fisse per lo stampo così da non cambiare per stampi diversi
 
@@ -513,6 +514,7 @@ def _generate_grid_and_path(world_coords, camera_settings, velocita_x=4.0, veloc
     width = max(50, min(250, round(width / 50) * 50))
     height = max(50, min(350, round(height / 50) * 50))
     print(f"box width: {width}, height: {height}, angle: {angle}")
+    logging.info(f"box width: {width}, height: {height}, angle: {angle}")
     # --- Calcolo Colonne e Spacing X ---
     final_spacing_x = NOMINAL_SPACING_X
     num_cols = 0
@@ -522,11 +524,13 @@ def _generate_grid_and_path(world_coords, camera_settings, velocita_x=4.0, veloc
             continue
         required_spacing = width / (c - 1)
         print("Spacing richiesto per {} colonne: {:.2f}".format(c, required_spacing))
+        logging.info("Spacing richiesto per {} colonne: {:.2f}".format(c, required_spacing))
         # Se lo spacing richiesto è nella tolleranza, abbiamo trovato il fitting perfetto
         if (NOMINAL_SPACING_X - SPACING_TOLERANCE) <= required_spacing <= (NOMINAL_SPACING_X + SPACING_TOLERANCE):
             final_spacing_x = required_spacing
             num_cols = c
             print("Fitting trovato: {} colonne con spacing {:.2f}".format(c, final_spacing_x))
+            logging.info("Fitting trovato: {} colonne con spacing {:.2f}".format(c, final_spacing_x))
             break
 
     # Se non è stato trovato un fitting, usa il fallback con spacing fisso
@@ -544,10 +548,12 @@ def _generate_grid_and_path(world_coords, camera_settings, velocita_x=4.0, veloc
         # print("Spacing richiesto per {} righe: {:.2f}".format(r, required_spacing))
         # Se lo spacing richiesto è nella tolleranza, abbiamo trovato il fitting perfetto
         print("Spacing richiesto per {} righe: {:.2f}".format(r, required_spacing))
+        logging.info("Spacing richiesto per {} righe: {:.2f}".format(r, required_spacing))
         if (NOMINAL_SPACING_Y - SPACING_TOLERANCE) <= required_spacing <= (NOMINAL_SPACING_Y + SPACING_TOLERANCE):
             final_spacing_y = required_spacing
             num_rows = r
             print("Fitting trovato: {} righe con spacing {:.2f}".format(r, final_spacing_y))
+            logging.info("Fitting trovato: {} righe con spacing {:.2f}".format(r, final_spacing_y))
             break 
 
     # Se non è stato trovato un fitting, usa il fallback con spacing fisso
