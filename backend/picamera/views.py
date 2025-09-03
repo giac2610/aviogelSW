@@ -491,13 +491,13 @@ def _generate_grid_and_path(world_coords, camera_settings, velocita_x=4.0, veloc
 
     print(f"Grid analysis: {grid_analysis}")
     
-    if not grid_analysis.get('is_grid') or not (49 <= mean_spacing_x <= 51) or not (49 <= mean_spacing_y <= 51) or std_dev_x > 1.5 or std_dev_y > 1.5:
-        print(f"Grid analysis failed: mean_spacing_x={mean_spacing_x}, std_dev_x={std_dev_x}, mean_spacing_y={mean_spacing_y}, std_dev_y={std_dev_y}")
-        print(f"Motivo: {grid_analysis.get('reason', 'Regolarità non rispettata')}")
-        return [], [], []
-    else:
-        # NOMINAL_SPACING_X, NOMINAL_SPACING_Y = grid_analysis_spacing_x, grid_analysis_spacing_y
-        pass
+    # if not grid_analysis.get('is_grid') or not (49 <= mean_spacing_x <= 51) or not (49 <= mean_spacing_y <= 51) or std_dev_x > 1.5 or std_dev_y > 1.5:
+    #     print(f"Grid analysis failed: mean_spacing_x={mean_spacing_x}, std_dev_x={std_dev_x}, mean_spacing_y={mean_spacing_y}, std_dev_y={std_dev_y}")
+    #     print(f"Motivo: {grid_analysis.get('reason', 'Regolarità non rispettata')}")
+    #     return [], [], []
+    # else:
+    #     # NOMINAL_SPACING_X, NOMINAL_SPACING_Y = grid_analysis_spacing_x, grid_analysis_spacing_y
+    #     pass
     NOMINAL_SPACING_X, NOMINAL_SPACING_Y = 50.0, 50.0
         
     rect = cv2.minAreaRect(points)
