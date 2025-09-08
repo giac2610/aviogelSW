@@ -501,9 +501,9 @@ def motor_worker():
                                     del remaining_targets[motor_id]
                         # Accoda solo se rimangono target validi
                         #TODO: Così accoda alla fine di tutti i movimenti, non mettere in coda ma in testa
-                        if any(abs(dist) > 0.001 for dist in remaining_targets.values()):
-                            logging.warning(f"Accodo movimento residuo per motori non bloccati: {remaining_targets}")
-                            motor_command_queue.put({"command": "move", "targets": remaining_targets.copy()})
+                        # if any(abs(dist) > 0.001 for dist in remaining_targets.values()):
+                        #     logging.warning(f"Accodo movimento residuo per motori non bloccati: {remaining_targets}")
+                        #     motor_command_queue.put({"command": "move", "targets": remaining_targets.copy()})
                         break
                     with SYSTEM_CONFIG_LOCK:
                         current_switch_states = MOTOR_CONTROLLER.switch_states.copy()
