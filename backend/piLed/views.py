@@ -44,9 +44,8 @@ def control_leds(request):
             global current_effect
             if effect == 'wave':
                 current_effect = "wave"
-                debug_logs.append("Starting wave effect...")
                 # threading.Thread(target=wave_effect_with_logs, args=(strip, debug_logs), daemon=True).start()
-                response = wave_effect_with_logs(debug_logs)
+                response = wave_effect_with_logs()
                 if response[0]:
                     debug_logs.append("Wave effect started successfully.")
                     return JsonResponse({'status': 'success', 'message': 'Wave effect started in loop', 'logs': debug_logs})
@@ -102,6 +101,14 @@ def control_leds(request):
             return JsonResponse({'status': 'error', 'message': 'Invalid JSON'}, status=400)
     return JsonResponse({'status': 'error', 'message': 'Invalid request method'}, status=400)
 
+def get_led_status(request):
+    if request.method == 'GET':
+        status = {
+            'current_effect': current_effect,
+        }
+        return JsonResponse({'status': 'success', 'led_status': status})
+    return JsonResponse({'status': 'error', 'message': 'Invalid request method'}, status=400)
+
 def stop_led_effect():
     try:
         response = requests.get(f'{ESPurl}/off', timeout=5)
@@ -115,16 +122,8 @@ def stop_led_effect():
         print(f"Errore di connessione all'ESP32: {e}")
         return False, str(e)
 
-def get_led_status(request):
-    if request.method == 'GET':
-        status = {
-            'current_effect': current_effect,
-        }
-        return JsonResponse({'status': 'success', 'led_status': status})
-    return JsonResponse({'status': 'error', 'message': 'Invalid request method'}, status=400)
-
-def wave_effect_with_logs(debug_logs):
-    debug_logs.append("Wave effect thread started")
+def wave_effect_with_logs():
+    # debug_logs.append("Wave effect thread started")
     try:
         response = requests.get(f'{ESPurl}/rainbow', timeout=5)
         if response.status_code == 200:
@@ -138,15 +137,7 @@ def wave_effect_with_logs(debug_logs):
         return False, str(e)
     
 
-# @csrf_exempt
-# def stop_led_effect(request):
-#     if request.method == 'POST':
-#         stop_event.set()  # Imposta il flag per fermare i thread
-#         return JsonResponse({'status': 'success', 'message': 'LED effect stopped'})
-#     return JsonResponse({'status': 'error', 'message': 'Invalid request method'}, status=400)
-
-def green_loading_with_logs(debug_logs):
-    debug_logs.append("Green loading effect started")
+def green_loading_with_logs():
     try:
         response = requests.get(f'{ESPurl}/greenloading', timeout=5)
         if response.status_code == 200:
@@ -159,8 +150,7 @@ def green_loading_with_logs(debug_logs):
         print(f"Errore di connessione all'ESP32: {e}")
         return False, str(e)
 
-def yellow_blink_with_logs(debug_logs):
-    debug_logs.append("Yellow blink effect started")
+def yellow_blink_with_logs():
     try:
         response = requests.get(f'{ESPurl}/yellowblink', timeout=5)
         if response.status_code == 200:
@@ -173,8 +163,7 @@ def yellow_blink_with_logs(debug_logs):
         print(f"Errore di connessione all'ESP32: {e}")
         return False, str(e)
 
-def red_static_with_logs(debug_logs):
-    debug_logs.append("Red static effect started")
+def red_static_with_logs():
     try:
         response = requests.get(f'{ESPurl}/redstatic', timeout=5)
         if response.status_code == 200:
