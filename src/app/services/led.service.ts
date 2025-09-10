@@ -11,8 +11,16 @@ export class LedService {
   constructor(private http: HttpClient) { }
 
   startWaveEffect() {
-    return this.http.get(this.ESPurl + 'rainbow');
-  }
+    this.http.get(this.ESPurl + 'rainbow').subscribe(response => {
+      console.log('Wave effect started:', response);
+      return response
+    }
+    , error => {
+      console.error('Error starting wave effect:', error);
+      return error
+    });
+    //
+    }
 
   startGreenLoading() {
     return this.http.get(this.ESPurl + 'greenloading');
