@@ -138,12 +138,12 @@ def wave_effect_with_logs(debug_logs):
         return False, str(e)
     
 
-@csrf_exempt
-def stop_led_effect(request):
-    if request.method == 'POST':
-        stop_event.set()  # Imposta il flag per fermare i thread
-        return JsonResponse({'status': 'success', 'message': 'LED effect stopped'})
-    return JsonResponse({'status': 'error', 'message': 'Invalid request method'}, status=400)
+# @csrf_exempt
+# def stop_led_effect(request):
+#     if request.method == 'POST':
+#         stop_event.set()  # Imposta il flag per fermare i thread
+#         return JsonResponse({'status': 'success', 'message': 'LED effect stopped'})
+#     return JsonResponse({'status': 'error', 'message': 'Invalid request method'}, status=400)
 
 def green_loading_with_logs(debug_logs):
     debug_logs.append("Green loading effect started")
