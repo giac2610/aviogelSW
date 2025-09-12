@@ -20,14 +20,14 @@ export class BlobSimulationPage implements OnInit {
   isCameraInit: boolean = false;
 
   @ViewChild('cameraImg', { static: false }) cameraImgRef!: ElementRef<HTMLImageElement>;
-  imgWidth: number = 1280/3.5;
-  imgHeight: number = 720/3.5;
+  imgWidth: number = 1280 / 3.5;
+  imgHeight: number = 720 / 3.5;
 
   constructor(
     private toastController: ToastController,
     private configService: SetupAPIService,
     private motorsControlService: MotorsControlService,
-    private ledSerivce : LedService
+    private ledSerivce: LedService
   ) {
     this.streamUrl = this.configService.getNormalStreamUrl();
   }
@@ -45,13 +45,13 @@ export class BlobSimulationPage implements OnInit {
     await toast.present();
   }
 
-  getRealCoordinates(){
+  getRealCoordinates() {
     this.configService.getKeypointsCoordinates().subscribe({
       next: (res) => {
-          this.presentToast('Coordinate reali recuperate con successo');
-          console.log('Coordinate reali:', res.coordinates);
-          this.coordinates = res.coordinates;
-          this.graphUrl = 'http://localhost:8000/camera/plot_graph/?t=' + new Date().getTime();
+        this.presentToast('Coordinate reali recuperate con successo');
+        console.log('Coordinate reali:', res.coordinates);
+        this.coordinates = res.coordinates;
+        this.graphUrl = 'http://localhost:8000/camera/plot_graph/?t=' + new Date().getTime();
       },
       error: () => {
         this.presentToast('Errore nel recupero delle coordinate reali', 'danger');
@@ -60,7 +60,7 @@ export class BlobSimulationPage implements OnInit {
   }
 
   delay(ms: number) {
-  return new Promise(resolve => setTimeout(resolve, ms));
+    return new Promise(resolve => setTimeout(resolve, ms));
   }
 
   viewRoute() {
@@ -89,7 +89,10 @@ export class BlobSimulationPage implements OnInit {
       switchMap((res) => {
         if (res.status === 'success') {
           console.log('route to execute:', res.motor_commands);
-          this.ledSerivce.startGreenLoading();
+          this.ledSerivce.startGreenLoading().subscribe({
+            next: () => this.presentToast('Green loading avviato', 'success'),
+            error: () => this.presentToast('Errore nell\'avviare la wave', 'danger')
+          });;
           return this.configService.executeRoute(res.motor_commands);
 
         } else {
@@ -98,7 +101,12 @@ export class BlobSimulationPage implements OnInit {
       }),
       switchMap(() => this.configService.deInitializeCamera())
     ).subscribe({
-      next: () => { this.ledSerivce.startWaveEffect(); this.presentToast('Rotta eseguita con successo'); },
+      next: () => {
+        this.ledSerivce.startWaveEffect().subscribe({
+          next: () => this.presentToast('wave avviata', 'success'),
+          error: () => this.presentToast('Errore nell\'avviare la wave', 'danger')
+        });;; this.presentToast('Rotta eseguita con successo');
+      },
       error: (err) => { this.presentToast(err.message, 'danger'); }
     });
   }
