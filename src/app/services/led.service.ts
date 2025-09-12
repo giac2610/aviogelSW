@@ -1,6 +1,5 @@
 import { HttpClient } from '@angular/common/http';
 import { Injectable } from '@angular/core';
-import { Observable } from 'rxjs';
 
 @Injectable({
   providedIn: 'root'
@@ -12,12 +11,7 @@ export class LedService {
   constructor(private http: HttpClient) { }
 
   startWaveEffect() {
-
-    this.http.get(this.ESPurl + 'rainbow', { responseType: 'json' }).subscribe(response => {
-
-      console.log('Starting wave effect, response:', response);
-      return response;
-    });
+      return this.http.get(this.ESPurl + 'rainbow');
   }
   startGreenLoading() {
     return this.http.get(this.ESPurl + 'greenloading');

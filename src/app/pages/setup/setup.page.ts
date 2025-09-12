@@ -306,19 +306,17 @@ onPresetChange() {
   }
 
   startWaveEffect() {
-    this.ledService.startWaveEffect()
-    // .subscribe({
-    //   next: () => this.presentToast('Wave effect avviato', 'success'),
-    //   error: () => this.presentToast('Errore nell\'avviare il wave effect', 'danger')
-    // });
+    this.ledService.startWaveEffect().subscribe({
+      next: () => this.presentToast('Wave effect avviato', 'success'),
+      error: () => this.presentToast('Errore nell\'avviare il wave effect', 'danger')
+    });
   }
   
   startGreenLoading() {
-    this.ledService.startGreenLoading()
-    // .subscribe({
-    //   next: () => this.presentToast('Green loading avviato', 'success'),
-    //   error: () => this.presentToast('Errore nell\'avviare il green loading', 'danger')
-    // });
+    this.ledService.startGreenLoading().subscribe({
+      next: () => this.presentToast('Green loading avviato', 'success'),
+      error: () => this.presentToast('Errore nell\'avviare il green loading', 'danger')
+    });
   }
   
   startYellowBlink() {
