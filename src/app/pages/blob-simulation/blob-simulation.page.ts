@@ -102,10 +102,10 @@ export class BlobSimulationPage implements OnInit {
       switchMap(() => this.configService.deInitializeCamera())
     ).subscribe({
       next: () => {
-        this.ledSerivce.startWaveEffect().subscribe({
-          next: () => this.presentToast('wave avviata', 'success'),
-          error: () => this.presentToast('Errore nell\'avviare la wave', 'danger')
-        });;; this.presentToast('Rotta eseguita con successo');
+        // this.ledSerivce.startWaveEffect().subscribe({
+        //   next: () => this.presentToast('wave avviata', 'success'),
+        //   error: () => this.presentToast('Errore nell\'avviare la wave', 'danger')
+        // });;; this.presentToast('Rotta eseguita con successo');
       },
       error: (err) => { this.presentToast(err.message, 'danger'); }
     });
