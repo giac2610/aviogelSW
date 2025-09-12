@@ -64,7 +64,6 @@ addUser(name: string, gender: string = 'male', expertUser: boolean = false) {
 navigateNextPage(user: User){
   this.usersService.setCurrentUser(user)
   user.expertUser ? this.router.navigate(['/expert']) : this.router.navigate(['/tutorial'])
-
 }
 
 enterSetup(){
