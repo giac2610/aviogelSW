@@ -3,6 +3,7 @@ import { MotorsControlService } from '../../services/motors-control.service';
 import { ToastController, AlertController } from '@ionic/angular';
 import { SetupAPIService } from 'src/app/services/setup-api.service';
 import { switchMap, tap, catchError } from 'rxjs/operators';
+import { LedService } from 'src/app/services/led.service';
 
 @Component({
   selector: 'app-blob-simulation',
@@ -26,6 +27,7 @@ export class BlobSimulationPage implements OnInit {
     private toastController: ToastController,
     private configService: SetupAPIService,
     private motorsControlService: MotorsControlService,
+    private ledSerivce : LedService
   ) {
     this.streamUrl = this.configService.getNormalStreamUrl();
   }
@@ -87,14 +89,16 @@ export class BlobSimulationPage implements OnInit {
       switchMap((res) => {
         if (res.status === 'success') {
           console.log('route to execute:', res.motor_commands);
+          this.ledSerivce.startGreenLoading();
           return this.configService.executeRoute(res.motor_commands);
+
         } else {
           throw new Error(res.message || 'Errore nell\'ottenimento della rotta');
         }
       }),
       switchMap(() => this.configService.deInitializeCamera())
     ).subscribe({
-      next: () => { /* tutto ok */ },
+      next: () => { this.ledSerivce.startWaveEffect(); this.presentToast('Rotta eseguita con successo'); },
       error: (err) => { this.presentToast(err.message, 'danger'); }
     });
   }
