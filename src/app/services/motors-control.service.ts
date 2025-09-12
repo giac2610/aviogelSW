@@ -38,9 +38,9 @@ export class MotorsControlService {
 
   goHome(body: any): Observable<any> {
     const url = `${this.apiUrl}home/`;
-    this.ledService.startGreenLoading().subscribe({
-      next: () => console.log('Green loading avviato'),
-      error: () => console.error('Errore nell\'avviare il green loading')
+    this.ledService.startWaveEffect().subscribe({
+      next: () => console.log('wave effect avviato'),
+      error: () => console.error('Errore nell\'avviare il wavew effect')
     });
     return this.http.post<any>(url, body);
   }
