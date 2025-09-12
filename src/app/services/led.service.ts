@@ -12,21 +12,13 @@ export class LedService {
   constructor(private http: HttpClient) { }
 
   startWaveEffect() {
-    const response = new Observable(observer => {
-      this.http.get(this.ESPurl + 'rainbow').subscribe({
-        next: (res) => {
-          observer.next(res);
-          observer.complete();
-        },
-        error: (err) => observer.error(err)
-      });
-    });
-    console.log('Starting wave effect, response:', response);
-    return response
-    // console.log('Starting wave effect, response:', response);
-    
-    }
 
+    this.http.get(this.ESPurl + 'rainbow', { responseType: 'text' }).subscribe(response => {
+
+      console.log('Starting wave effect, response:', response);
+      return response;
+    });
+  }
   startGreenLoading() {
     return this.http.get(this.ESPurl + 'greenloading');
   }
