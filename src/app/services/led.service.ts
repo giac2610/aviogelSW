@@ -13,7 +13,7 @@ export class LedService {
 
   startWaveEffect() {
 
-    this.http.get(this.ESPurl + 'rainbow', { responseType: 'text' }).subscribe(response => {
+    this.http.get(this.ESPurl + 'rainbow', { responseType: 'json' }).subscribe(response => {
 
       console.log('Starting wave effect, response:', response);
       return response;
