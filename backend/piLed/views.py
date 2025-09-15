@@ -4,7 +4,7 @@ import json
 import time
 import threading
 import requests
-
+import logging
 try:
     import board  # type: ignore
     import neopixel  # type: ignore
@@ -155,12 +155,16 @@ def yellow_blink_with_logs():
         response = requests.get(f'{ESPurl}/yellowblink', timeout=5)
         if response.status_code == 200:
             print(f"Successo! Effetto yelloblink impostato.")
+            logging.info("Successo! Effetto yelloblink impostato.")
             return True, response.text
         else:
             print(f"Errore: l'ESP32 ha risposto con codice {response.status_code}")
+            logging.error(f"Errore: l'ESP32 ha risposto con codice {response.status_code}")
             return False, f"Status Code: {response.status_code}"
     except requests.exceptions.RequestException as e:
         print(f"Errore di connessione all'ESP32: {e}")
+        logging.error(f"Errore di connessione all'ESP32: {e}")
+        
         return False, str(e)
 
 def red_static_with_logs():
