@@ -111,7 +111,7 @@ def get_led_status(request):
 
 def stop_led_effect():
     try:
-        response = requests.get(f'{ESPurl}/off', timeout=5)
+        response = requests.get(f'{ESPurl}off', timeout=5)
         if response.status_code == 200:
             print(f"Successo! Effetto LED spento.")
             return True, response.text
@@ -125,7 +125,7 @@ def stop_led_effect():
 def wave_effect_with_logs():
     # debug_logs.append("Wave effect thread started")
     try:
-        response = requests.get(f'{ESPurl}/rainbow', timeout=5)
+        response = requests.get(f'{ESPurl}rainbow', timeout=5)
         if response.status_code == 200:
             print(f"Successo! Effetto rainbow impostato.")
             return True, response.text
@@ -139,7 +139,7 @@ def wave_effect_with_logs():
 
 def green_loading_with_logs():
     try:
-        response = requests.get(f'{ESPurl}/greenloading', timeout=5)
+        response = requests.get(f'{ESPurl}greenloading', timeout=5)
         if response.status_code == 200:
             print(f"Successo! Effetto green wave impostato.")
             return True, response.text
@@ -152,7 +152,7 @@ def green_loading_with_logs():
 
 def yellow_blink_with_logs():
     try:
-        response = requests.get(f'{ESPurl}/yellowblink', timeout=5)
+        response = requests.get(f'{ESPurl}yellowblink', timeout=5)
         if response.status_code == 200:
             print(f"Successo! Effetto yelloblink impostato.")
             logging.info("Successo! Effetto yelloblink impostato.")
@@ -169,7 +169,7 @@ def yellow_blink_with_logs():
 
 def red_static_with_logs():
     try:
-        response = requests.get(f'{ESPurl}/redstatic', timeout=5)
+        response = requests.get(f'{ESPurl}redstatic', timeout=5)
         if response.status_code == 200:
             print(f"Successo! Effetto static red impostato.")
             return True, response.text
