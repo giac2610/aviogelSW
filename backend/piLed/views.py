@@ -56,7 +56,7 @@ def control_leds(request):
                 current_effect = "green_loading"
                 debug_logs.append("Starting green loading effect...")
                 # threading.Thread(target=green_loading_with_logs, args=(strip, debug_logs), daemon=True).start()
-                response = green_loading_with_logs(debug_logs)
+                response = green_loading_with_logs()
                 if response[0]:
                     debug_logs.append("green effect started successfully.")
                     return JsonResponse({'status': 'success', 'message': 'green effect started in loop', 'logs': debug_logs})
@@ -67,7 +67,7 @@ def control_leds(request):
                 current_effect = "yellow_blink"
                 debug_logs.append("Starting yellow blink effect...")
                 # threading.Thread(target=yellow_blink_with_logs, args=(strip, debug_logs), daemon=True).start()
-                response = yellow_blink_with_logs(debug_logs)
+                response = yellow_blink_with_logs()
                 if response[0]:
                     debug_logs.append("yrllow effect started successfully.")
                     return JsonResponse({'status': 'success', 'message': 'yellow effect started in loop', 'logs': debug_logs})
@@ -78,7 +78,7 @@ def control_leds(request):
                 current_effect = "red_static"
                 debug_logs.append("Starting red static effect...")
                 # threading.Thread(target=red_static_with_logs, args=(strip, debug_logs), daemon=True).start()
-                response = red_static_with_logs(debug_logs)
+                response = red_static_with_logs()
                 if response[0]:
                     debug_logs.append("red effect started successfully.")
                     return JsonResponse({'status': 'success', 'message': 'red effect started in loop', 'logs': debug_logs})
