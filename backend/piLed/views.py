@@ -15,7 +15,6 @@ except ImportError:
 
 # Configurazione della strip LED
 LED_COUNT = 100  # Numero di LED
-# LED_PIN = board.D19  # GPIO dei dati
 LED_PIN = board.D21  # GPIO dei dati
 LED_BRIGHTNESS = 0.5  # Luminosità (da 0.0 a 1.0)
 ORDER = neopixel.GRB  # Ordine dei colori
@@ -28,6 +27,8 @@ stop_event = threading.Event()
 
 current_effect = "none"
 ESPurl = f"http://192.168.159.130:80/"
+
+logging.basicConfig(level=logging.DEBUG)
 
 @csrf_exempt
 def control_leds(request):
@@ -113,13 +114,13 @@ def stop_led_effect():
     try:
         response = requests.get(f'{ESPurl}off', timeout=5)
         if response.status_code == 200:
-            print(f"Successo! Effetto LED spento.")
+            logging.info("Successo! Effetto LED spento.")
             return True, response.text
         else:
-            print(f"Errore: l'ESP32 ha risposto con codice {response.status_code}")
+            logging.error(f"Errore: l'ESP32 ha risposto con codice {response.status_code}")
             return False, f"Status Code: {response.status_code}"
     except requests.exceptions.RequestException as e:
-        print(f"Errore di connessione all'ESP32: {e}")
+        logging.error(f"Errore di connessione all'ESP32: {e}")
         return False, str(e)
 
 def wave_effect_with_logs():
@@ -127,15 +128,12 @@ def wave_effect_with_logs():
     try:
         response = requests.get(f'{ESPurl}rainbow', timeout=5)
         if response.status_code == 200:
-            print(f"Successo! Effetto rainbow impostato.")
             logging.info("Successo! Effetto rainbow impostato.")
             return True, response.text
         else:
-            print(f"Errore: l'ESP32 ha risposto con codice {response.status_code}")
             logging.error(f"Errore: l'ESP32 ha risposto con codice {response.status_code}")
             return False, f"Status Code: {response.status_code}"
     except requests.exceptions.RequestException as e:
-        print(f"Errore di connessione all'ESP32: {e}")
         logging.error(f"Errore di connessione all'ESP32: {e}")
         return False, str(e)
     
@@ -144,15 +142,12 @@ def green_loading_with_logs():
     try:
         response = requests.get(f'{ESPurl}greenloading', timeout=5)
         if response.status_code == 200:
-            print(f"Successo! Effetto green wave impostato.")
             logging.info("Successo! Effetto green wave impostato.")
             return True, response.text
         else:
-            print(f"Errore: l'ESP32 ha risposto con codice {response.status_code}")
             logging.error(f"Errore: l'ESP32 ha risposto con codice {response.status_code}")
             return False, f"Status Code: {response.status_code}"
     except requests.exceptions.RequestException as e:
-        print(f"Errore di connessione all'ESP32: {e}")
         logging.error(f"Errore di connessione all'ESP32: {e}")
         return False, str(e)
 
@@ -160,15 +155,12 @@ def yellow_blink_with_logs():
     try:
         response = requests.get(f'{ESPurl}yellowblink', timeout=5)
         if response.status_code == 200:
-            print(f"Successo! Effetto yelloblink impostato.")
             logging.info("Successo! Effetto yelloblink impostato.")
             return True, response.text
         else:
-            print(f"Errore: l'ESP32 ha risposto con codice {response.status_code}")
             logging.error(f"Errore: l'ESP32 ha risposto con codice {response.status_code}")
             return False, f"Status Code: {response.status_code}"
     except requests.exceptions.RequestException as e:
-        print(f"Errore di connessione all'ESP32: {e}")
         logging.error(f"Errore di connessione all'ESP32: {e}")
         
         return False, str(e)
@@ -177,14 +169,11 @@ def red_static_with_logs():
     try:
         response = requests.get(f'{ESPurl}redstatic', timeout=5)
         if response.status_code == 200:
-            print(f"Successo! Effetto static red impostato.")
             logging.info("Successo! Effetto static red impostato.")
             return True, response.text
         else:
-            print(f"Errore: l'ESP32 ha risposto con codice {response.status_code}")
             logging.error(f"Errore: l'ESP32 ha risposto con codice {response.status_code}")
             return False, f"Status Code: {response.status_code}"
     except requests.exceptions.RequestException as e:
-        print(f"Errore di connessione all'ESP32: {e}")
         logging.error(f"Errore di connessione all'ESP32: {e}")
         return False, str(e)
