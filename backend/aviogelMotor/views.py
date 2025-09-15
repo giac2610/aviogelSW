@@ -243,6 +243,7 @@ class MotorController:
             self._callbacks[end_switch_pin] = self.pi.callback(end_switch_pin, pigpio.EITHER_EDGE, self._switch_callback)
             logging.warning(f"Homing per '{motor_name}' fallito: Finecorsa di EMERGENZA (END) attivato!")
             logging.warning(f"Il motore '{motor_name}' è bloccato. Eseguire un nuovo homing per sbloccarlo.")
+            led_views.red_static_with_logs()
             return
 
         if not homing_hit.is_set():
@@ -250,7 +251,7 @@ class MotorController:
             self._callbacks[start_switch_pin] = self.pi.callback(start_switch_pin, pigpio.EITHER_EDGE, self._switch_callback)
             self._callbacks[end_switch_pin] = self.pi.callback(end_switch_pin, pigpio.EITHER_EDGE, self._switch_callback)
             logging.warning(f"Homing Fase 1 fallita per '{motor_name}': timeout.")
- 
+            led_views.red_static_with_logs()
             return
 
         logging.warning("Homing: Finecorsa toccato.")
@@ -285,11 +286,11 @@ class MotorController:
         if not backed_off:
             self.switch_states[switch_id] = True
             logging.warning(f"Homing Fase 2 (Back-off) fallita per '{motor_name}': timeout.")
-            
+            led_views.red_static_with_logs()
         else:
             self.switch_states[switch_id] = False
             logging.warning(f"Homing per '{motor_name}' completato con successo. Posizione zero definita.")
-
+            led_views.wave_effect_with_logs()
         self.switch_states[end_switch_id] = False
 
 class MotionPlanner:
