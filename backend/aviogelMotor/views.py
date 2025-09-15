@@ -455,16 +455,18 @@ MOTION_PLANNER = MotionPlanner(MOTOR_CONFIGS)
 MOTOR_CONTROLLER = MotorController(MOTOR_CONFIGS)
 motor_command_queue = queue.Queue()
 SYSTEM_CONFIG_LOCK = threading.Lock()
-            
 def motor_worker():
     logging.warning("Motor worker avviato con architettura a cicli continui.")
+    first_run = True    
     while True:
         task = motor_command_queue.get()
         try:
             command = task.get("command", "move")
-            
             if command == "move":
-                led_views.green_loading_with_logs()
+                if first_run:
+                    led_views.green_loading_with_logs()
+                    first_run = False
+                
                 remaining_targets = task.get("targets", {}).copy()
                 
                 # Cicla finché c'è ancora distanza significativa da percorrere
