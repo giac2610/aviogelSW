@@ -140,7 +140,7 @@ class MotorController:
         if motor_name not in SWITCHES:
             logging.warning(f"Impossibile eseguire homing: '{motor_name}' non ha finecorsa.")
             return
-        led_views.yellow_blink_with_logs([])
+        led_views.yellow_blink_with_logs()
         self.motor_error_state[motor_name] = False
 
         logging.warning(f"Avvio sequenza di Homing per '{motor_name}'...")
@@ -210,11 +210,11 @@ class MotorController:
             if not backed_off:
                 self.switch_states[switch_id] = True
                 logging.warning(f"Homing Fase 2 (Back-off) fallita per '{motor_name}': timeout.")
-                led_views.red_static_with_logs([])
+                led_views.red_static_with_logs()
             else:
                 self.switch_states[switch_id] = False
                 logging.warning(f"Homing per '{motor_name}' completato con successo. Posizione zero definita.")
-                led_views.green_loading_with_logs([])
+                led_views.green_loading_with_logs()
     
             self.switch_states[end_switch_id] = False
         else:
