@@ -1,8 +1,7 @@
 import { Component, OnInit, ViewChild, ElementRef } from '@angular/core';
-import { MotorsControlService } from '../../services/motors-control.service';
-import { ToastController, AlertController } from '@ionic/angular';
+import { ToastController } from '@ionic/angular';
 import { SetupAPIService } from 'src/app/services/setup-api.service';
-import { switchMap, tap, catchError } from 'rxjs/operators';
+import { switchMap } from 'rxjs/operators';
 import { LedService } from 'src/app/services/led.service';
 
 @Component({
@@ -26,7 +25,6 @@ export class BlobSimulationPage implements OnInit {
   constructor(
     private toastController: ToastController,
     private configService: SetupAPIService,
-    private motorsControlService: MotorsControlService,
     private ledSerivce: LedService
   ) {
     this.streamUrl = this.configService.getNormalStreamUrl();

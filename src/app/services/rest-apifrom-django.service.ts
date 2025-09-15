@@ -36,9 +36,7 @@ export class RestAPIfromDjangoService {
 
   modifyUser(user: User): Observable<User> {
     const url = `${this.apiUrl}users/update/${user.id}/`;
-    console.log(url)
     const body = { ...user };
-    console.log(body)
     return this.http.put<User>(url, body);
   }
 
