@@ -214,7 +214,7 @@ class MotorController:
             else:
                 self.switch_states[switch_id] = False
                 logging.warning(f"Homing per '{motor_name}' completato con successo. Posizione zero definita.")
-                led_views.green_loading_with_logs()
+                led_views.wave_effect_with_logs()
     
             self.switch_states[end_switch_id] = False
         else:
@@ -464,6 +464,7 @@ def motor_worker():
             command = task.get("command", "move")
             
             if command == "move":
+                led_views.green_loading_with_logs()
                 remaining_targets = task.get("targets", {}).copy()
                 
                 # Cicla finché c'è ancora distanza significativa da percorrere
