@@ -566,8 +566,10 @@ def motor_worker():
                 motor_to_home = task.get("motor")
                 if motor_to_home:
                     MOTOR_CONTROLLER.execute_homing_sequence(motor_to_home)
+                    first_run = True
             
             logging.warning(f"Worker: task '{task.get('command')}' completato.")
+            
 
         except Exception as e:
             logging.warning(f"Errore critico nel motor_worker su task {task}: {e}", exc_info=True)
