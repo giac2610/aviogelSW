@@ -57,10 +57,6 @@ export class BlobSimulationPage implements OnInit {
     });
   }
 
-  delay(ms: number) {
-    return new Promise(resolve => setTimeout(resolve, ms));
-  }
-
   viewRoute() {
     this.configService.getMotorsRoute().subscribe({
       next: (res) => {
