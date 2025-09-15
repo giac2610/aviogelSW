@@ -680,23 +680,6 @@ def update_config_view(request):
             MOTOR_CONTROLLER = MotorController(MOTOR_CONFIGS)
             return JsonResponse({"log": "Errore critico durante l'hot-reload. Ricaricata config precedente.", "error": str(e)}, status=500)
 
-@api_view(['POST'])
-def start_simulation_view(request):
-    try:
-        simulation_steps = []
-        extruder_direction = 1
-        for _ in range(5):
-            for _ in range(3):
-                simulation_steps.append({"syringe": 5})
-                simulation_steps.append({"extruder": 50 * extruder_direction})
-            extruder_direction *= -1
-            simulation_steps.append({"conveyor": 50})
-        logging.warning("Avvio simulazione predefinita...")
-        for i, step in enumerate(simulation_steps):
-            logging.warning(f"Accodamento passo simulazione {i+1}: {step}")
-            motor_command_queue.put({"command": "move", "targets": step})
-        return JsonResponse({"log": "Simulazione accodata.", "status": "queued"})
-    except Exception as e: return handle_exception(e)
 
 @api_view(['POST'])
 def save_motor_config_view(request):
@@ -717,16 +700,7 @@ def save_motor_config_view(request):
 def get_motor_speeds_view(request):
     return JsonResponse({"log": "API di velocità non implementata nella nuova architettura", "speeds": {}})
 
-@api_view(['GET'])
-def get_motor_max_speeds_view(request):
-    try:
-        speeds = {}
-        for name, config in MOTOR_CONFIGS.items():
-            speed_mm_s = config.max_freq_hz / config.steps_per_mm
-            speeds[name] = round(speed_mm_s, 3)
-        return JsonResponse({"status": "success", "speeds": speeds})
-    except Exception as e:
-        return JsonResponse({"status": "error", "message": str(e)}, status=500)
+
     
 @api_view(['GET'])
 def get_motor_status_view(request):
