@@ -74,13 +74,13 @@ class MotorController:
             if IS_RPI:
                 pi = pigpio.pi()
                 if not pi.connected: raise ConnectionError("Connessione a pigpiod fallita.")
-                logging.warning("Connessione a pigpio stabilita.")
+                logging.info("Connessione a pigpio stabilita.")
                 return pi
             else:
                 logging.warning("Utilizzo di istanza pigpio simulata.")
                 return pigpio.pi()
         except Exception as e:
-            logging.warning(f"Fallimento init pigpio: {e}")
+            logging.error(f"Fallimento init pigpio: {e}")
             return None
 
     def _initialize_gpio_pins(self):
@@ -103,7 +103,7 @@ class MotorController:
                 self._pin_to_switch_map[pin] = switch_id
                 cb = self.pi.callback(pin, pigpio.EITHER_EDGE, self._switch_callback)
                 self._callbacks[pin] = cb
-        logging.warning(f"Finecorsa inizializzati. Stato attuale: {self.switch_states}")
+        logging.info(f"Finecorsa inizializzati. Stato attuale: {self.switch_states}")
 
     def _switch_callback(self, gpio, level, tick):
         switch_id = self._pin_to_switch_map.get(gpio)
@@ -138,19 +138,19 @@ class MotorController:
 
     def execute_homing_sequence(self, motor_name: str):
         if motor_name not in SWITCHES:
-            logging.warning(f"Impossibile eseguire homing: '{motor_name}' non ha finecorsa.")
+            logging.error(f"Impossibile eseguire homing: '{motor_name}' non ha finecorsa.")
             return
         led_views.yellow_blink_with_logs()
         self.motor_error_state[motor_name] = False
 
-        logging.warning(f"Avvio sequenza di Homing per '{motor_name}'...")
+        logging.info(f"Avvio sequenza di Homing per '{motor_name}'...")
         start_switch_pin = SWITCHES[motor_name]['Start']
         end_switch_pin = SWITCHES[motor_name]['End']
         switch_id = f"{motor_name}_start"
         end_switch_id = f"{motor_name}_end"
         config = self.motor_configs[motor_name]
         
-        logging.warning("Homing: Fase 1 - Ricerca veloce del finecorsa...")
+        logging.info("Homing: Fase 1 - Ricerca veloce del finecorsa...")
 
         homing_hit = threading.Event()
         end_switch_hit = threading.Event()
@@ -181,8 +181,8 @@ class MotorController:
         self.pi.wave_clear()
 
         if(MOTOR_CONTROLLER.switch_states.get(f"{motor_name}_start")):
-            logging.warning(f"Fase 1 Homing per '{motor_name}' già completato: finecorsa di START attivo.")
-            logging.warning("Homing: Fase 2 - Back-off lento per rilascio sensore...")
+            logging.info(f"Fase 1 Homing per '{motor_name}' già completato: finecorsa di START attivo.")
+            logging.info("Homing: Fase 2 - Back-off lento per rilascio sensore...")
             backoff_done = threading.Event()
             def backoff_callback(gpio, level, tick):
                 if level == 0:
@@ -209,11 +209,11 @@ class MotorController:
     
             if not backed_off:
                 self.switch_states[switch_id] = True
-                logging.warning(f"Homing Fase 2 (Back-off) fallita per '{motor_name}': timeout.")
+                logging.error(f"Homing Fase 2 (Back-off) fallita per '{motor_name}': timeout.")
                 led_views.red_static_with_logs()
             else:
                 self.switch_states[switch_id] = False
-                logging.warning(f"Homing per '{motor_name}' completato con successo. Posizione zero definita.")
+                logging.info(f"Homing per '{motor_name}' completato con successo. Posizione zero definita.")
                 led_views.wave_effect_with_logs()
     
             self.switch_states[end_switch_id] = False
@@ -241,7 +241,7 @@ class MotorController:
             self.motor_error_state[motor_name] = True
             self._callbacks[start_switch_pin] = self.pi.callback(start_switch_pin, pigpio.EITHER_EDGE, self._switch_callback)
             self._callbacks[end_switch_pin] = self.pi.callback(end_switch_pin, pigpio.EITHER_EDGE, self._switch_callback)
-            logging.warning(f"Homing per '{motor_name}' fallito: Finecorsa di EMERGENZA (END) attivato!")
+            logging.error(f"Homing per '{motor_name}' fallito: Finecorsa di EMERGENZA (END) attivato!")
             logging.warning(f"Il motore '{motor_name}' è bloccato. Eseguire un nuovo homing per sbloccarlo.")
             led_views.red_static_with_logs()
             return
@@ -250,15 +250,15 @@ class MotorController:
             self.pi.write(config.en_pin, 1)
             self._callbacks[start_switch_pin] = self.pi.callback(start_switch_pin, pigpio.EITHER_EDGE, self._switch_callback)
             self._callbacks[end_switch_pin] = self.pi.callback(end_switch_pin, pigpio.EITHER_EDGE, self._switch_callback)
-            logging.warning(f"Homing Fase 1 fallita per '{motor_name}': timeout.")
+            logging.error(f"Homing Fase 1 fallita per '{motor_name}': timeout.")
             led_views.red_static_with_logs()
             return
 
-        logging.warning("Homing: Finecorsa toccato.")
+        logging.info("Homing: Finecorsa toccato.")
         time.sleep(0.1)
 
         # --- FASE 2: Back-off lento dal finecorsa ---
-        logging.warning("Homing: Fase 2 - Back-off lento per rilascio sensore...")
+        logging.info("Homing: Fase 2 - Back-off lento per rilascio sensore...")
         backoff_done = threading.Event()
         def backoff_callback(gpio, level, tick):
             if level == 0:
@@ -285,18 +285,18 @@ class MotorController:
 
         if not backed_off:
             self.switch_states[switch_id] = True
-            logging.warning(f"Homing Fase 2 (Back-off) fallita per '{motor_name}': timeout.")
+            logging.error(f"Homing Fase 2 (Back-off) fallita per '{motor_name}': timeout.")
             led_views.red_static_with_logs()
         else:
             self.switch_states[switch_id] = False
-            logging.warning(f"Homing per '{motor_name}' completato con successo. Posizione zero definita.")
+            logging.info(f"Homing per '{motor_name}' completato con successo. Posizione zero definita.")
             led_views.wave_effect_with_logs()
         self.switch_states[end_switch_id] = False
 
 class MotionPlanner:
     def __init__(self, motor_configs: dict[str, MotorConfig]):
         self.motor_configs = motor_configs
-        logging.warning(f"MotionPlanner inizializzato con motori: {list(motor_configs.keys())}")
+        logging.info(f"MotionPlanner inizializzato con motori: {list(motor_configs.keys())}")
 
     def _generate_trapezoidal_profile(self, total_steps: int, max_freq_hz: float, accel_mmss: float, steps_per_mm: float) -> list[float]:
         if total_steps == 0: return []
@@ -444,9 +444,9 @@ def load_system_config() -> dict[str, MotorConfig]:
                     acceleration_mmss=acceleration_mmss,
                     homeDir=homeDir
                 )
-            logging.warning("Configurazione motori caricata.")
+            logging.info("Configurazione motori caricata.")
     except Exception as e:
-        logging.warning(f"Errore caricamento configurazione: {e}")
+        logging.error(f"Errore caricamento configurazione: {e}")
     return configs
 
 # --- Blocco di Inizializzazione e Worker ---
@@ -456,7 +456,7 @@ MOTOR_CONTROLLER = MotorController(MOTOR_CONFIGS)
 motor_command_queue = queue.Queue()
 SYSTEM_CONFIG_LOCK = threading.Lock()
 def motor_worker():
-    logging.warning("Motor worker avviato con architettura a cicli continui.")
+    logging.info("Motor worker avviato con architettura a cicli continui.")
     first_run = True    
     while True:
         task = motor_command_queue.get()
@@ -504,7 +504,7 @@ def motor_worker():
                             if motor_id != "conveyor":
                                 if (remaining_targets[motor_id] < 0 and MOTOR_CONTROLLER.switch_states.get(f"{motor_id}_end")) or \
                                    (remaining_targets[motor_id] > 0 and MOTOR_CONTROLLER.switch_states.get(f"{motor_id}_start")):
-                                    logging.warning(f"Motore '{motor_id}' ancora bloccato da finecorsa: non verrà accodato nel residuo.")
+                                    logging.error(f"Motore '{motor_id}' ancora bloccato da finecorsa: non verrà accodato nel residuo.")
                                     del remaining_targets[motor_id]
                         # Accoda solo se rimangono target validi
                         #TODO: Così accoda alla fine di tutti i movimenti, non mettere in coda ma in testa
@@ -554,13 +554,13 @@ def motor_worker():
                         if motor_id in remaining_targets:
                             config = MOTOR_CONFIGS[motor_id]
                             distance_moved_mm = steps / config.steps_per_mm
-                            logging.warning(f"Blocco da compiere. Distanza: {distance_moved_mm}")
+                            logging.info(f"Blocco da compiere. Distanza: {distance_moved_mm}")
                             if remaining_targets[motor_id] > 0:
                                 remaining_targets[motor_id] = max(0, remaining_targets[motor_id] - distance_moved_mm)
                             else:
                                 remaining_targets[motor_id] = min(0, remaining_targets[motor_id] + distance_moved_mm)
                     
-                    logging.warning(f"Blocco completato. Distanze rimanenti: {remaining_targets}")
+                    logging.info(f"Blocco completato. Distanze rimanenti: {remaining_targets}")
 
             elif command == "home":
                 motor_to_home = task.get("motor")
@@ -568,11 +568,11 @@ def motor_worker():
                     MOTOR_CONTROLLER.execute_homing_sequence(motor_to_home)
                     first_run = True
             
-            logging.warning(f"Worker: task '{task.get('command')}' completato.")
+            logging.info(f"Worker: task '{task.get('command')}' completato.")
             
 
         except Exception as e:
-            logging.warning(f"Errore critico nel motor_worker su task {task}: {e}", exc_info=True)
+            logging.error(f"Errore critico nel motor_worker su task {task}: {e}", exc_info=True)
         finally:
             motor_command_queue.task_done()
             time.sleep(0.1)
@@ -580,11 +580,11 @@ def motor_worker():
 def handle_exception(e):
     import traceback
     error_details = traceback.format_exc()
-    logging.warning(f"Errore interno API: {error_details}")
+    logging.error(f"Errore interno API: {error_details}")
     return JsonResponse({"log": f"Errore interno: {type(e).__name__}", "error": str(e)}, status=500)
 
 if os.environ.get('RUN_MAIN') == 'true':
-    logging.warning("Processo principale di Django rilevato. Avvio del MotorWorker...")
+    logging.info("Processo principale di Django rilevato. Avvio del MotorWorker...")
     threading.Thread(target=motor_worker, daemon=True, name="MotorWorker").start()
 else:
     logging.warning("Processo di reload rilevato. Il MotorWorker non verrà avviato qui.")
@@ -610,7 +610,7 @@ def home_motor_view(request):
         motor_to_home = data.get("motor")
         if not motor_to_home or motor_to_home not in MOTORS:
             return JsonResponse({"log": "Input non valido", "error": f"Specificare un motore valido: {list(MOTORS.keys())}"}, status=400)
-        logging.warning(f"Richiesta API di Homing per il motore: {motor_to_home}")
+        logging.info(f"Richiesta API di Homing per il motore: {motor_to_home}")
         motor_command_queue.put({"command": "home", "motor": motor_to_home})
         return JsonResponse({"log": f"Comando di Homing per '{motor_to_home}' messo in coda.", "status": "queued"})
     except Exception as e: return handle_exception(e)
@@ -621,10 +621,10 @@ def execute_route_view(request):
         motor_command_queue.put({"command": "home", "motor": "extruder"})
         data = json.loads(request.body)
         route = data.get("route", [])
-        logging.warning("ricevuta questa  rotta: " + str(route))
+        logging.info("ricevuta questa  rotta: " + str(route))
         if not isinstance(route, list):
             return JsonResponse({"log": "Percorso non valido", "error": "Input non valido"}, status=400)
-        logging.warning(f"Accodamento rotta con {len(route)} passi.")
+        logging.info(f"Accodamento rotta con {len(route)} passi.")
         for step in route:
             if isinstance(step, dict): 
                 motor_command_queue.put({"command": "move", "targets": step})
@@ -635,7 +635,7 @@ def execute_route_view(request):
 @api_view(['POST'])
 def stop_motor_view(request):
     try:
-        logging.warning("Richiesta di STOP motori ricevuta.")
+        logging.info("Richiesta di STOP motori ricevuta.")
         while not motor_command_queue.empty():
             try: 
                 motor_command_queue.get_nowait() 
@@ -644,20 +644,20 @@ def stop_motor_view(request):
                 continue
         if MOTOR_CONTROLLER.pi and MOTOR_CONTROLLER.pi.connected:
             MOTOR_CONTROLLER.pi.wave_tx_stop()
-        logging.warning("Movimento fermato e coda di comandi pulita.")
+        logging.info("Movimento fermato e coda di comandi pulita.")
         return JsonResponse({"log": "Comando di stop inviato.", "status": "success"})
     except Exception as e: return handle_exception(e)
 
 @api_view(['POST'])
 def update_config_view(request):
     global MOTOR_CONFIGS, MOTION_PLANNER, MOTOR_CONTROLLER
-    logging.warning("Inizio procedura di Hot-Reload della configurazione di sistema.")
+    logging.info("Inizio procedura di Hot-Reload della configurazione di sistema.")
     with SYSTEM_CONFIG_LOCK:
         try:
             if MOTOR_CONTROLLER.pi and MOTOR_CONTROLLER.pi.connected and MOTOR_CONTROLLER.pi.wave_tx_busy():
                 MOTOR_CONTROLLER.pi.wave_tx_stop()
                 MOTOR_CONTROLLER.pi.wave_clear()
-            logging.warning("Movimento corrente interrotto per aggiornamento configurazione.")
+                logging.warning("Movimento corrente interrotto per aggiornamento configurazione.")
             
             if MOTOR_CONTROLLER and MOTOR_CONTROLLER.pi and MOTOR_CONTROLLER.pi.connected:
                 for pin, cb in MOTOR_CONTROLLER._callbacks.items():
@@ -674,7 +674,7 @@ def update_config_view(request):
             logging.warning("Hot-Reload completato. Il sistema ora usa la nuova configurazione.")
             return JsonResponse({"log": "Configurazione aggiornata e ricaricata con successo.", "status": "success"})
         except Exception as e:
-            logging.warning(f"Fallimento durante la procedura di Hot-Reload: {e}", exc_info=True)
+            logging.error(f"Fallimento durante la procedura di Hot-Reload: {e}", exc_info=True)
             MOTOR_CONFIGS = load_system_config()
             MOTION_PLANNER = MotionPlanner(MOTOR_CONFIGS)
             MOTOR_CONTROLLER = MotorController(MOTOR_CONFIGS)
