@@ -3,7 +3,7 @@ import { Component, OnInit, OnDestroy } from '@angular/core';
 import { Router } from '@angular/router';
 import { ToastController } from '@ionic/angular';
 import { SetupAPIService, Settings } from 'src/app/services/setup-api.service';
-import { debounceTime, Subject, interval, Subscription } from 'rxjs';
+import { debounceTime, Subject, Subscription } from 'rxjs';
 import { LedService } from 'src/app/services/led.service';
 
 @Component({
@@ -86,7 +86,7 @@ speedPollingSubscription!: Subscription;
         console.error('Errore durante il ritorno a casa dell\'extruder:', error);
       }
     });
-        this.motorsService.goHome({ motor: 'syringe' }).subscribe({
+    this.motorsService.goHome({ motor: 'syringe' }).subscribe({
       next: (response) => {
         console.log('Risposta dal backend:', response);
         this.positions.syringe = 0; // Reset della posizione della siringa
