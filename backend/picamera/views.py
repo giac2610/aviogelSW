@@ -29,6 +29,7 @@ SETUP_JSON_PATH = os.path.join(CONFIG_DIR, 'setup.json')
 EXAMPLE_JSON_PATH = os.path.join(CONFIG_DIR, 'setup.example.json')
 CALIBRATION_MEDIA_DIR = os.path.join(BASE_DIR, 'calibrationMedia')
 os.makedirs(CALIBRATION_MEDIA_DIR, exist_ok=True)
+logging.basicConfig(level=logging.DEBUG)
 
 if not os.path.exists(SETUP_JSON_PATH):
     from shutil import copyfile
@@ -72,15 +73,18 @@ def _initialize_camera_internally():
         try:
             if hasattr(camera_instance, 'release'): camera_instance.release()
             elif hasattr(camera_instance, 'stop'): camera_instance.stop(); camera_instance.close()
-            print("[INFO] Previous camera instance released.")
+            # print("[INFO] Previous camera instance released.")
+            logging.info("[INFO] Previous camera instance released.")
         except Exception as e:
-            print(f"[WARN] Error releasing previous camera: {e}")
+            # print(f"[WARN] Error releasing previous camera: {e}")
+            logging.warning(f"[WARN] Error releasing previous camera: {e}")
         camera_instance = None
 
     cfg_data_for_init = camera_settings
     picam_main_size = cfg_data_for_init.get("picamera_config", {}).get("main", {}).get("size", [640, 480])
     if not isinstance(picam_main_size, list) or len(picam_main_size) != 2:
-        print(f"[WARN] picamera_config.main.size malformed: {picam_main_size}. Using default [640, 480].")
+        # print(f"[WARN] picamera_config.main.size malformed: {picam_main_size}. Using default [640, 480].")
+        logging.warninng(f"[WARN] picamera_config.main.size malformed: {picam_main_size}. Using default [640, 480].")
         picam_main_size = [640, 480]
     capture_width, capture_height = picam_main_size
 
@@ -106,12 +110,16 @@ def _initialize_camera_internally():
             picam2.configure(video_config)
             picam2.start()
             camera_instance = picam2
-            print(f"[INFO] Picamera2 initialized ({capture_width}x{capture_height}, RGB888).")
+            # print(f"[INFO] Picamera2 initialized ({capture_width}x{capture_height}, RGB888).")
+            logging.info(f"[INFO] Picamera2 initialized ({capture_width}x{capture_height}, RGB888).")
         except Exception as e:
-            print(f"[ERROR] Error during Picamera2 initialization: {e}")
+            # print(f"[ERROR] Error during Picamera2 initialization: {e}")
+            logging.error(f"[ERROR] Error during Picamera2 initialization: {e}")
             if 'picam2' in locals() and hasattr(picam2, 'close'):
                 try: picam2.close()
-                except Exception as e_close: print(f"[WARN] Error closing picam2 after failed init: {e_close}")
+                except Exception as e_close: 
+                    # print(f"[WARN] Error closing picam2 after failed init: {e_close}")
+                    logging.error(f"[WARN] Error closing picam2 after failed init: {e_close}")
             return None
     return camera_instance
 
