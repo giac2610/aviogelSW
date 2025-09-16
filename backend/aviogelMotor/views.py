@@ -69,7 +69,7 @@ class MotorController:
         self._initialize_gpio_pins()
 
     def _get_pigpio_instance(self):
-        logging.warning("Tentativo di connessione a pigpio...")
+        logging.info("Tentativo di connessione a pigpio...")
         try:
             if IS_RPI:
                 pi = pigpio.pi()

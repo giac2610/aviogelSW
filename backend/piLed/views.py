@@ -117,7 +117,7 @@ def stop_led_effect():
             logging.info("Successo! Effetto LED spento.")
             return True, response.text
         else:
-            logging.error(f"Errore: l'ESP32 ha risposto con codice {response.status_code}")
+            logging.warning(f"Errore: l'ESP32 ha risposto con codice {response.status_code}")
             return False, f"Status Code: {response.status_code}"
     except requests.exceptions.RequestException as e:
         logging.error(f"Errore di connessione all'ESP32: {e}")
@@ -131,7 +131,7 @@ def wave_effect_with_logs():
             logging.info("Successo! Effetto rainbow impostato.")
             return True, response.text
         else:
-            logging.error(f"Errore: l'ESP32 ha risposto con codice {response.status_code}")
+            logging.warning(f"Errore: l'ESP32 ha risposto con codice {response.status_code}")
             return False, f"Status Code: {response.status_code}"
     except requests.exceptions.RequestException as e:
         logging.error(f"Errore di connessione all'ESP32: {e}")
@@ -145,7 +145,7 @@ def green_loading_with_logs():
             logging.info("Successo! Effetto green wave impostato.")
             return True, response.text
         else:
-            logging.error(f"Errore: l'ESP32 ha risposto con codice {response.status_code}")
+            logging.warning(f"Errore: l'ESP32 ha risposto con codice {response.status_code}")
             return False, f"Status Code: {response.status_code}"
     except requests.exceptions.RequestException as e:
         logging.error(f"Errore di connessione all'ESP32: {e}")
@@ -158,7 +158,7 @@ def yellow_blink_with_logs():
             logging.info("Successo! Effetto yelloblink impostato.")
             return True, response.text
         else:
-            logging.error(f"Errore: l'ESP32 ha risposto con codice {response.status_code}")
+            logging.warning(f"Errore: l'ESP32 ha risposto con codice {response.status_code}")
             return False, f"Status Code: {response.status_code}"
     except requests.exceptions.RequestException as e:
         logging.error(f"Errore di connessione all'ESP32: {e}")
@@ -172,7 +172,7 @@ def red_static_with_logs():
             logging.info("Successo! Effetto static red impostato.")
             return True, response.text
         else:
-            logging.error(f"Errore: l'ESP32 ha risposto con codice {response.status_code}")
+            logging.warning(f"Errore: l'ESP32 ha risposto con codice {response.status_code}")
             return False, f"Status Code: {response.status_code}"
     except requests.exceptions.RequestException as e:
         logging.error(f"Errore di connessione all'ESP32: {e}")
