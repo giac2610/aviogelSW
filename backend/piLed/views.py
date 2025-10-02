@@ -26,7 +26,7 @@ strip = neopixel.NeoPixel(LED_PIN, LED_COUNT, brightness=LED_BRIGHTNESS, auto_wr
 stop_event = threading.Event()
 
 current_effect = "none"
-ESPurl = f"http://192.168.159.130:80/"
+ESPurl = f"http://led-server.local"
 
 logging.basicConfig(level=logging.DEBUG)
 
