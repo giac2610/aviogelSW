@@ -430,6 +430,7 @@ export class SetupPage implements OnInit, OnDestroy {
     getIpAddress() {
         this.configService.getIpAddress().subscribe({
             next: (data) => {
+                console.log('Dati ricevuti dal backend:', data);
                 const ip = data.ip;
                 this.presentToast(`Indirizzo IP del server: ${ip}`, 'success', 5000);
                 console.log('Indirizzo IP del server:', ip);
