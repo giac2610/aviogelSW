@@ -274,10 +274,10 @@ export class SetupPage implements OnInit, OnDestroy {
         });
     }
 
-    async presentToast(message: string, color: string = 'success') {
+    async presentToast(message: string, color: string = 'success', duration=1400) {
         const toast = await this.toastController.create({
             message: message,
-            duration: 1400,
+            duration: duration,
             icon: color === 'success' ? 'checkmark-circle' : 'alert-circle',
             color: color
         });
@@ -425,6 +425,20 @@ export class SetupPage implements OnInit, OnDestroy {
 
     goToBlobSimulation() {
         this.router.navigate(['/blob-simulation']);
+    }
+
+    getIpAddress() {
+        this.configService.getIpAddress().subscribe({
+            next: (data) => {
+                const ip = data.ip;
+                this.presentToast(`Indirizzo IP del server: ${ip}`, 'success', 5000);
+                console.log('Indirizzo IP del server:', ip);
+            },
+            error: (error) => {
+                this.presentToast('Errore nel recuperare l\'indirizzo IP del server', 'danger');
+                console.error('Errore nel recuperare l\'indirizzo IP del server:', error);
+            }
+        });
     }
 
 }

@@ -105,6 +105,11 @@ export class SetupAPIService {
     return this.http.post<Settings>(`${this.apiUrl}config/update/`, newSettings);
   }
 
+  getIpAddress(): Observable<{ ip: string }> {
+    const url = `${this.apiUrl}config/get_ip/`;
+    return this.http.get<{ ip: string }>(url);
+  }
+
   updateCameraSettings(cameraSettings: Settings['camera']): Observable<any> {
     const url = `${this.apiUrl}camera/update-camera-settings/`;
     return this.http.post(url, cameraSettings);
