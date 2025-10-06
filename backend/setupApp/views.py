@@ -54,7 +54,7 @@ def get_ip_address(request):
         # Connettendosi a un server esterno (senza inviare dati),
         # il sistema operativo espone l'IP dell'interfaccia di rete primaria.
         s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        s.connect(("8.8.8.8", 80))  # Server DNS di Google
+        s.connect(("8.8.8.8", 80)) 
         ip_address = s.getsockname()[0]
         s.close()
         return Response({"ip_address": ip_address})
