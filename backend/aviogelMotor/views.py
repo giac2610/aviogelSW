@@ -498,8 +498,32 @@ def motor_worker():
                     led_views.green_loading_with_logs()
                     first_run = False
                 
-                remaining_targets = task.get("targets", {}).copy()
+                original_targets = task.get("targets", {}).copy()
                 
+                translated_targets = {}
+                for motor_name, action in original_targets.items():
+                    # Controlla se l'azione è una stringa (es. "dose")
+                    if isinstance(action, str):
+                        config = MOTOR_CONFIGS.get(motor_name)
+                        if not config:
+                            logging.error(f"Configurazione non trovata per '{motor_name}'")
+                            continue
+
+                        if action == "dose":
+                            # Traduce "dose" nel valore numerico da setup.json
+                            translated_targets[motor_name] = config.dose_mm
+                        elif action == "retract":
+                            # Traduce "retract" nel valore numerico
+                            translated_targets[motor_name] = config.retract_mm
+                        else:
+                            logging.warning(f"Azione '{action}' non riconosciuta per '{motor_name}'.")
+                    
+                    # Se è già un numero, lo copia direttamente
+                    elif isinstance(action, (int, float)):
+                        translated_targets[motor_name] = action
+
+                # Ora 'remaining_targets' conterrà solo valori numerici
+                remaining_targets = translated_targets
                 # Cicla finché c'è ancora distanza significativa da percorrere
                 while any(abs(dist) > 0.01 for dist in remaining_targets.values()):
                     if MOTOR_CONTROLLER.last_move_interrupted:
