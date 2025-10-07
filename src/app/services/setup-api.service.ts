@@ -38,7 +38,9 @@ export interface Settings {
       deceleration: number,
       maxTravel: number,
       hertz: number,
-      stepsPerMm: number
+      stepsPerMm: number,
+      doseVolume: number,
+      retractVolume: number,
     }
 
   }
