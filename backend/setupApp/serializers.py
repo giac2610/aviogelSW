@@ -10,6 +10,8 @@ class MotorSettingsSerializer(serializers.Serializer):
     deceleration = serializers.FloatField(required=False)
     maxTravel = serializers.FloatField()
     hertz = serializers.FloatField()
+    doseVolume = serializers.FloatField(required=False)
+    retractVolume = serializers.FloatField(required=False)
 
 class PicameraConfigSerializer(serializers.Serializer):
     main = serializers.DictField(required=False)
