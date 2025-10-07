@@ -511,10 +511,10 @@ def motor_worker():
 
                         if action == "dose":
                             # Traduce "dose" nel valore numerico da setup.json
-                            translated_targets[motor_name] = config.dose_mm
+                            translated_targets[motor_name] = config.doseVolume
                         elif action == "retract":
                             # Traduce "retract" nel valore numerico
-                            translated_targets[motor_name] = config.retract_mm
+                            translated_targets[motor_name] = config.retractVolume
                         else:
                             logging.warning(f"Azione '{action}' non riconosciuta per '{motor_name}'.")
                     
