@@ -713,7 +713,10 @@ def compute_route(request):
         extruder_mm = nodi[i][0] - nodi[i-1][0]
         conveyor_mm = nodi[i][1] - nodi[i-1][1]
         motor_commands.append({"extruder": round(extruder_mm, 4), "conveyor": round(conveyor_mm, 4)})
-        motor_commands.append({"syringe": -0.75})
+        # motor_commands.append({"syringe": -1.5})
+        # motor_commands.append({"syringe": +0.5})
+        motor_commands.append({"syringe": "dose"})
+        motor_commands.append({"syringe": "retract"})
  
     # Genera il plot come immagine base64
     plt.figure(figsize=(8, 6))

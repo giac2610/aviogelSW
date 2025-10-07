@@ -626,7 +626,8 @@ def execute_route_view(request):
             return JsonResponse({"log": "Percorso non valido", "error": "Input non valido"}, status=400)
         logging.info(f"Accodamento rotta con {len(route)} passi.")
         for step in route:
-            if isinstance(step, dict): 
+            if isinstance(step, dict):
+                
                 motor_command_queue.put({"command": "move", "targets": step})
         motor_command_queue.put({"command": "home", "motor": "extruder"})
         return JsonResponse({"log": f"Rotta con {len(route)} passi accodata.", "status": "queued"})

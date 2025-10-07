@@ -4,58 +4,95 @@
             "homeDir": 0,
             "stepOneRev": 200.0,
             "microstep": 1,
-            "pitch": 3.78,
-            "maxSpeed": 250.0,
-            "acceleration": 800.0,
-            "maxTravel": 150.0,
-            "hertz": 13227.513227513227
+            "pitch": 3.52,
+            "maxSpeed": 40.0,
+            "acceleration": 300.0,
+            "maxTravel": 265.0,
+            "hertz": 2272.7272727272725
         },
         "conveyor": {
             "homeDir": 1,
             "stepOneRev": 200.0,
             "microstep": 1,
-            "pitch": 43.0,
-            "maxSpeed": 150.0,
-            "acceleration": 500.0,
+            "pitch": 42.8,
+            "maxSpeed": 400.0,
+            "acceleration": 250.0,
             "maxTravel": -1.0,
-            "hertz": 697.6744186046511
+            "hertz": 1869.158878504673
         },
         "syringe": {
             "homeDir": 1,
             "stepOneRev": 200.0,
             "microstep": 1,
-            "pitch": 3.78,
-            "maxSpeed": 250.0,
-            "acceleration": 800.0,
-            "maxTravel": 100.0,
-            "hertz": 13227.513227513227
+            "pitch": 5.0,
+            "maxSpeed": 40.0,
+            "acceleration": 480.0,
+            "maxTravel": 330.0,
+            "hertz": 1600.0,
+            "doseVolume": 0.05,
+            "retractVolume": 0.02
         }
     },
     "camera": {
-        "minThreshold": 33,
-        "maxThreshold": 255,
+        "minThreshold": 20,
+        "maxThreshold": 100,
         "areaFilter": true,
-        "minArea": 70,
-        "maxArea": 1000,
+        "minArea": 2.5,
+        "maxArea": 40.0,
         "circularityFilter": true,
         "minCircularity": 0.5,
         "maxCircularity": 1.0,
-        "inertiaFilter": true,
-        "minInertia": 0.01,
-        "maxInertia": 1.0,
         "filterByConvexity": true,
         "minConvexity": 0.87,
-        "maxConvexity": 1.0,
-        "origin_x": 0.0,
-        "origin_y": 0.0,
+        "inertiaFilter": false,
+        "minInertia": 0.01,
+        "maxInertia": 1.0,
+        "origin_x": 373.0,
+        "origin_y": -107.0,
         "picamera_config": {
-            "main": {"size": [640, 480]},
-            "lores": {"size": [320, 240]},
-            "controls": {"FrameRate": 30}
+            "main": {
+                "size": [
+                    2304,
+                    1296
+                ]
+            },
+            "lores": {
+                "size": [
+                    320,
+                    240
+                ]
+            },
+            "controls": {
+                "FrameRate": 30
+            }
         },
         "calibration": {
-            "camera_matrix": null,
-            "distortion_coefficients": null
+            "camera_matrix": [
+                [
+                    1713.6769186085091,
+                    0.0,
+                    1161.9495042536046
+                ],
+                [
+                    0.0,
+                    1849.1659588691282,
+                    624.2010587430043
+                ],
+                [
+                    0.0,
+                    0.0,
+                    1.0
+                ]
+            ],
+            "distortion_coefficients": [
+                [
+                    0.011166335044719092,
+                    0.3804799474692575,
+                    -0.03123628109739847,
+                    0.004233894430250243,
+                    -0.7640066569518587
+                ]
+            ]
         },
         "calibration_settings": {
             "chessboard_cols": 9,
@@ -65,7 +102,23 @@
         "fixed_perspective": {
             "output_width": 1000,
             "output_height": 800,
-            "homography_matrix": null
+            "homography_matrix": [
+                [
+                    0.6492446137415833,
+                    1.154170745589203,
+                    -310.3516916461
+                ],
+                [
+                    0.0006609095312037431,
+                    2.0486453286574307,
+                    -252.09012399100993
+                ],
+                [
+                    -2.188228227588876e-05,
+                    0.0023220577006190382,
+                    1.0
+                ]
+            ]
         }
     }
 }
