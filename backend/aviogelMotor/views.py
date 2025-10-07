@@ -463,35 +463,11 @@ SYSTEM_CONFIG_LOCK = threading.Lock()
 def motor_worker():
     logging.info("Motor worker avviato con architettura a cicli continui.")
     first_run = True
-    # interpreted_targets = {}
+    
     while True:
         task = motor_command_queue.get()
         try:
             command = task.get("command", "move")
-            if command == "move" and "targets" not in task:
-                # Esempio di task: {"syringe": "dose"}
-                interpreted_targets = {}
-                for motor_name, action in task.items():
-                    if isinstance(action, str): # È un'azione nominale (es. "dose")
-                        config = MOTOR_CONFIGS.get(motor_name)
-                        if not config:
-                            logging.error(f"Configurazione non trovata per il motore '{motor_name}'")
-                            continue
-
-                        if action == "dose":
-                            # dose_volume = config.doseVolume
-                            interpreted_targets[motor_name] = config.doseVolume
-                        elif action == "retract":
-                            interpreted_targets[motor_name] = config.retractVolume
-                        else:
-                            logging.warning(f"Azione '{action}' non riconosciuta per il motore '{motor_name}'")
-                    else:
-                    # Se non è una stringa, lo trattiamo come un normale valore numerico
-                        interpreted_targets[motor_name] = action
-                
-                # Ricreiamo il task come un normale comando "move" con i target numerici
-                task = {"command": "move", "targets": interpreted_targets}
-                command = "move" # Assicuriamoci che il comando sia "move" per il blocco successivo
 
             if command == "move":
                 if first_run:
@@ -522,27 +498,27 @@ def motor_worker():
                     elif isinstance(action, (int, float)):
                         translated_targets[motor_name] = action
 
-                # Ora 'remaining_targets' conterrà solo valori numerici
+                # Ora 'remaining_targets' conterrà solo valori numerici validi
                 remaining_targets = translated_targets
+                
+                if not remaining_targets:
+                    logging.warning("Nessun target valido dopo la traduzione. Salto il task.")
+                    continue
+                # --- FINE BLOCCO DI TRADUZIONE ---
+
                 # Cicla finché c'è ancora distanza significativa da percorrere
                 while any(abs(dist) > 0.01 for dist in remaining_targets.values()):
                     if MOTOR_CONTROLLER.last_move_interrupted:
-                        # Trova quali motori sono bloccati da finecorsa
+                        # (Il resto della logica per i finecorsa rimane invariata)
                         blocked = []
                         for motor_id in list(remaining_targets.keys()):
                             if motor_id != "conveyor":
-                                # Recupera la distanza e la configurazione del motore
                                 distance = remaining_targets[motor_id]
-                                # config = MOTOR_CONFIGS[motor_id] 
                                 config = MOTOR_CONTROLLER.motor_configs.get(motor_id, None)
-                                # Calcola la direzione (0 o 1) del movimento residuo
                                 direction_for_pin = 1 if distance >= 0 else 0
-                                # Recupera la direzione "verso start" (0 o 1) dalla configurazione
                                 config_dir_to_start = config.homeDir
-                                # Controlla se il movimento è verso un finecorsa attivo
                                 is_moving_towards_start = (direction_for_pin == config_dir_to_start)
                                 is_moving_towards_end = (direction_for_pin != config_dir_to_start)
-                                # final check for end switches
                                 is_blocked_at_start = is_moving_towards_start and MOTOR_CONTROLLER.switch_states.get(f"{motor_id}_start")
                                 is_blocked_at_end = is_moving_towards_end and MOTOR_CONTROLLER.switch_states.get(f"{motor_id}_end")
                                 if is_blocked_at_start or is_blocked_at_end:
@@ -554,19 +530,8 @@ def motor_worker():
                         if not remaining_targets:
                             logging.warning("Tutti i motori bloccati da finecorsa. Uscita dal ciclo.")
                             break
-                        # Rimuovi eventuali motori ancora bloccati prima di accodare il residuo
-                        for motor_id in list(remaining_targets.keys()):
-                            if motor_id != "conveyor":
-                                if (remaining_targets[motor_id] < 0 and MOTOR_CONTROLLER.switch_states.get(f"{motor_id}_end")) or \
-                                   (remaining_targets[motor_id] > 0 and MOTOR_CONTROLLER.switch_states.get(f"{motor_id}_start")):
-                                    logging.error(f"Motore '{motor_id}' ancora bloccato da finecorsa: non verrà accodato nel residuo.")
-                                    del remaining_targets[motor_id]
-                        # Accoda solo se rimangono target validi
-                        #TODO: Così accoda alla fine di tutti i movimenti, non mettere in coda ma in testa
-                        # if any(abs(dist) > 0.001 for dist in remaining_targets.values()):
-                        #     logging.warning(f"Accodo movimento residuo per motori non bloccati: {remaining_targets}")
-                        #     motor_command_queue.put({"command": "move", "targets": remaining_targets.copy()})
                         break
+
                     with SYSTEM_CONFIG_LOCK:
                         current_switch_states = MOTOR_CONTROLLER.switch_states.copy()
                         pulse_generator, active_motors, directions, steps_executed = MOTION_PLANNER.plan_move_streamed(
@@ -596,7 +561,6 @@ def motor_worker():
                             time.sleep(0.05)
                         
                     finally:
-                        # Pulizia dopo ogni blocco
                         if MOTOR_CONTROLLER.pi and MOTOR_CONTROLLER.pi.connected:
                             if MOTOR_CONTROLLER.pi.wave_tx_busy(): MOTOR_CONTROLLER.pi.wave_tx_stop()
                             MOTOR_CONTROLLER.pi.wave_clear()
@@ -604,16 +568,15 @@ def motor_worker():
                                 try: MOTOR_CONTROLLER.pi.write(config.en_pin, 0)
                                 except Exception: pass
                     
-                    # Aggiorna le distanze rimanenti
                     for motor_id, steps in steps_executed.items():
                         if motor_id in remaining_targets:
                             config = MOTOR_CONFIGS[motor_id]
                             distance_moved_mm = steps / config.steps_per_mm
                             logging.info(f"Blocco da compiere. Distanza: {distance_moved_mm}")
                             if remaining_targets[motor_id] > 0:
-                                remaining_targets[motor_id] = max(0, remaining_targets[motor_id] - distance_moved_mm)
+                                remaining_targets[motor_id] -= distance_moved_mm
                             else:
-                                remaining_targets[motor_id] = min(0, remaining_targets[motor_id] + distance_moved_mm)
+                                remaining_targets[motor_id] += distance_moved_mm
                     
                     logging.info(f"Blocco completato. Distanze rimanenti: {remaining_targets}")
 
@@ -623,15 +586,13 @@ def motor_worker():
                     MOTOR_CONTROLLER.execute_homing_sequence(motor_to_home)
                     first_run = True
             
-            logging.info(f"Worker: task '{task.get('command')}' completato.")
-            
+            logging.info(f"Worker: task '{command}' completato.")
 
         except Exception as e:
             logging.error(f"Errore critico nel motor_worker su task {task}: {e}", exc_info=True)
         finally:
             motor_command_queue.task_done()
             time.sleep(0.1)
-                 
 def handle_exception(e):
     import traceback
     error_details = traceback.format_exc()
