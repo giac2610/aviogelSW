@@ -29,6 +29,8 @@ class MotorSettingsSerializer(serializers.Serializer):
     deceleration = serializers.FloatField(required=False)
     maxTravel = serializers.FloatField()
     hertz = serializers.FloatField()
+    doseVolume = serializers.FloatField()
+    retractVolume = serializers.FloatField()
 
 class CameraSettingsSerializer(serializers.Serializer):
     minThreshold = serializers.IntegerField()

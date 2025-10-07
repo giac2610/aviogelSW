@@ -419,6 +419,7 @@ class MotionPlanner:
     
 def load_system_config() -> dict[str, MotorConfig]:
     configs = {}
+    
     try:
         with open(SETTINGS_FILE, "r") as f:
             full_config = json.load(f).get("motors", {})
@@ -434,6 +435,8 @@ def load_system_config() -> dict[str, MotorConfig]:
                 steps_per_mm = (steps_per_rev * microsteps) / pitch
                 max_freq_hz = max_speed_mms * steps_per_mm
                 homeDir = bool(params.get("homeDir", True))
+                doseVolume = float(params.get("doseVolume", 0.0))
+                retractVolume = float(params.get("retractVolume", 0.0))
                 configs[name] = MotorConfig(
                     name=name,
                     step_pin=MOTORS[name]["STEP"],
@@ -442,7 +445,9 @@ def load_system_config() -> dict[str, MotorConfig]:
                     steps_per_mm=steps_per_mm,
                     max_freq_hz=max_freq_hz,
                     acceleration_mmss=acceleration_mmss,
-                    homeDir=homeDir
+                    homeDir=homeDir,
+                    doseVolume=doseVolume,
+                    retractVolume=retractVolume
                 )
             logging.info("Configurazione motori caricata.")
     except Exception as e:
@@ -457,11 +462,37 @@ motor_command_queue = queue.Queue()
 SYSTEM_CONFIG_LOCK = threading.Lock()
 def motor_worker():
     logging.info("Motor worker avviato con architettura a cicli continui.")
-    first_run = True    
+    first_run = True
+    # interpreted_targets = {}
     while True:
         task = motor_command_queue.get()
         try:
             command = task.get("command", "move")
+            if command == "move" and "targets" not in task:
+                # Esempio di task: {"syringe": "dose"}
+                interpreted_targets = {}
+                for motor_name, action in task.items():
+                    if isinstance(action, str): # È un'azione nominale (es. "dose")
+                        config = MOTOR_CONFIGS.get(motor_name)
+                        if not config:
+                            logging.error(f"Configurazione non trovata per il motore '{motor_name}'")
+                            continue
+
+                        if action == "dose":
+                            # dose_volume = config.doseVolume
+                            interpreted_targets[motor_name] = config.doseVolume
+                        elif action == "retract":
+                            interpreted_targets[motor_name] = config.retractVolume
+                        else:
+                            logging.warning(f"Azione '{action}' non riconosciuta per il motore '{motor_name}'")
+                    else:
+                    # Se non è una stringa, lo trattiamo come un normale valore numerico
+                        interpreted_targets[motor_name] = action
+                
+                # Ricreiamo il task come un normale comando "move" con i target numerici
+                task = {"command": "move", "targets": interpreted_targets}
+                command = "move" # Assicuriamoci che il comando sia "move" per il blocco successivo
+
             if command == "move":
                 if first_run:
                     led_views.green_loading_with_logs()

@@ -12,4 +12,5 @@ class MotorConfig:
     max_freq_hz: float
     acceleration_mmss: float
     homeDir: bool
-    
+    doseVolume: float = 0.0
+    retractVolume: float = 0.0

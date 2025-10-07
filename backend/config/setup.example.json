@@ -29,8 +29,8 @@
             "acceleration": 480.0,
             "maxTravel": 330.0,
             "hertz": 1600.0,
-            "doseVolume": 0.05,
-            "retractVolume": 0.02
+            "doseVolume": 2.5,
+            "retractVolume": 0.75
         }
     },
     "camera": {
