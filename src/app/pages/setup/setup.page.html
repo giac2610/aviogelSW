@@ -80,14 +80,14 @@
                 </ion-col>
                 <ion-col size="4">
                   <ion-item>
-                    <ion-input label="Max Speed" placeholder="Inserisci la velocità in mm/s" type="number" [(ngModel)]="settings.motors.extruder.maxSpeed"></ion-input>
+                    <ion-input label="Max Speed" placeholder="Inserisci la velocità in mm/s" type="number" [(ngModel)]="settings.motors.extruder.maxSpeed" step="10"></ion-input>
                   </ion-item>
                 </ion-col>
               </ion-row>
               <ion-row>
                 <ion-col size="4">
                   <ion-item>
-                    <ion-input label="Acceleration" placeholder="Inserisci l'accelerazione in mm/s²" type="number" [(ngModel)]="settings.motors.extruder.acceleration"></ion-input>
+                    <ion-input label="Acceleration" placeholder="Inserisci l'accelerazione in mm/s²" type="number" [(ngModel)]="settings.motors.extruder.acceleration" step="10"></ion-input>
                   </ion-item>
                 </ion-col>
                 <ion-col size="4">
@@ -107,10 +107,6 @@
           <div *ngIf="testMode">
             <ion-item>
               <ion-input label="spostamento in mm" placeholder="inserisci uno spostamento" type="number" [(ngModel)]="travels.extruder"></ion-input>
-            </ion-item>
-            <ion-item>
-              <ion-label>Velocità Corrente:</ion-label>
-              <ion-badge color="primary">{{ currentSpeeds.extruder }} mm/s</ion-badge>
             </ion-item>
             <ion-item class="iconContainer">
               <!-- <div class="iconContainer"> -->
@@ -174,14 +170,14 @@
                 </ion-col>
                 <ion-col size="4">
                   <ion-item>
-                    <ion-input label="Max Speed" placeholder="Inserisci la velocità in mm/s" type="number" [(ngModel)]="settings.motors.conveyor.maxSpeed"></ion-input>
+                    <ion-input label="Max Speed" placeholder="Inserisci la velocità in mm/s" type="number" [(ngModel)]="settings.motors.conveyor.maxSpeed" step="10"></ion-input>
                   </ion-item>
                 </ion-col>
               </ion-row>
               <ion-row>
                 <ion-col size="4">
                   <ion-item>
-                    <ion-input label="Acceleration" placeholder="Inserisci l'accelerazione in mm/s²" type="number" [(ngModel)]="settings.motors.conveyor.acceleration"></ion-input>
+                    <ion-input label="Acceleration" placeholder="Inserisci l'accelerazione in mm/s²" type="number" [(ngModel)]="settings.motors.conveyor.acceleration" step="10"></ion-input>
                   </ion-item>
                 </ion-col>
                 <ion-col size="4">
@@ -201,10 +197,6 @@
           <div *ngIf="testMode">
             <ion-item>
               <ion-input label="spostamento in mm" placeholder="inserisci uno spostamento" type="number" [(ngModel)]="travels.conveyor"></ion-input>
-            </ion-item>
-            <ion-item>
-              <ion-label>Velocità Corrente:</ion-label>
-              <ion-badge color="primary">{{ currentSpeeds.conveyor }} mm/s</ion-badge>
             </ion-item>
             <ion-item class="iconContainer">
               <!-- <div class="iconContainer"> -->
@@ -275,7 +267,7 @@
               <ion-row>
                 <ion-col size="4">
                   <ion-item>
-                    <ion-input label="Acceleration" placeholder="Inserisci l'accelerazione in mm/s²" type="number" [(ngModel)]="settings.motors.syringe.acceleration"></ion-input>
+                    <ion-input label="Acceleration" placeholder="Inserisci l'accelerazione in mm/s²" type="number" [(ngModel)]="settings.motors.syringe.acceleration" step="10"></ion-input>
                   </ion-item>
                 </ion-col>
                 <ion-col size="4">
@@ -292,12 +284,12 @@
               <ion-row>
                 <ion-col size="6">
                   <ion-item>
-                    <ion-input label="Dose Volume" placeholder="Inserisci il volume di dose in ml" type="number" [(ngModel)]="settings.motors.syringe.doseVolume"></ion-input>
+                    <ion-input label="Dose Volume" placeholder="Inserisci il volume di dose in ml" type="number" [(ngModel)]="settings.motors.syringe.doseVolume" step="0.1"></ion-input>
                   </ion-item>
                 </ion-col>
                 <ion-col size="6">
                   <ion-item>
-                    <ion-input label="Retract Volume" placeholder="Inserisci il volume di retrazione in ml" type="number" [(ngModel)]="settings.motors.syringe.retractVolume"></ion-input>
+                    <ion-input label="Retract Volume" placeholder="Inserisci il volume di retrazione in ml" type="number" [(ngModel)]="settings.motors.syringe.retractVolume" step="0.1"></ion-input>
                   </ion-item>
                 </ion-col>
               </ion-row>

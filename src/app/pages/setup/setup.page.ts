@@ -26,7 +26,7 @@ export class SetupPage implements OnInit, OnDestroy {
     normalStreamUrl: string = 'http://localhost:8000/camera/stream/';
     selectedStream: string = 'normal';
     currentStreamUrl: string = this.normalStreamUrl; 
-
+    
 
     positions: { [key in "syringe" | "extruder" | "conveyor"]: number } = {
         syringe: 0,
