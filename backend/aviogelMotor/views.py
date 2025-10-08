@@ -191,8 +191,10 @@ class MotorController:
     
             cb_backoff = self.pi.callback(start_switch_pin, pigpio.FALLING_EDGE, backoff_callback)
             self.pi.write(config.dir_pin, not config.homeDir) 
-    
-            period_us_slow = int(1_000_000 / 200) # 200 Hz
+            if(motor_name == "syringe"):
+                period_us_slow = int(1_000_000 / 500) # 200 Hz
+            else:
+                period_us_slow = int(1_000_000 / 200) # 200 Hz
             pulse_slow = [pigpio.pulse(1 << config.step_pin, 0, period_us_slow // 2), pigpio.pulse(0, 1 << config.step_pin, period_us_slow // 2)]
             self.pi.wave_add_generic(pulse_slow)
             wave_id_slow = self.pi.wave_create()
