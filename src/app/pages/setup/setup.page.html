@@ -58,24 +58,24 @@
                 </ion-col>
                 <ion-col size="4">
                   <ion-item>
-                    <ion-input label="Passi/giro" placeholder="Inserisci il numero di passi per fare un giro" type="number" [(ngModel)]="settings.motors.extruder.stepOneRev"></ion-input>
+                    <ion-input #keyboardInput label="Passi/giro" placeholder="Inserisci il numero di passi per fare un giro" type="number" [(ngModel)]="settings.motors.extruder.stepOneRev"></ion-input>
                   </ion-item>
                 </ion-col>
                 <ion-col size="4">
                   <ion-item>
-                    <ion-input label="Microstep" placeholder="Inserisci il numero di microstep" type="number" [(ngModel)]="settings.motors.extruder.microstep"></ion-input>
+                    <ion-input #keyboardInput label="Microstep" placeholder="Inserisci il numero di microstep" type="number" [(ngModel)]="settings.motors.extruder.microstep"></ion-input>
                   </ion-item>
                 </ion-col>
               </ion-row>
               <ion-row>
                 <ion-col size="4">
                   <ion-item>
-                    <ion-input label="Max Travel" placeholder="Inserisci i mm massimi di spostamento" type="number" [(ngModel)]="settings.motors.extruder.maxTravel"></ion-input>
+                    <ion-input #keyboardInput label="Max Travel" placeholder="Inserisci i mm massimi di spostamento" type="number" [(ngModel)]="settings.motors.extruder.maxTravel"></ion-input>
                   </ion-item>
                 </ion-col>
                 <ion-col size="4">
                   <ion-item>
-                    <ion-input label="Screw Pitch" placeholder="Inserisci il numero di mm al giro" type="number" [(ngModel)]="settings.motors.extruder.pitch"></ion-input>
+                    <ion-input #keyboardInput label="Screw Pitch" placeholder="Inserisci il numero di mm al giro" type="number" [(ngModel)]="settings.motors.extruder.pitch"></ion-input>
                   </ion-item>
                 </ion-col>
                 <ion-col size="4">
