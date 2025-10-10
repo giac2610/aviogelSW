@@ -1,5 +1,5 @@
 import { MotorsControlService } from './../../services/motors-control.service';
-import { Component, OnInit, OnDestroy } from '@angular/core';
+import { Component, OnInit, OnDestroy, AfterViewInit } from '@angular/core';
 import { Router } from '@angular/router';
 import { ToastController } from '@ionic/angular';
 import { SetupAPIService, Settings } from 'src/app/services/setup-api.service';
@@ -13,7 +13,7 @@ import kioskBoard from 'kioskboard';
     standalone: false,
 })
 
-export class SetupPage implements OnInit, OnDestroy {
+export class SetupPage implements OnInit, OnDestroy, AfterViewInit {
     selectedMotor: string = 'none';
     selectedCameraSettings: string = 'none';
     settings!: Settings;
