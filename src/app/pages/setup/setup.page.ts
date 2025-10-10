@@ -5,7 +5,7 @@ import { IonInput, ToastController } from '@ionic/angular';
 import { SetupAPIService, Settings } from 'src/app/services/setup-api.service';
 import { debounceTime, Subject, Subscription } from 'rxjs';
 import { LedService } from 'src/app/services/led.service';
-import KioskBoard from 'kioskboard';
+// import KioskBoard from 'kioskboard';
 @Component({
     selector: 'app-setup',
     templateUrl: './setup.page.html',
@@ -54,8 +54,8 @@ export class SetupPage implements OnInit, OnDestroy, AfterViewInit {
 
     cameraOrigin = { x: 0, y: 0 };
 
-    @ViewChild('keyboardInput') keyboardInput!: IonInput;
-    @ViewChild('numericInput') numericInput!: IonInput;
+    // @ViewChild('keyboardInput') keyboardInput!: IonInput;
+    // @ViewChild('numericInput') numericInput!: IonInput;
 
     constructor(private configService: SetupAPIService, private toastController: ToastController, private motorsService: MotorsControlService, private router: Router, private ledService: LedService) { }
 
@@ -105,30 +105,7 @@ export class SetupPage implements OnInit, OnDestroy, AfterViewInit {
     ngOnDestroy() {
     }
 
-    async ngAfterViewInit() {
-        // 3. Ottieni l'elemento <input> nativo dal componente IonInput
-        // Nota che getInputElement() restituisce una Promise, quindi usiamo "await"
-        const nativeKeyboardInput = await this.keyboardInput.getInputElement();
-        const nativeNumericInput = await this.numericInput.getInputElement();
 
-        // 4. Inizializza KioskBoard passando direttamente l'elemento, non un selettore
-        KioskBoard.run(nativeKeyboardInput, {
-            keysArrayOfObjects: [
-                { "0": "q", "1": "w", "2": "e", "3": "r", "4": "t", "5": "y", "6": "u", "7": "i", "8": "o", "9": "p"},
-                { "0": "a", "1": "s", "2": "d", "3": "f", "4": "g", "5": "h", "6": "j", "7": "k", "8": "l", "9": "à", "10": "ò", "11": "ù", "12": "è"},
-                { "0": "z", "1": "x", "2": "c", "3": "v", "4": "b", "5": "n", "6": "m", "7": ",", "8": ".", "9": "-"}
-            ],
-            });
-        
-        KioskBoard.run(nativeNumericInput, {
-        keysArrayOfObjects: [
-            { "0": "1", "1": "2", "2": "3" },
-            { "0": "4", "1": "5", "2": "6" },
-            { "0": "7", "1": "8", "2": "9" },
-            { "0": ",", "1": "0", "2": "{backspace}" }
-        ]
-        });
-    }
     loadConfig() {
         this.configService.getSettings().subscribe((data: Settings) => {
             this.settings = data;

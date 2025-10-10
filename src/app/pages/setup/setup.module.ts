@@ -8,6 +8,7 @@ import { SetupPageRoutingModule } from './setup-routing.module';
 
 import { SetupPage } from './setup.page';
 import { RouterModule } from '@angular/router';
+import { VirtualKeyboardComponent } from "src/app/components/virtual-keyboard/virtual-keyboard.component";
 
 @NgModule({
   imports: [
@@ -15,8 +16,9 @@ import { RouterModule } from '@angular/router';
     FormsModule,
     IonicModule,
     RouterModule,
-    SetupPageRoutingModule
-  ],
+    SetupPageRoutingModule,
+    VirtualKeyboardComponent
+],
   declarations: [SetupPage]
 })
 export class SetupPageModule {}

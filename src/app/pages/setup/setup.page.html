@@ -53,41 +53,42 @@
               <ion-row>
                 <ion-col size="4">
                   <ion-item>
-                    <ion-input #keyboardInput label="Home Direction" placeholder="1 orario 0 antiorario" type="number" [(ngModel)]="settings.motors.extruder.homeDir"></ion-input>
+                    <ion-input label="Home Direction" placeholder="1 orario 0 antiorario" type="number" [(ngModel)]="settings.motors.extruder.homeDir"></ion-input>
                   </ion-item>
                 </ion-col>
                 <ion-col size="4">
                   <ion-item>
-                    <ion-input #keyboardInput label="Passi/giro" placeholder="Inserisci il numero di passi per fare un giro" type="number" [(ngModel)]="settings.motors.extruder.stepOneRev"></ion-input>
+                    <ion-input label="Passi/giro" placeholder="Inserisci il numero di passi per fare un giro" type="number" [(ngModel)]="settings.motors.extruder.stepOneRev"></ion-input>
                   </ion-item>
                 </ion-col>
                 <ion-col size="4">
                   <ion-item>
-                    <ion-input #keyboardInput label="Microstep" placeholder="Inserisci il numero di microstep" type="number" [(ngModel)]="settings.motors.extruder.microstep"></ion-input>
-                  </ion-item>
-                </ion-col>
-              </ion-row>
-              <ion-row>
-                <ion-col size="4">
-                  <ion-item>
-                    <ion-input #keyboardInput label="Max Travel" placeholder="Inserisci i mm massimi di spostamento" type="number" [(ngModel)]="settings.motors.extruder.maxTravel"></ion-input>
-                  </ion-item>
-                </ion-col>
-                <ion-col size="4">
-                  <ion-item>
-                    <ion-input #keyboardInput label="Screw Pitch" placeholder="Inserisci il numero di mm al giro" type="number" [(ngModel)]="settings.motors.extruder.pitch"></ion-input>
-                  </ion-item>
-                </ion-col>
-                <ion-col size="4">
-                  <ion-item>
-                    <ion-input #numericInput label="Max Speed" placeholder="Inserisci la velocità in mm/s" type="number" [(ngModel)]="settings.motors.extruder.maxSpeed" step="10"></ion-input>
+                    <ion-input label="Microstep" placeholder="Inserisci il numero di microstep" type="number" [(ngModel)]="settings.motors.extruder.microstep"></ion-input>
                   </ion-item>
                 </ion-col>
               </ion-row>
               <ion-row>
                 <ion-col size="4">
                   <ion-item>
-                    <ion-input #keyboardInput label="Acceleration" placeholder="Inserisci l'accelerazione in mm/s²" type="number" [(ngModel)]="settings.motors.extruder.acceleration" step="10"></ion-input>
+                    <ion-input label="Max Travel" placeholder="Inserisci i mm massimi di spostamento" type="number" [(ngModel)]="settings.motors.extruder.maxTravel"></ion-input>
+                  </ion-item>
+                </ion-col>
+                <ion-col size="4">
+                  <ion-item>
+                    <ion-input label="Screw Pitch" placeholder="Inserisci il numero di mm al giro" type="number" [(ngModel)]="settings.motors.extruder.pitch"></ion-input>
+                  </ion-item>
+                </ion-col>
+                <ion-col size="4">
+                  <ion-item>
+                    <app-virtual-keyboard layout="numeric" placeholder="Valore numerico"></app-virtual-keyboard>
+                    <!-- <ion-input #numericInput label="Max Speed" placeholder="Inserisci la velocità in mm/s" type="number" [(ngModel)]="settings.motors.extruder.maxSpeed" step="10"></ion-input> -->
+                  </ion-item>
+                </ion-col>
+              </ion-row>
+              <ion-row>
+                <ion-col size="4">
+                  <ion-item>
+                    <ion-input  label="Acceleration" placeholder="Inserisci l'accelerazione in mm/s²" type="number" [(ngModel)]="settings.motors.extruder.acceleration" step="10"></ion-input>
                   </ion-item>
                 </ion-col>
                 <ion-col size="4">
