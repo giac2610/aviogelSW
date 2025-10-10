@@ -31,7 +31,7 @@
                 "output": "./svg"
               }
             ],
-            "styles": ["src/global.scss", "src/theme/variables.scss"],
+            "styles": ["src/global.scss", "src/theme/variables.scss","node_modules/kioskboard/dist/kioskboard-2.3.0.min.css"],
             "scripts": []
           },
           "configurations": {

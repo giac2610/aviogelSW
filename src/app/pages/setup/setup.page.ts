@@ -5,7 +5,7 @@ import { ToastController } from '@ionic/angular';
 import { SetupAPIService, Settings } from 'src/app/services/setup-api.service';
 import { debounceTime, Subject, Subscription } from 'rxjs';
 import { LedService } from 'src/app/services/led.service';
-
+import kioskBoard from 'kioskboard';
 @Component({
     selector: 'app-setup',
     templateUrl: './setup.page.html',
@@ -102,6 +102,21 @@ export class SetupPage implements OnInit, OnDestroy {
     ngOnDestroy() {
     }
 
+    ngAfterViewInit() {
+        kioskBoard.run('.vistual-keyboard', {
+                  keysArrayOfObjects: [
+        {
+          "0": "q", "1": "w", "2": "e", "3": "r", "4": "t", "5": "y", "6": "u", "7": "i", "8": "o", "9": "p"
+        },
+        {
+          "0": "a", "1": "s", "2": "d", "3": "f", "4": "g", "5": "h", "6": "j", "7": "k", "8": "l", "9": "à", "10": "ò", "11": "ù", "12": "è"
+        },
+        {
+          "0": "z", "1": "x", "2": "c", "3": "v", "4": "b", "5": "n", "6": "m", "7": ",", "8": ".", "9": "-"
+        }
+      ]
+        })
+    }
     loadConfig() {
         this.configService.getSettings().subscribe((data: Settings) => {
             this.settings = data;
