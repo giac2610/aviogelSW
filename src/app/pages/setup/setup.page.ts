@@ -103,7 +103,7 @@ export class SetupPage implements OnInit, OnDestroy {
     }
 
     ngAfterViewInit() {
-        kioskBoard.run('.vistual-keyboard', {
+        kioskBoard.run('.virtual-keyboard', {
                   keysArrayOfObjects: [
         {
           "0": "q", "1": "w", "2": "e", "3": "r", "4": "t", "5": "y", "6": "u", "7": "i", "8": "o", "9": "p"
