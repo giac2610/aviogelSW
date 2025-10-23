@@ -1,3 +1,15 @@
-<p>
-  virtual-keyboard works!
-</p>
+<ion-input
+  #kbInput
+  [attr.data-kioskboard-type]="layout === 'numpad' ? 'numpad' : null"
+  [type]="type"
+  [placeholder]="placeholder"
+  [label]="label"
+  [disabled]="isDisabled"
+  
+  [value]="value"
+  
+  (ionChange)="onValueChange($event)"
+  (ionBlur)="onTouched()"
+
+  class="kiosk-input">
+</ion-input>

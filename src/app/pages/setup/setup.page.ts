@@ -6,6 +6,7 @@ import { SetupAPIService, Settings } from 'src/app/services/setup-api.service';
 import { debounceTime, Subject, Subscription } from 'rxjs';
 import { LedService } from 'src/app/services/led.service';
 // import KioskBoard from 'kioskboard';
+
 @Component({
     selector: 'app-setup',
     templateUrl: './setup.page.html',
@@ -13,7 +14,7 @@ import { LedService } from 'src/app/services/led.service';
     standalone: false,
 })
 
-export class SetupPage implements OnInit, OnDestroy, AfterViewInit {
+export class SetupPage implements OnInit, OnDestroy {
     selectedMotor: string = 'none';
     selectedCameraSettings: string = 'none';
     settings!: Settings;
