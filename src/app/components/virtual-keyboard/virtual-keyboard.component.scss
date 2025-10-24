@@ -1,7 +1,21 @@
-// .kioskboard {
-//   // width: 400px !important;    // imposta la larghezza desiderata
-//   max-width: 90vw;            // responsive
-//   height: 50vh !important;
-//   font-size: 16px !important;  // dimensione tasti
-//   transform: scale(0.8);       // riduce l’ingombro globale
-// }
+/* *** MODIFICA: Aggiornati gli stili ***
+  Ora abbiamo un wrapper per il click
+*/
+
+.input-wrapper {
+  cursor: pointer; // Mostra che è cliccabile
+
+  /* Se disabilitato, cambia cursore e aspetto */
+  &.disabled {
+    cursor: not-allowed;
+    opacity: 0.5; // Stile standard per disabilitato
+  }
+}
+
+/*
+  Rendiamo l'input "trasparente" ai click (pointer-events: none).
+  Questo assicura che sia sempre il .input-wrapper a ricevere l'evento (click).
+*/
+.custom-keyboard-input-inner {
+  pointer-events: none;
+}

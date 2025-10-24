@@ -9,6 +9,7 @@ import { SetupPageRoutingModule } from './setup-routing.module';
 import { SetupPage } from './setup.page';
 import { RouterModule } from '@angular/router';
 import { VirtualKeyboardComponent } from "src/app/components/virtual-keyboard/virtual-keyboard.component";
+import { KeyboardModalComponent } from 'src/app/keyboard-modal/keyboard-modal.component';
 
 @NgModule({
   imports: [
@@ -17,7 +18,8 @@ import { VirtualKeyboardComponent } from "src/app/components/virtual-keyboard/vi
     IonicModule,
     RouterModule,
     SetupPageRoutingModule,
-    VirtualKeyboardComponent
+    VirtualKeyboardComponent,
+    KeyboardModalComponent
 ],
   declarations: [SetupPage]
 })

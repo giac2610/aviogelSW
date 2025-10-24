@@ -1,0 +1,47 @@
+<!-- 
+  Questo è il contenuto del MODAL. 
+  Non ha bisogno di position:fixed perché è un modal.
+-->
+<ion-header>
+  <ion-toolbar>
+    <!-- Display per vedere cosa si sta digitando -->
+    <div class="keyboard-display">
+      {{ value || '&nbsp;' }}
+    </div>
+  </ion-toolbar>
+</ion-header>
+
+<ion-content class="keyboard-modal-content">
+  <!-- Contenuto della tastiera -->
+  <div *ngFor="let row of keyboardLayout" class="keyboard-row">
+    <ion-button
+      *ngFor="let key of row"
+      class="keyboard-key"
+      [class.key-backspace]="key === 'BACKSPACE'"
+      [class.key-shift]="key === 'SHIFT'"
+      [class.key-shift-active]="isShiftActive && key === 'SHIFT'"
+      [class.key-space]="key === 'SPACE'"
+      [class.key-enter]="key === 'ENTER'"
+      (click)="onKeyPress(key)"
+      fill="outline"
+      color="dark"
+    >
+      <ion-icon *ngIf="key === 'BACKSPACE'" name="backspace-outline" slot="icon-only"></ion-icon>
+      <ion-icon *ngIf="key === 'SHIFT'" name="arrow-up-outline" slot="icon-only"></ion-icon>
+      <ion-icon *ngIf="key === 'ENTER'" name="return-down-forward-outline" slot="icon-only"></ion-icon>
+      {{ getDisplayKey(key) }}
+    </ion-button>
+  </div>
+</ion-content>
+
+<!-- Footer con pulsanti Annulla/Conferma -->
+<ion-footer>
+  <ion-toolbar>
+    <ion-buttons slot="start">
+      <ion-button color="danger" (click)="cancel()">Annulla</ion-button>
+    </ion-buttons>
+    <ion-buttons slot="end">
+      <ion-button color="primary" (click)="confirm()">Conferma</ion-button>
+    </ion-buttons>
+  </ion-toolbar>
+</ion-footer>

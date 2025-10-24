@@ -1,17 +1,22 @@
 import { CommonModule } from '@angular/common';
-import { Component, Input, AfterViewInit, ViewChild, forwardRef } from '@angular/core';
-import { IonicModule, IonInput } from '@ionic/angular';
-import * as KioskBoard from 'kioskboard';
-// Import necessary modules for ngModel
+import { Component, Input, forwardRef, ChangeDetectorRef } from '@angular/core';
+import { IonicModule, ModalController } from '@ionic/angular';
 import { ControlValueAccessor, NG_VALUE_ACCESSOR, FormsModule } from '@angular/forms';
+
+// Importa il nuovo modal
+import { KeyboardModalComponent } from '../../keyboard-modal/keyboard-modal.component';
 
 @Component({
   selector: 'app-virtual-keyboard',
-  // Add FormsModule to imports for standalone components
-  imports: [IonicModule, CommonModule, FormsModule],
+  imports: [
+    IonicModule,
+    CommonModule,
+    FormsModule
+    // KeyboardModalComponent non serve qui se è standalone
+  ],
   templateUrl: './virtual-keyboard.component.html',
   styleUrls: ['./virtual-keyboard.component.scss'],
-  // Provider to connect the component with Angular's Forms API
+  standalone: true,
   providers: [
     {
       provide: NG_VALUE_ACCESSOR,
@@ -20,98 +25,79 @@ import { ControlValueAccessor, NG_VALUE_ACCESSOR, FormsModule } from '@angular/f
     }
   ]
 })
-// Implement the ControlValueAccessor interface
-export class VirtualKeyboardComponent implements AfterViewInit, ControlValueAccessor {
+export class VirtualKeyboardComponent implements ControlValueAccessor {
 
-  @Input() layout: 'alpha' | 'numpad' = 'alpha';
+  @Input() layout: 'numeric' | 'alphanumeric' = 'alphanumeric';
   @Input() placeholder = '';
-  @Input() type = 'text';
-  @Input() label = ''; // Add label as an Input
+  @Input() type: 'text' | 'number' | 'tel' = 'text';
+  @Input() label = ''; // Riattivato l'Input per la label
 
-  @ViewChild('kbInput', { static: true }) input!: IonInput;
-
-  // Property to hold the component's value
-  value: any;
+  value: string = '';
   isDisabled = false;
+  onChange: (value: string) => void = () => {};
+  onTouched: () => void = () => {};
 
-  // --- Implementation of ControlValueAccessor ---
+  constructor(
+    private modalCtrl: ModalController,
+    private cdr: ChangeDetectorRef
+  ) {}
 
-  // Placeholder for the function that should be called when the value changes
-  onChange: any = () => {};
-  // Placeholder for the function that should be called when the component is touched
-  onTouched: any = () => {};
-
-  /**
-   * Writes a new value from the form model into the component.
-   */
+  // --- Metodi ControlValueAccessor ---
   writeValue(value: any): void {
-    this.value = value;
+    this.value = value || '';
+    this.cdr.markForCheck();
   }
 
-  /**
-   * Registers a callback function to be called when the component's value changes.
-   */
   registerOnChange(fn: any): void {
     this.onChange = fn;
   }
 
-  /**
-   * Registers a callback function to be called when the component is "touched".
-   */
   registerOnTouched(fn: any): void {
     this.onTouched = fn;
   }
 
-  /**
-   * This function is called when the control's disabled state changes.
-   */
   setDisabledState?(isDisabled: boolean): void {
     this.isDisabled = isDisabled;
+    this.cdr.markForCheck();
+  }
+  // --- Fine Metodi ControlValueAccessor ---
+
+  // Rileva l'input (non dovrebbe succedere con readonly, ma per sicurezza)
+  onIonInputChange(event: any) {
+    const newValue = event?.target?.value;
+    if (this.value !== newValue) {
+       this.value = newValue;
+       this.onChange(newValue);
+    }
   }
 
-  // --- Component Logic ---
+  // --- Gestione Apertura Modal ---
+  async onInputClick(): Promise<void> {
+    if (this.isDisabled) return;
 
-  ngAfterViewInit() {
-    this.input.getInputElement().then(inputEl => {
-      // Listener focus: apri la tastiera
-      inputEl.addEventListener('focus', () => {
-        this.openKeyboard(inputEl);
-      });
+    this.onTouched(); // Segna come "toccato"
+
+    const modal = await this.modalCtrl.create({
+      component: KeyboardModalComponent,
+      componentProps: {
+        layout: this.layout,
+        initialValue: this.value
+      },
+      cssClass: 'keyboard-modal-sheet',
+      // *** MODIFICA: Aggiunto breakpoint 1 per altezza massima ***
+      breakpoints: [0, 0.5, 1], // Permette 0%, 50% e 100%
+      initialBreakpoint: 0.5, // Parte da 50%
+      handleBehavior: "cycle" // Permette di ciclare tra i breakpoint
     });
-  }
-  
-  // This method is called by the template when the input value changes
-  onValueChange(event: any) {
-    const newValue = event.target.value;
-    this.value = newValue;
-    // Notify Angular that the value has changed
-    this.onChange(newValue);
-  }
 
-  private openKeyboard(inputEl: HTMLInputElement) {
-    const numericKeys = [
-  { "0": "1", "1": "2", "2": "3" },
-  { "0": "4", "1": "5", "2": "6" },
-  { "0": "7", "1": "8", "2": "9" },
-  { "0": ",", "1": "0", "2": "{bksp}" }
-];
-const alphaKeys = [
-  { "0": "1", "1": "2", "2": "3" },
-  { "0": "4", "1": "5", "2": "6" },
-  { "0": "7", "1": "8", "2": "9" },
-  { "0": ",", "1": "0", "2": "{bksp}" }
-];
-const config: any = {
-  language: 'it',
-  theme: 'dark',
-  allowRealKeyboard: false,
-  allowMobileKeyboard: false,
-  cssAnimations: true,
-  cssAnimationsDuration: 360,
-  cssAnimationsStyle: 'slide-up',
-  keysAllowNumeric: this.layout === 'numpad' ? false : true,
-  keysArrayOfObjects: this.layout === 'alpha' ? alphaKeys : numericKeys
-};
-    KioskBoard.run(inputEl, config);
+    await modal.present();
+
+    const { data, role } = await modal.onWillDismiss();
+
+    if (role === 'confirm' && data !== null) {
+      this.value = data;
+      this.onChange(this.value);
+    }
   }
 }
+
