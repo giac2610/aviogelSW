@@ -12,6 +12,11 @@ $RECYCLE.BIN/
 *.log
 log.txt
 
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
 
 /.sourcemaps
 /.versions
