@@ -22,10 +22,8 @@ export class KeyboardModalComponent implements OnInit {
 
   // Definizioni Layout
   numericLayout: string[][] = [
-    ['1', '2', '3'],
-    ['4', '5', '6'],
-    ['7', '8', '9'],
-    ['.', '0', 'BACKSPACE'] // Aggiunto punto per i decimali
+    ['1', '2', '3', '4', '5', '6', '7', '8', '9', '0'],
+    [',', '.', 'BACKSPACE']
   ];
 
   alphaLayout: string[][] = [

@@ -3,20 +3,27 @@
 */
 
 :host {
-  // Imposta l'altezza del modal
-  --height: auto; 
+  display: flex;          // Usa flexbox per il layout interno del componente
+  flex-direction: column; // Impila header, content, footer verticalmente
+  height: 100%;           // Forza l'host a prendere l'altezza disponibile data dal modal
+  // background: lightblue; // Aggiungi temporaneamente per debug, per vedere l'area dell'host
+}
+
+ion-content {
+  flex-grow: 1;          // Permette a ion-content di occupare lo spazio rimanente
+  // background: lightcoral; // Aggiungi temporaneamente per debug, per vedere l'area del content
 }
 
 .keyboard-display {
   width: 100%;
   padding: 12px 16px;
   font-size: 1.5rem;
-  text-align: right;
+  text-align: center;
   background: rgba(0,0,0,0.05);
   min-height: 54px;
   white-space: nowrap;
   overflow-x: auto;
-  color: var(--ion-text-color, #000);
+  // color: var(--ion-text-color, #000);
 
   @media (prefers-color-scheme: dark) {
     background: rgba(255,255,255,0.05);

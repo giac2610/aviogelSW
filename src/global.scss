@@ -54,28 +54,31 @@ ion-modal::part(backdrop) {
      --color: #3A2E39;
    }
 
-// #KioskBoard-VirtualKeyboard {
-//   // width: 400px !important;
-//   // max-width: 90vw !important;
-//   font-size: 16px !important;
-//   /* NUOVE PROPRIETÀ PER IL POSIZIONAMENTO */
-//   position: fixed !important;   /* Fissa l'elemento rispetto alla finestra del browser */
-//   bottom: 10px !important;     /* Imposta una distanza di 10px dal fondo (usa 0px per attaccarla) */
-//   left: 50% !important;        /* Sposta il punto di inizio dell'elemento al centro dello schermo */
+ion-modal.keyboard-modal-bottom {
+  // Rimuovi l'allineamento flex se presente dal tentativo precedente
+  // &.modal-presenting, &.modal-presented {
+  //   align-items: flex-end; // Rimuovi o commenta questa riga
+  // }
 
-//   /* Prima centra l'elemento con translateX(-50%), poi applica la tua scala */
-//   transform: translateX(-50%) scale(0.85) !important;
-//   background-color: #222 !important;
-//   border-radius: 10px !important;
-//   padding: 5px !important;
-  
-// }
+  // Imposta le dimensioni desiderate per questo modal specifico
+  // --height: auto;      // L'altezza si adatterà al contenuto
+  // --max-height: 50vh;  // Imposta un'altezza massima (es. 50% dell'altezza viewport)
+  --width: 100%;       // Larghezza piena
+  --max-width: 800px;  // Larghezza massima (opzionale)
+  --border-radius-top: 25px;  // Nessun bordo arrotondato in basso
+  --border-radius-bottom: 0;  // Nessun bordo arrotondato in basso
 
-// /* Tasti */
-// #KioskBoard-VirtualKeyboard .kioskboard-key {
-//   padding: 10px !important;
-//   font-size: 16px !important;
-//   background-color: #444 !important;
-//   color: white !important;
-//   font-weight: bold;
-// }
+  // Posiziona il contenitore interno del modal in basso
+  // Potrebbe essere necessario ispezionare l'elemento per trovare la parte corretta
+  // nel shadow DOM, ma 'content' o 'handle' sono comuni. Proviamo 'content'.
+  &::part(content) {
+      position: absolute;
+      bottom: 0;
+      width: 100%;
+      // Potrebbe essere necessario resettare altre proprietà se interferiscono
+      top: auto;
+      left: auto;
+      transform: none;
+      max-height: var(--max-height); // Applica l'altezza massima definita sopra
+  }
+}

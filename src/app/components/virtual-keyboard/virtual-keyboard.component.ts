@@ -83,11 +83,12 @@ export class VirtualKeyboardComponent implements ControlValueAccessor {
         layout: this.layout,
         initialValue: this.value
       },
-      cssClass: 'keyboard-modal-sheet',
-      // *** MODIFICA: Aggiunto breakpoint 1 per altezza massima ***
-      breakpoints: [0, 0.5, 1], // Permette 0%, 50% e 100%
-      initialBreakpoint: 0.5, // Parte da 50%
-      handleBehavior: "cycle" // Permette di ciclare tra i breakpoint
+      // cssClass: 'keyboard-modal-sheet',
+      // // *** MODIFICA: Aggiunto breakpoint 1 per altezza massima ***
+      // breakpoints: [0, 0.5, 1], // Permette 0%, 50% e 100%
+      // initialBreakpoint: 0.5, // Parte da 50%
+      // handleBehavior: "cycle" // Permette di ciclare tra i breakpoint
+      cssClass:'keyboard-modal-bottom'
     });
 
     await modal.present();
@@ -97,6 +98,7 @@ export class VirtualKeyboardComponent implements ControlValueAccessor {
     if (role === 'confirm' && data !== null) {
       this.value = data;
       this.onChange(this.value);
+      this.cdr.markForCheck();
     }
   }
 }

@@ -1,21 +1,12 @@
-<!-- 
-  Questo template contiene SOLO l'ion-input.
-  È reso readonly e apre il modal al click.
-  Non ha più riferimenti a isKeyboardOpen, keyboardLayout, ecc.
-  Abbiamo rimosso [label] per evitare l'errore InvalidCharacterError.
-  La label viene gestita esternamente (in setup.page.html).
--->
-<ion-input
-  #kbInput
-  [type]="type"
-  [placeholder]="placeholder"
-  [label]="label"
-
-  [disabled]="isDisabled"
-  [value]="value"
-  (ionInput)="onIonInputChange($event)"
-  (ionBlur)="onTouched()"
-  class="kiosk-input">
-  <!-- Gli attributi data-kioskboard-* sono gestiti nel TS -->
-</ion-input>
-
+<div class="input-wrapper" (click)="onInputClick()" [class.disabled]="isDisabled">
+  <ion-input
+    #kbInput
+    [type]="type"
+    [placeholder]="placeholder"
+    [label]="label"
+    [disabled]="isDisabled"
+    [value]="value"
+    (ionInput)="onIonInputChange($event)"
+    (ionBlur)="onTouched()"
+    class="custom-keyboard-input-inner" readonly="true"> </ion-input>
+</div>
