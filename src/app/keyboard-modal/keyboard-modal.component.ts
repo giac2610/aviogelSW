@@ -15,6 +15,7 @@ export class KeyboardModalComponent implements OnInit {
   // Questi valori vengono passati dal componente virtual-keyboard
   @Input() layout: 'numeric' | 'alphanumeric' = 'alphanumeric';
   @Input() initialValue: string = '';
+  @Input() inputLabel: string = '';
 
   value: string = '';
   isShiftActive = false;
@@ -22,8 +23,10 @@ export class KeyboardModalComponent implements OnInit {
 
   // Definizioni Layout
   numericLayout: string[][] = [
-    ['1', '2', '3', '4', '5', '6', '7', '8', '9', '0'],
-    [',', '.', 'BACKSPACE']
+    ['1', '2', '3'],
+    ['4', '5', '6'],
+    ['7', '8', '9'],
+    ['.', '0', 'BACKSPACE'] // Aggiunto punto per i decimali
   ];
 
   alphaLayout: string[][] = [

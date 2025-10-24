@@ -81,7 +81,8 @@ export class VirtualKeyboardComponent implements ControlValueAccessor {
       component: KeyboardModalComponent,
       componentProps: {
         layout: this.layout,
-        initialValue: this.value
+        initialValue: this.value,
+        inputLabel: this.label // Passa la label al modal
       },
       // cssClass: 'keyboard-modal-sheet',
       // // *** MODIFICA: Aggiunto breakpoint 1 per altezza massima ***

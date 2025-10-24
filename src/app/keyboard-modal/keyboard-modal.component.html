@@ -6,7 +6,8 @@
   <ion-toolbar>
     <!-- Display per vedere cosa si sta digitando -->
     <div class="keyboard-display">
-      {{ value || '&nbsp;' }}
+      <span class="keyboard-display-label" *ngIf="inputLabel">{{ inputLabel }}:&nbsp;</span>
+      <span class="keyboard-display-value">{{ value || '&nbsp;' }}</span>
     </div>
   </ion-toolbar>
 </ion-header>

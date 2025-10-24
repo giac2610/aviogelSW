@@ -24,7 +24,24 @@ ion-content {
   white-space: nowrap;
   overflow-x: auto;
   // color: var(--ion-text-color, #000);
+  display: flex;
+  align-items: center;     // Allinea verticalmente al centro
+  justify-content: flex-start; // Allinea a sinistra
 
+  .keyboard-display-label {
+    font-weight: 500; // Leggermente bold
+    margin-right: 8px;      // Spazio tra label e valore
+    white-space: nowrap;    // Non mandare a capo la label
+    color: var(--ion-color-medium-shade); // Colore grigio (opzionale)
+    flex-shrink: 0; // Impedisce alla label di restringersi
+  }
+
+  .keyboard-display-value {
+     flex-grow: 1; // Fa sì che il valore occupi lo spazio rimanente
+     text-align: right; // Allinea il testo del valore a destra
+     overflow-x: auto; // Permette lo scroll se il valore è lungo
+     white-space: nowrap; // Non mandare a capo il valore
+  }
   @media (prefers-color-scheme: dark) {
     background: rgba(255,255,255,0.05);
   }
