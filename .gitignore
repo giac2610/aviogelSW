@@ -4,6 +4,12 @@ backend/piCamera/__pycache__
 backend/backend/__pycache__
 backend/requirments.txt
 
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
 *.pyc
 __pycache__/
 backend/config/setup.json
