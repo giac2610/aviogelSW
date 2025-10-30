@@ -54,10 +54,7 @@ export class SetupPage implements OnInit, OnDestroy {
     private cameraSettingsSubject = new Subject<Settings['camera']>();
 
     cameraOrigin = { x: 0, y: 0 };
-
-    // @ViewChild('keyboardInput') keyboardInput!: IonInput;
-    // @ViewChild('numericInput') numericInput!: IonInput;
-
+    
     constructor(private configService: SetupAPIService, private toastController: ToastController, private motorsService: MotorsControlService, private router: Router, private ledService: LedService) { }
 
     ngOnInit() {
