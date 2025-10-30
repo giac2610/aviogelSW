@@ -63,6 +63,15 @@ export class KeyboardModalComponent implements OnInit {
       case 'ENTER':
         this.confirm(); // Chiude e salva
         return;
+      case '+/-':
+        if (this.layout === 'numeric') {
+          if (this.value.startsWith('-')) {
+            this.value = this.value.slice(1);
+          } else {
+            this.value = '-' + this.value;
+          }
+        }
+        break;
       default:
         // Aggiunge il carattere
         const char = this.isShiftActive ? key.toUpperCase() : key.toLowerCase();
