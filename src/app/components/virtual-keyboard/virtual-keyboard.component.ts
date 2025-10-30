@@ -12,7 +12,6 @@ import { KeyboardModalComponent } from '../../keyboard-modal/keyboard-modal.comp
     IonicModule,
     CommonModule,
     FormsModule
-    // KeyboardModalComponent non serve qui se è standalone
   ],
   templateUrl: './virtual-keyboard.component.html',
   styleUrls: ['./virtual-keyboard.component.scss'],
@@ -44,7 +43,7 @@ export class VirtualKeyboardComponent implements ControlValueAccessor {
 
   // --- Metodi ControlValueAccessor ---
   writeValue(value: any): void {
-    this.value = value || '';
+    this.value = (value !== null && value !== undefined) ? String(value) : '';
     this.cdr.markForCheck();
   }
 
@@ -60,7 +59,6 @@ export class VirtualKeyboardComponent implements ControlValueAccessor {
     this.isDisabled = isDisabled;
     this.cdr.markForCheck();
   }
-  // --- Fine Metodi ControlValueAccessor ---
 
   // Rileva l'input (non dovrebbe succedere con readonly, ma per sicurezza)
   onIonInputChange(event: any) {

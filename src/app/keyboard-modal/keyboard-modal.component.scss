@@ -74,10 +74,16 @@ ion-content {
   --padding-end: 0;
   --border-radius: 8px;
 
-  &.key-backspace,
-  &.key-shift,
-  &.key-enter {
-    flex: 1.5; // Tasti speciali più larghi
+  .key-backspace{
+    box-shadow: 2px 2px 5px rgba(255, 6, 6, 0.452);
+  }
+  .key-shift{
+    box-shadow: 2px 2px 5px rgba(96, 96, 255, 0.363);
+    // flex: 1.5; // Tasti speciali più larghi
+  }
+  .key-enter {
+    box-shadow: 2px 2px 5px rgba(27, 255, 80, 0.464);
+    // flex: 1.5; // Tasti speciali più larghi
   }
 
   &.key-shift-active {

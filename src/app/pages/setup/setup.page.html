@@ -53,12 +53,13 @@
               <ion-row>
                 <ion-col size="4">
                   <ion-item>
-                    <ion-input label="Home Direction" placeholder="1 orario 0 antiorario" type="number" [(ngModel)]="settings.motors.extruder.homeDir"></ion-input>
+                    <app-virtual-keyboard label="Home Direction" placeholder="1 orario 0 antiorario" layout="numeric" type="number" [(ngModel)]="settings.motors.extruder.homeDir"></app-virtual-keyboard>
                   </ion-item>
                 </ion-col>
                 <ion-col size="4">
                   <ion-item>
-                    <ion-input label="Passi/giro" placeholder="Inserisci il numero di passi per fare un giro" type="number" [(ngModel)]="settings.motors.extruder.stepOneRev"></ion-input>
+                    <app-virtual-keyboard label="Passi/giro" placeholder="Inserisci il numero di passi per fare un giro" type="number" layout="numeric" [(ngModel)]="settings.motors.extruder.stepOneRev"></app-virtual-keyboard>
+                    <!-- <ion-input label="Passi/giro" placeholder="Inserisci il numero di passi per fare un giro" type="number" [(ngModel)]="settings.motors.extruder.stepOneRev"></ion-input> -->
                   </ion-item>
                 </ion-col>
                 <ion-col size="4">
@@ -80,7 +81,7 @@
                 </ion-col>
                 <ion-col size="4">
                   <ion-item>
-                    <app-virtual-keyboard label="Max Speed" layout="numeric" placeholder="Valore numerico"[(ngModel)]="settings.motors.extruder.maxSpeed"  ></app-virtual-keyboard>
+                    <app-virtual-keyboard label="Max Speed" layout="numeric" type="number" placeholder="Valore numerico" layout="numeric" [(ngModel)]="settings.motors.extruder.maxSpeed"  ></app-virtual-keyboard>
                     <!-- <ion-input #numericInput label="Max Speed" placeholder="Inserisci la velocità in mm/s" type="number" [(ngModel)]="settings.motors.extruder.maxSpeed" step="10"></ion-input> -->
                   </ion-item>
                 </ion-col>
@@ -261,14 +262,14 @@
                 </ion-col>
                 <ion-col size="4">
                   <ion-item>
-                    <ion-input label="Max Speed" placeholder="Inserisci la velocità in mm/s" type="number" [(ngModel)]="settings.motors.syringe.maxSpeed"></ion-input>
+                    <app-virtual-keyboard label="Max Speed" placeholder="Inserisci la velocità in mm/s" type="number" layout="numeric" [(ngModel)]="settings.motors.syringe.maxSpeed"></app-virtual-keyboard>
                   </ion-item>
                 </ion-col>
               </ion-row>
               <ion-row>
                 <ion-col size="4">
                   <ion-item>
-                    <ion-input label="Acceleration" placeholder="Inserisci l'accelerazione in mm/s²" type="number" [(ngModel)]="settings.motors.syringe.acceleration" step="10"></ion-input>
+                    <app-virtual-keyboard label="Acceleration" placeholder="Inserisci l'accelerazione in mm/s²" type="number" layout="numeric" [(ngModel)]="settings.motors.syringe.acceleration" step="10"></app-virtual-keyboard>
                   </ion-item>
                 </ion-col>
                 <ion-col size="4">
@@ -285,12 +286,12 @@
               <ion-row>
                 <ion-col size="6">
                   <ion-item>
-                    <ion-input label="Dose Volume" placeholder="Inserisci il volume di dose in ml" type="number" [(ngModel)]="settings.motors.syringe.doseVolume" step="0.1"></ion-input>
+                    <app-virtual-keyboard label="Dose Volume" placeholder="Inserisci il volume di dose in ml" type="number" layout="numeric" [(ngModel)]="settings.motors.syringe.doseVolume" step="0.1"></app-virtual-keyboard>
                   </ion-item>
                 </ion-col>
                 <ion-col size="6">
                   <ion-item>
-                    <ion-input label="Retract Volume" placeholder="Inserisci il volume di retrazione in ml" type="number" [(ngModel)]="settings.motors.syringe.retractVolume" step="0.1"></ion-input>
+                    <app-virtual-keyboard label="Retract Volume" placeholder="Inserisci il volume di retrazione in ml" type="number" layout="numeric" [(ngModel)]="settings.motors.syringe.retractVolume" step="0.1"></app-virtual-keyboard>
                   </ion-item>
                 </ion-col>
               </ion-row>
