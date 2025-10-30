@@ -5,9 +5,10 @@
     [placeholder]="placeholder"
     [label]="label"
     [disabled]="isDisabled"
-    [value]="value"
+    
     (ionBlur)="onTouched()"
     class="custom-keyboard-input-inner" 
+    [(ngModel)]="value"
     readonly="true"> 
   </ion-input>
 </div>
