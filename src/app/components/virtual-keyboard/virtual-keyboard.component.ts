@@ -1,7 +1,7 @@
 import { CommonModule } from '@angular/common';
 import { Component, Input, forwardRef, ChangeDetectorRef } from '@angular/core';
 import { IonicModule, ModalController } from '@ionic/angular';
-import { ControlValueAccessor, NG_VALUE_ACCESSOR, FormsModule } from '@angular/forms';
+import { ControlValueAccessor, NG_VALUE_ACCESSOR} from '@angular/forms';
 
 // Importa il nuovo modal
 import { KeyboardModalComponent } from '../../keyboard-modal/keyboard-modal.component';
@@ -11,7 +11,7 @@ import { KeyboardModalComponent } from '../../keyboard-modal/keyboard-modal.comp
   imports: [
     IonicModule,
     CommonModule,
-    FormsModule
+    // FormsModule
   ],
   templateUrl: './virtual-keyboard.component.html',
   styleUrls: ['./virtual-keyboard.component.scss'],
