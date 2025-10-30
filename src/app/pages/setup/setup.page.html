@@ -108,7 +108,7 @@
           <!-- Testing Container -->
           <div *ngIf="testMode">
             <ion-item>
-              <ion-input label="spostamento in mm" placeholder="inserisci uno spostamento" type="number" [(ngModel)]="travels.extruder"></ion-input>
+              <app-virtual-keyboard label="spostamento in mm" placeholder="inserisci uno spostamento" type="number" layout="numeric" [(ngModel)]="travels.extruder"></app-virtual-keyboard>
             </ion-item>
             <ion-item class="iconContainer">
               <!-- <div class="iconContainer"> -->
@@ -198,7 +198,7 @@
           <!-- Testing Container -->
           <div *ngIf="testMode">
             <ion-item>
-              <ion-input label="spostamento in mm" placeholder="inserisci uno spostamento" type="number" [(ngModel)]="travels.conveyor"></ion-input>
+              <app-virtual-keyboard label="spostamento in mm" placeholder="inserisci uno spostamento" layout="numeric" type="number" [(ngModel)]="travels.conveyor"></app-virtual-keyboard>
             </ion-item>
             <ion-item class="iconContainer">
               <!-- <div class="iconContainer"> -->
@@ -300,7 +300,7 @@
           <!-- Testing Container -->
           <div *ngIf="testMode">
             <ion-item>
-              <ion-input label="spostamento in mm" placeholder="inserisci uno spostamento" type="number" [(ngModel)]="travels.syringe"></ion-input>
+              <app-virtual-keyboard label="spostamento in mm" placeholder="inserisci uno spostamento" layout="numeric" type="number" [(ngModel)]="travels.syringe"></app-virtual-keyboard>
             </ion-item>
             <!-- <ion-item>
               <ion-label>Velocità Corrente:</ion-label>
