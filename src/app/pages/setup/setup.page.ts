@@ -54,7 +54,7 @@ export class SetupPage implements OnInit, OnDestroy {
     private cameraSettingsSubject = new Subject<Settings['camera']>();
 
     cameraOrigin = { x: 0, y: 0 };
-    
+
     constructor(private configService: SetupAPIService, private toastController: ToastController, private motorsService: MotorsControlService, private router: Router, private ledService: LedService) { }
 
     ngOnInit() {
@@ -178,6 +178,7 @@ export class SetupPage implements OnInit, OnDestroy {
             this.positions[motor] += distance; 
             const targets = { [motor]: distance }; // Correctly structure the targets object
             console.log("request: ", targets);
+            console.log("current position: ", this.positions[motor]);
             this.configService.moveMotor(targets).subscribe({
                 next: (response) => {
                     

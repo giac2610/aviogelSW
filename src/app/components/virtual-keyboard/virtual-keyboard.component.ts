@@ -33,7 +33,7 @@ export class VirtualKeyboardComponent implements ControlValueAccessor {
 
   value: string = '';
   isDisabled = false;
-  onChange: (value: string) => void = () => {};
+  onChange: (value: string | number | null)=> void = () => {};
   onTouched: () => void = () => {};
 
   constructor(
@@ -94,11 +94,39 @@ export class VirtualKeyboardComponent implements ControlValueAccessor {
 
     const { data, role } = await modal.onWillDismiss();
 
-    if (role === 'confirm' && data !== null) {
-      this.value = data;
-      this.onChange(this.value);
-      this.cdr.markForCheck();
-    }
+    if (role === 'confirm') { 
+            let valueToEmit: string | number | null; // Il valore che invieremo a ngModel
+
+            if (data === null || data === undefined || data === '') {
+                // Se l'utente ha cancellato o chiuso senza valore
+                valueToEmit = null; 
+                this.value = ''; // Aggiorna il display interno
+            } 
+            // Controlla se l'input DOVEVA essere un numero
+            else if (this.layout === 'numeric' || this.type === 'number') { 
+                
+                // Tenta di convertire la stringa 'data' (es. "2") in un numero
+                const num = parseFloat(data); 
+
+                if (!isNaN(num)) {
+                    // La conversione è riuscita
+                    valueToEmit = num; // Emetti il NUMERO (es. 2)
+                    this.value = data; // L'input interno (this.value) può rimanere stringa ("2")
+                } else {
+                    // L'utente ha inserito qualcosa che non è un numero (es. ".")
+                    valueToEmit = null; 
+                    this.value = data; 
+                }
+            } else {
+                // Se non è numerico, emetti la stringa (es. "Testo")
+                valueToEmit = data; 
+                this.value = data;
+            }
+            
+            // Chiama onChange con il tipo corretto (NUMERO o STRINGA o NULL)
+            this.onChange(valueToEmit); 
+            this.cdr.markForCheck();
+          }
   }
 }
 
