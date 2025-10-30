@@ -61,13 +61,13 @@ export class VirtualKeyboardComponent implements ControlValueAccessor {
   }
 
   // Rileva l'input (non dovrebbe succedere con readonly, ma per sicurezza)
-  onIonInputChange(event: any) {
-    const newValue = event?.target?.value;
-    if (this.value !== newValue) {
-       this.value = newValue;
-       this.onChange(newValue);
-    }
-  }
+  // onIonInputChange(event: any) {
+  //   const newValue = event?.target?.value;
+  //   if (this.value !== newValue) {
+  //      this.value = newValue;
+  //      this.onChange(newValue);
+  //   }
+  // }
 
   // --- Gestione Apertura Modal ---
   async onInputClick(): Promise<void> {
