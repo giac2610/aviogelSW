@@ -1027,78 +1027,217 @@ def plot_graph(request):
     buf.seek(0)
     return HttpResponse(buf.getvalue(), content_type='image/png')
 
-@csrf_exempt
-@require_POST
-def set_fixed_perspective_view(request):
-    cam_calib_data = camera_settings.get("calibration", None)
-    calib_settings_dict = camera_settings.get("calibration_settings", {})
-    fixed_perspective_cfg = camera_settings.get("fixed_perspective", {})
-    if not (cam_calib_data and cam_calib_data.get("camera_matrix") and cam_calib_data.get("distortion_coefficients")):
-        return JsonResponse({"status": "error", "message": "Camera calibration data not found. Please calibrate first."}, status=400)
-    camera_matrix_cv = np.array(cam_calib_data["camera_matrix"], dtype=np.float32)
-    dist_coeffs_cv = np.array(cam_calib_data["distortion_coefficients"], dtype=np.float32)
-    FIXED_WIDTH = fixed_perspective_cfg.get("output_width", 1000)
-    FIXED_HEIGHT = fixed_perspective_cfg.get("output_height", 800)
+# @csrf_exempt
+# @require_POST
+# def set_fixed_perspective_view(request):
+#     cam_calib_data = camera_settings.get("calibration", None)
+#     calib_settings_dict = camera_settings.get("calibration_settings", {})
+#     fixed_perspective_cfg = camera_settings.get("fixed_perspective", {})
+#     if not (cam_calib_data and cam_calib_data.get("camera_matrix") and cam_calib_data.get("distortion_coefficients")):
+#         return JsonResponse({"status": "error", "message": "Camera calibration data not found. Please calibrate first."}, status=400)
+#     camera_matrix_cv = np.array(cam_calib_data["camera_matrix"], dtype=np.float32)
+#     dist_coeffs_cv = np.array(cam_calib_data["distortion_coefficients"], dtype=np.float32)
+#     FIXED_WIDTH = fixed_perspective_cfg.get("output_width", 1000)
+#     FIXED_HEIGHT = fixed_perspective_cfg.get("output_height", 800)
     
-    try:
-        frame_cap = get_frame(release_after=False)
-        if frame_cap is None or frame_cap.size == 0: 
-            return JsonResponse({"status": "error", "message": "Could not get frame from camera."}, status=500)
-        h_cam_cap, w_cam_cap = frame_cap.shape[:2]
-        new_camera_matrix_cv, _ = cv2.getOptimalNewCameraMatrix(camera_matrix_cv, dist_coeffs_cv, (w_cam_cap,h_cam_cap), 1.0, (w_cam_cap,h_cam_cap))
-        undistorted_frame_cap = cv2.undistort(frame_cap, camera_matrix_cv, dist_coeffs_cv, None, new_camera_matrix_cv)
+#     try:
+#         frame_cap = get_frame(release_after=False)
+#         if frame_cap is None or frame_cap.size == 0: 
+#             return JsonResponse({"status": "error", "message": "Could not get frame from camera."}, status=500)
+#         h_cam_cap, w_cam_cap = frame_cap.shape[:2]
+#         new_camera_matrix_cv, _ = cv2.getOptimalNewCameraMatrix(camera_matrix_cv, dist_coeffs_cv, (w_cam_cap,h_cam_cap), 1.0, (w_cam_cap,h_cam_cap))
+#         undistorted_frame_cap = cv2.undistort(frame_cap, camera_matrix_cv, dist_coeffs_cv, None, new_camera_matrix_cv)
         
-        H_canonical, canonical_dims = get_board_and_canonical_homography_for_django(
-            undistorted_frame_cap, new_camera_matrix_cv, calib_settings_dict
-        )
+#         H_canonical, canonical_dims = get_board_and_canonical_homography_for_django(
+#             undistorted_frame_cap, new_camera_matrix_cv, calib_settings_dict
+#         )
         
-        if H_canonical is not None and canonical_dims is not None and canonical_dims[0] > 0 and canonical_dims[1] > 0:
-            cb_w, cb_h = canonical_dims
-            offset_x = max(0, (FIXED_WIDTH - cb_w) / 2.0)
-            offset_y = max(0, (FIXED_HEIGHT - cb_h) / 2.0)
-            M_translate = np.array([[1,0,offset_x], [0,1,offset_y], [0,0,1]], dtype=np.float32)
-            H_ref = M_translate @ H_canonical
-            if save_fixed_perspective_homography_to_config(H_ref):
-                return JsonResponse({
-                    "status": "success",
-                    "message": "Fixed perspective view established and saved."
-                })
-            else:
-                print("[ERROR] set_fixed_perspective_view: Failed to save homography to config file.")
-                return JsonResponse({
-                    "status": "error",
-                    "message": "Error saving fixed perspective homography to configuration file.",
-                    "error_code": "SAVE_HOMOGRAPHY_FAILED"
-                }, status=500)
-        else:
-            error_message = "Cannot define fixed view. An unknown error occurred."
-            error_code = "UNKNOWN_FIXED_VIEW_ERROR"
-            status_code = 400
-            if H_canonical is None:
-                error_message = "Chessboard pattern not detected in the current camera view. Ensure the full pattern is clearly visible and well-lit."
-                error_code = "CHESSBOARD_NOT_DETECTED"
-                print(f"[ERROR] set_fixed_perspective_view ({error_code}): {error_message}")
-            elif canonical_dims is None:
-                error_message = "Internal error: Chessboard detected, but its dimensions could not be determined."
-                error_code = "CANONICAL_DIMS_MISSING_UNEXPECTEDLY"
-                status_code = 500
-                print(f"[ERROR] set_fixed_perspective_view ({error_code}): {error_message}")
-            elif canonical_dims[0] <= 0 or canonical_dims[1] <= 0:
-                error_message = (f"Invalid canonical dimensions calculated for the chessboard: {canonical_dims}. "
-                                 f"This might indicate an issue with the chessboard configuration (e.g., square size, pattern size in settings) "
-                                 f"or a highly distorted detection.")
-                error_code = "INVALID_CANONICAL_DIMS_CALCULATED"
-                print(f"[ERROR] set_fixed_perspective_view ({error_code}): {error_message} - Dimensions: {canonical_dims}")
+#         if H_canonical is not None and canonical_dims is not None and canonical_dims[0] > 0 and canonical_dims[1] > 0:
+#             cb_w, cb_h = canonical_dims
+#             offset_x = max(0, (FIXED_WIDTH - cb_w) / 2.0)
+#             offset_y = max(0, (FIXED_HEIGHT - cb_h) / 2.0)
+#             M_translate = np.array([[1,0,offset_x], [0,1,offset_y], [0,0,1]], dtype=np.float32)
+#             H_ref = M_translate @ H_canonical
+#             if save_fixed_perspective_homography_to_config(H_ref):
+#                 return JsonResponse({
+#                     "status": "success",
+#                     "message": "Fixed perspective view established and saved."
+#                 })
+#             else:
+#                 print("[ERROR] set_fixed_perspective_view: Failed to save homography to config file.")
+#                 return JsonResponse({
+#                     "status": "error",
+#                     "message": "Error saving fixed perspective homography to configuration file.",
+#                     "error_code": "SAVE_HOMOGRAPHY_FAILED"
+#                 }, status=500)
+#         else:
+#             error_message = "Cannot define fixed view. An unknown error occurred."
+#             error_code = "UNKNOWN_FIXED_VIEW_ERROR"
+#             status_code = 400
+#             if H_canonical is None:
+#                 error_message = "Chessboard pattern not detected in the current camera view. Ensure the full pattern is clearly visible and well-lit."
+#                 error_code = "CHESSBOARD_NOT_DETECTED"
+#                 print(f"[ERROR] set_fixed_perspective_view ({error_code}): {error_message}")
+#             elif canonical_dims is None:
+#                 error_message = "Internal error: Chessboard detected, but its dimensions could not be determined."
+#                 error_code = "CANONICAL_DIMS_MISSING_UNEXPECTEDLY"
+#                 status_code = 500
+#                 print(f"[ERROR] set_fixed_perspective_view ({error_code}): {error_message}")
+#             elif canonical_dims[0] <= 0 or canonical_dims[1] <= 0:
+#                 error_message = (f"Invalid canonical dimensions calculated for the chessboard: {canonical_dims}. "
+#                                  f"This might indicate an issue with the chessboard configuration (e.g., square size, pattern size in settings) "
+#                                  f"or a highly distorted detection.")
+#                 error_code = "INVALID_CANONICAL_DIMS_CALCULATED"
+#                 print(f"[ERROR] set_fixed_perspective_view ({error_code}): {error_message} - Dimensions: {canonical_dims}")
             
-            return JsonResponse({
-                "status": "error",
-                "message": error_message,
-                "error_code": error_code
-            }, status=status_code)
+#             return JsonResponse({
+#                 "status": "error",
+#                 "message": error_message,
+#                 "error_code": error_code
+#             }, status=status_code)
+#     except Exception as e:
+#         print(f"Exception in set_fixed_perspective_view: {e}")
+#         traceback.print_exc()
+#         return JsonResponse({"status": "error", "message": str(e)}, status=500)
+    
+    
+@csrf_exempt
+@require_GET
+def reproject_points_feed(request):
+    # debug view
+    try:
+        resp = requests.get("http://localhost:8000/motors/maxSpeeds/")
+        data = resp.json()
+        velocita_x = data.get("speeds", {}).get("extruder", 4.0)
+        velocita_y = data.get("speeds", {}).get("conveyor", 1.0)
     except Exception as e:
-        print(f"Exception in set_fixed_perspective_view: {e}")
-        traceback.print_exc()
-        return JsonResponse({"status": "error", "message": str(e)}, status=500)
+        print(f"Errore richiesta velocità motori: {e}")
+        velocita_x, velocita_y = 4.0, 1.0
+
+    def gen_frames():
+        H_fixed = get_fixed_perspective_homography_from_config()
+        if H_fixed is None:
+            dummy_frame = np.zeros((480, 640, 3), dtype=np.uint8)
+            cv2.putText(dummy_frame, "Homography not set", (50, 240), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
+            _, buffer = cv2.imencode('.jpg', dummy_frame)
+            yield (b'--frame\r\nContent-Type: image/jpeg\r\n\r\n' + buffer.tobytes() + b'\r\n')
+            return
+
+        # Anche se H_inv non è usato direttamente per la vista, potrebbe servire per proiettare
+        # elementi dall'immagine fissa alla vista camera (non è il nostro caso qui)
+        ret, H_inv = cv2.invert(H_fixed)
+        if not ret:
+            # Fallback se la matrice non è invertibile (dovrebbe essere raro)
+            dummy_frame = np.zeros((480, 640, 3), dtype=np.uint8)
+            cv2.putText(dummy_frame, "Homography inversion failed", (50, 240), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
+            _, buffer = cv2.imencode('.jpg', dummy_frame)
+            yield (b'--frame\r\nContent-Type: image/jpeg\r\n\r\n' + buffer.tobytes() + b'\r\n')
+            return
+
+        cam_calib = camera_settings.get("calibration", {})
+        cam_matrix = np.array(cam_calib.get("camera_matrix"))
+        dist_coeffs = np.array(cam_calib.get("distortion_coefficients"))
+
+        # Impostazioni per la vista fissa di output
+        fixed_persp_cfg = camera_settings.get("fixed_perspective", {})
+        OUTPUT_WIDTH = fixed_persp_cfg.get("output_width", 1000)
+        OUTPUT_HEIGHT = fixed_persp_cfg.get("output_height", 800)
+
+        # Preparazione per l'undistortion
+        new_cam_matrix = None
+        try:
+            sample_frame = get_frame()
+            h, w = sample_frame.shape[:2]
+            new_cam_matrix, _ = cv2.getOptimalNewCameraMatrix(cam_matrix, dist_coeffs, (w, h), 1.0, (w, h))
+        except Exception as e:
+            print(f"[ERRORE] Nello stream: {e}")
+            dummy_frame = np.zeros((OUTPUT_HEIGHT, OUTPUT_WIDTH, 3), dtype=np.uint8)
+            cv2.putText(dummy_frame, f"Camera or calibration error: {str(e)[:50]}", (30, 240), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
+            _, buffer = cv2.imencode('.jpg', dummy_frame)
+            yield (b'--frame\r\nContent-Type: image/jpeg\r\n\r\n' + buffer.tobytes() + b'\r\n')
+            return
+
+        with stream_context():
+            while True:
+                try:
+                    frame = get_frame()
+                    if frame is None or frame.size == 0:
+                        # Se il frame non è disponibile, invia un frame nero con un messaggio
+                        output_frame = np.zeros((OUTPUT_HEIGHT, OUTPUT_WIDTH, 3), dtype=np.uint8)
+                        cv2.putText(output_frame, "No camera frame", (50, 240), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
+                        _, buffer = cv2.imencode('.jpg', output_frame)
+                        yield (b'--frame\r\nContent-Type: image/jpeg\r\n\r\n' + buffer.tobytes() + b'\r\n')
+                        time.sleep(0.1)
+                        continue
+
+                    undistorted_frame = cv2.undistort(frame, cam_matrix, dist_coeffs, None, new_cam_matrix)
+                    
+                    # --- Applico SEMPRE la trasformazione di prospettiva fissa qui ---
+                    fixed_perspective_frame = cv2.warpPerspective(undistorted_frame, H_fixed, (OUTPUT_WIDTH, OUTPUT_HEIGHT))
+
+                    # Ora tutte le proiezioni e i disegni avverranno su fixed_perspective_frame
+                    # e i punti del mondo saranno direttamente disegnati, non riproiettati
+
+                    world_coords_data = get_world_coordinates_data()
+                    
+                    if world_coords_data.get('status') == 'success' and world_coords_data.get('coordinates'):
+                        ideal_grid_world, ordered_path_world, box_corners_world_snapped = _generate_grid_and_path(world_coords_data['coordinates'], camera_settings, velocita_x, velocita_y)
+                        
+                        # Disegna il rettangolo snappato (box_corners_world_snapped)
+                        # NOTA: box_corners_world_snapped sono già coordinate mondo nel sistema bottom-left
+                        # E dobbiamo convertirle per il sistema top-left se H_fixed le ha create così.
+                        # Tuttavia, se _generate_grid_and_path restituisce punti già "corretti" per la
+                        # vista fissa (cioè top-left e all'interno di 0,0 - OUTPUT_WIDTH, OUTPUT_HEIGHT),
+                        # allora possiamo disegnarli direttamente.
+                        # Per chiarezza, supponiamo che box_corners_world_snapped siano già nel sistema della vista fissa (top-left)
+                        if box_corners_world_snapped:
+                            # Converti in numpy array di interi per disegnare un contorno
+                            box_contour_np = np.array(box_corners_world_snapped, dtype=np.int32).reshape(-1, 1, 2)
+                            cv2.drawContours(fixed_perspective_frame, [box_contour_np], 0, (0, 255, 255), 2) # Giallo
+
+                        # Disegna la linea verticale dell'estrusore
+                        if ordered_path_world:
+                            start_x_world = ordered_path_world[0][0]
+                            # Le coordinate del mondo sono direttamente le coordinate nella vista fissa
+                            # (se H_fixed è stato calcolato per mappare il mondo nella vista fissa)
+                            # Se _generate_grid_and_path restituisce già i punti nel sistema di coordinate
+                            # della vista fissa (top-left, origine nell'angolo in alto a sinistra),
+                            # allora li disegniamo direttamente.
+                            
+                            # Punto di inizio X della linea nel sistema di coordinate della vista fissa
+                            # La Y va da 0 (in alto) a OUTPUT_HEIGHT (in basso)
+                            pt1_line = (int(round(start_x_world)), 0)
+                            pt2_line = (int(round(start_x_world)), OUTPUT_HEIGHT)
+                            cv2.line(fixed_perspective_frame, pt1_line, pt2_line, (0, 255, 255), 2) # Giallo
+
+                        # Disegna i punti della griglia ideale
+                        if ideal_grid_world:
+                            for pt_world in ideal_grid_world:
+                                # Disegna i punti della griglia direttamente nella fixed_perspective_frame
+                                cv2.circle(fixed_perspective_frame, (int(round(pt_world[0])), int(round(pt_world[1]))), 5, (0, 255, 0), -1) # Verde
+
+                        # Disegna il percorso TSP
+                        if ordered_path_world:
+                            path_pixel_coords = []
+                            for pt_world in ordered_path_world:
+                                path_pixel_coords.append((int(round(pt_world[0])), int(round(pt_world[1]))))
+
+                            for i in range(len(path_pixel_coords) - 1):
+                                cv2.line(fixed_perspective_frame, path_pixel_coords[i], path_pixel_coords[i+1], (255, 0, 0), 2) # Blu
+
+                    # Codifica e invia il frame
+                    _, buffer = cv2.imencode('.jpg', fixed_perspective_frame)
+                    yield (b'--frame\r\nContent-Type: image/jpeg\r\n\r\n' + buffer.tobytes() + b'\r\n')
+                except Exception as e:
+                    print(f"[ERRORE] Nel loop di disegno: {e}")
+                    traceback.print_exc()
+                    output_frame_error = np.zeros((OUTPUT_HEIGHT, OUTPUT_WIDTH, 3), dtype=np.uint8)
+                    cv2.putText(output_frame_error, f"Loop error: {str(e)[:50]}", (30, 240), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
+                    _, buffer = cv2.imencode('.jpg', output_frame_error)
+                    yield (b'--frame\r\nContent-Type: image/jpeg\r\n\r\n' + buffer.tobytes() + b'\r\n')
+                    time.sleep(1)
+
+    return StreamingHttpResponse(gen_frames(), content_type='multipart/x-mixed-replace; boundary=frame')
     
 @csrf_exempt
 @require_GET
