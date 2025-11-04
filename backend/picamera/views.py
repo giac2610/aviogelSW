@@ -785,11 +785,8 @@ def reproject_points_feed(request):
             yield (b'--frame\r\nContent-Type: image/jpeg\r\n\r\n' + buffer.tobytes() + b'\r\n')
             return
 
-        # Anche se H_inv non è usato direttamente per la vista, potrebbe servire per proiettare
-        # elementi dall'immagine fissa alla vista camera (non è il nostro caso qui)
         ret, H_inv = cv2.invert(H_fixed)
         if not ret:
-            # Fallback se la matrice non è invertibile (dovrebbe essere raro)
             dummy_frame = np.zeros((480, 640, 3), dtype=np.uint8)
             cv2.putText(dummy_frame, "Homography inversion failed", (50, 240), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
             _, buffer = cv2.imencode('.jpg', dummy_frame)
@@ -824,7 +821,6 @@ def reproject_points_feed(request):
                 try:
                     frame = get_frame()
                     if frame is None or frame.size == 0:
-                        # Se il frame non è disponibile, invia un frame nero con un messaggio
                         output_frame = np.zeros((OUTPUT_HEIGHT, OUTPUT_WIDTH, 3), dtype=np.uint8)
                         cv2.putText(output_frame, "No camera frame", (50, 240), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
                         _, buffer = cv2.imencode('.jpg', output_frame)
@@ -834,58 +830,57 @@ def reproject_points_feed(request):
 
                     undistorted_frame = cv2.undistort(frame, cam_matrix, dist_coeffs, None, new_cam_matrix)
                     
-                    # --- Applico SEMPRE la trasformazione di prospettiva fissa qui ---
+                    # Applica la trasformazione di prospettiva fissa
                     fixed_perspective_frame = cv2.warpPerspective(undistorted_frame, H_fixed, (OUTPUT_WIDTH, OUTPUT_HEIGHT))
 
-                    # Ora tutte le proiezioni e i disegni avverranno su fixed_perspective_frame
-                    # e i punti del mondo saranno direttamente disegnati, non riproiettati
+                    # --- Funzione helper per la rotazione di 180° ---
+                    # Ruota un punto (x, y) attorno al centro dell'immagine
+                    def rotate_180(p, w=OUTPUT_WIDTH, h=OUTPUT_HEIGHT):
+                        return (int(round(w - p[0])), int(round(h - p[1])))
+                    # --------------------------------------------------
 
                     world_coords_data = get_world_coordinates_data()
                     
                     if world_coords_data.get('status') == 'success' and world_coords_data.get('coordinates'):
                         ideal_grid_world, ordered_path_world, box_corners_world_snapped = _generate_grid_and_path(world_coords_data['coordinates'], camera_settings, velocita_x, velocita_y)
                         
-                        # Disegna il rettangolo snappato (box_corners_world_snapped)
-                        # NOTA: box_corners_world_snapped sono già coordinate mondo nel sistema bottom-left
-                        # E dobbiamo convertirle per il sistema top-left se H_fixed le ha create così.
-                        # Tuttavia, se _generate_grid_and_path restituisce punti già "corretti" per la
-                        # vista fissa (cioè top-left e all'interno di 0,0 - OUTPUT_WIDTH, OUTPUT_HEIGHT),
-                        # allora possiamo disegnarli direttamente.
-                        # Per chiarezza, supponiamo che box_corners_world_snapped siano già nel sistema della vista fissa (top-left)
+                        # Disegna il rettangolo snappato (ruotato)
                         if box_corners_world_snapped:
-                            # Converti in numpy array di interi per disegnare un contorno
-                            box_contour_np = np.array(box_corners_world_snapped, dtype=np.int32).reshape(-1, 1, 2)
+                            # Ruota ogni punto del rettangolo
+                            rotated_box_points = [rotate_180(p) for p in box_corners_world_snapped]
+                            box_contour_np = np.array(rotated_box_points, dtype=np.int32).reshape(-1, 1, 2)
                             cv2.drawContours(fixed_perspective_frame, [box_contour_np], 0, (0, 255, 255), 2) # Giallo
 
-                        # Disegna la linea verticale dell'estrusore
+                        # Disegna la linea verticale dell'estrusore (ruotata)
                         if ordered_path_world:
                             start_x_world = ordered_path_world[0][0]
-                            # Le coordinate del mondo sono direttamente le coordinate nella vista fissa
-                            # (se H_fixed è stato calcolato per mappare il mondo nella vista fissa)
-                            # Se _generate_grid_and_path restituisce già i punti nel sistema di coordinate
-                            # della vista fissa (top-left, origine nell'angolo in alto a sinistra),
-                            # allora li disegniamo direttamente.
                             
-                            # Punto di inizio X della linea nel sistema di coordinate della vista fissa
-                            # La Y va da 0 (in alto) a OUTPUT_HEIGHT (in basso)
-                            pt1_line = (int(round(start_x_world)), 0)
-                            pt2_line = (int(round(start_x_world)), OUTPUT_HEIGHT)
-                            cv2.line(fixed_perspective_frame, pt1_line, pt2_line, (0, 255, 255), 2) # Giallo
+                            # Punti originali della linea
+                            pt1_line_orig = (start_x_world, 0)
+                            pt2_line_orig = (start_x_world, OUTPUT_HEIGHT)
+                            
+                            # Ruota i punti della linea
+                            pt1_line_rotated = rotate_180(pt1_line_orig)
+                            pt2_line_rotated = rotate_180(pt2_line_orig)
+                            
+                            cv2.line(fixed_perspective_frame, pt1_line_rotated, pt2_line_rotated, (0, 255, 255), 2) # Giallo
 
-                        # Disegna i punti della griglia ideale
+                        # Disegna i punti della griglia ideale (ruotati)
                         if ideal_grid_world:
                             for pt_world in ideal_grid_world:
-                                # Disegna i punti della griglia direttamente nella fixed_perspective_frame
-                                cv2.circle(fixed_perspective_frame, (int(round(pt_world[0])), int(round(pt_world[1]))), 5, (0, 255, 0), -1) # Verde
+                                # Ruota il punto
+                                pt_rotated = rotate_180(pt_world)
+                                cv2.circle(fixed_perspective_frame, pt_rotated, 5, (0, 255, 0), -1) # Verde
 
-                        # Disegna il percorso TSP
+                        # Disegna il percorso TSP (ruotato)
                         if ordered_path_world:
-                            path_pixel_coords = []
+                            path_pixel_coords_rotated = []
                             for pt_world in ordered_path_world:
-                                path_pixel_coords.append((int(round(pt_world[0])), int(round(pt_world[1]))))
+                                # Ruota il punto
+                                path_pixel_coords_rotated.append(rotate_180(pt_world))
 
-                            for i in range(len(path_pixel_coords) - 1):
-                                cv2.line(fixed_perspective_frame, path_pixel_coords[i], path_pixel_coords[i+1], (255, 0, 0), 2) # Blu
+                            for i in range(len(path_pixel_coords_rotated) - 1):
+                                cv2.line(fixed_perspective_frame, path_pixel_coords_rotated[i], path_pixel_coords_rotated[i+1], (255, 0, 0), 2) # Blu
 
                     # Codifica e invia il frame
                     _, buffer = cv2.imencode('.jpg', fixed_perspective_frame)
