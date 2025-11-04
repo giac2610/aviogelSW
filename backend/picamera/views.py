@@ -841,12 +841,19 @@ def reproject_points_feed(request):
 
                     world_coords_data = get_world_coordinates_data()
                     
+                    # --- Preparazione delle coordinate dei blob rilevati ---
+                    # Questi sono i punti originali rilevati dal blob detection
+                    raw_blob_points_world = []
+                    if world_coords_data.get('status') == 'success' and world_coords_data.get('coordinates'):
+                        # world_coords_data['coordinates'] sono già coordinate mondo
+                        raw_blob_points_world = world_coords_data['coordinates']
+
+
                     if world_coords_data.get('status') == 'success' and world_coords_data.get('coordinates'):
                         ideal_grid_world, ordered_path_world, box_corners_world_snapped = _generate_grid_and_path(world_coords_data['coordinates'], camera_settings, velocita_x, velocita_y)
                         
                         # Disegna il rettangolo snappato (ruotato)
                         if box_corners_world_snapped:
-                            # Ruota ogni punto del rettangolo
                             rotated_box_points = [rotate_180(p) for p in box_corners_world_snapped]
                             box_contour_np = np.array(rotated_box_points, dtype=np.int32).reshape(-1, 1, 2)
                             cv2.drawContours(fixed_perspective_frame, [box_contour_np], 0, (0, 255, 255), 2) # Giallo
@@ -855,20 +862,17 @@ def reproject_points_feed(request):
                         if ordered_path_world:
                             start_x_world = ordered_path_world[0][0]
                             
-                            # Punti originali della linea
                             pt1_line_orig = (start_x_world, 0)
                             pt2_line_orig = (start_x_world, OUTPUT_HEIGHT)
                             
-                            # Ruota i punti della linea
                             pt1_line_rotated = rotate_180(pt1_line_orig)
                             pt2_line_rotated = rotate_180(pt2_line_orig)
                             
                             cv2.line(fixed_perspective_frame, pt1_line_rotated, pt2_line_rotated, (0, 255, 255), 2) # Giallo
 
-                        # Disegna i punti della griglia ideale (ruotati)
+                        # Disegna i punti della griglia ideale (ruotati - VERDI)
                         if ideal_grid_world:
                             for pt_world in ideal_grid_world:
-                                # Ruota il punto
                                 pt_rotated = rotate_180(pt_world)
                                 cv2.circle(fixed_perspective_frame, pt_rotated, 5, (0, 255, 0), -1) # Verde
 
@@ -876,11 +880,18 @@ def reproject_points_feed(request):
                         if ordered_path_world:
                             path_pixel_coords_rotated = []
                             for pt_world in ordered_path_world:
-                                # Ruota il punto
                                 path_pixel_coords_rotated.append(rotate_180(pt_world))
 
                             for i in range(len(path_pixel_coords_rotated) - 1):
                                 cv2.line(fixed_perspective_frame, path_pixel_coords_rotated[i], path_pixel_coords_rotated[i+1], (255, 0, 0), 2) # Blu
+                    
+                    # --- DISEGNA I PUNTI ROSSI DEI BLOB RILEVATI (SOPRA TUTTO) ---
+                    if raw_blob_points_world:
+                        for pt_world in raw_blob_points_world:
+                            # Ruota il punto
+                            pt_rotated = rotate_180(pt_world)
+                            cv2.circle(fixed_perspective_frame, pt_rotated, 3, (0, 0, 255), -1) # Rosso, raggio 3 (più piccolo del verde)
+                    # -------------------------------------------------------------
 
                     # Codifica e invia il frame
                     _, buffer = cv2.imencode('.jpg', fixed_perspective_frame)
