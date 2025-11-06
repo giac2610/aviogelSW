@@ -17,12 +17,14 @@
     <ion-card-content>
       <img *ngIf="isCameraInit" #cameraImg [src]="streamUrl" [width]="imgWidth" [height]="imgHeight" alt="Camera Stream" />
       <img [src]="graphUrl" alt="Coordinate Plot" [width]="imgWidth" [height]="imgHeight"/>
-
-      <ion-button (click)="getRealCoordinates()" expand="full" color="primary">
+      <br>
+      <!-- <ion-button (click)="getRealCoordinates()" expand="full" color="primary">
         Get Coordinate
-      </ion-button>
+      </ion-button> -->
+      <ion-button (click)="viewMoldPosition()"> Mold Positioning </ion-button>
       <ion-button (click)="viewRoute()">View Route</ion-button>
-      <ion-button (click)="executeRoute()">Execute filling</ion-button>
+      <ion-button (click)="executeRoute()">Execute Filling</ion-button>
+      <ion-button (click)="stopMotors()"> Stop Filling</ion-button>
       <ion-list>
         <ion-item *ngFor="let coordinate of coordinates">
           <ion-label>

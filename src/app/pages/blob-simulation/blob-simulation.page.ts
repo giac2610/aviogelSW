@@ -1,8 +1,8 @@
+import { LedService } from './../../services/led.service';
 import { Component, OnInit, ViewChild, ElementRef } from '@angular/core';
 import { ToastController } from '@ionic/angular';
 import { SetupAPIService } from 'src/app/services/setup-api.service';
 import { switchMap } from 'rxjs/operators';
-import { LedService } from 'src/app/services/led.service';
 
 @Component({
   selector: 'app-blob-simulation',
@@ -25,7 +25,7 @@ export class BlobSimulationPage implements OnInit {
   constructor(
     private toastController: ToastController,
     private configService: SetupAPIService,
-    private ledSerivce: LedService
+    private ledService: LedService
   ) {
     this.streamUrl = this.configService.getNormalStreamUrl();
   }
@@ -83,7 +83,7 @@ export class BlobSimulationPage implements OnInit {
       switchMap((res) => {
         if (res.status === 'success') {
           console.log('route to execute:', res.motor_commands);
-          this.ledSerivce.startGreenLoading().subscribe({
+          this.ledService.startGreenLoading().subscribe({
             next: () => this.presentToast('Green loading avviato', 'success'),
             error: () => this.presentToast('Errore nell\'avviare la wave', 'danger')
           });;
@@ -102,6 +102,24 @@ export class BlobSimulationPage implements OnInit {
         // });;; this.presentToast('Rotta eseguita con successo');
       },
       error: (err) => { this.presentToast(err.message, 'danger'); }
+    });
+  }
+
+  stopMotors() {
+    this.configService.stopMotors().subscribe({
+        next: (response) => {
+            this.presentToast(`Successo: ${response.status}`, 'success');
+        },
+        error: (error) => {
+            this.presentToast(`Errore: ${error.error.detail || error.message}`, 'danger');
+        }
+    });
+  }
+
+  viewMoldPosition() {
+    this.ledService.startMoldPositioning().subscribe({
+      next: () => this.presentToast('Mold positioning avviato', 'success'),
+      error: () => this.presentToast('Errore nell\'avviare il mold positioning', 'danger')
     });
   }
 }

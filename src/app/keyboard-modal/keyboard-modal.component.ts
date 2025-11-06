@@ -54,6 +54,9 @@ export class KeyboardModalComponent implements OnInit {
       case 'BACKSPACE':
         this.value = this.value.slice(0, -1);
         break;
+      case 'CLEAR':
+        this.value = '';
+        break;
       case 'SHIFT':
         this.isShiftActive = !this.isShiftActive;
         break;

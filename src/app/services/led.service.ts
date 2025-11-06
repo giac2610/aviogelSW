@@ -26,4 +26,8 @@ export class LedService {
   stopEffect() {
     return this.http.post(this.baseUrl, { effect: 'stop'})
   }
+
+  startMoldPositioning() {
+    return this.http.post(this.baseUrl, { effect: 'mold_positioning'})
+  }
 }
