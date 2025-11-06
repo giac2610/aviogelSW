@@ -86,6 +86,17 @@ def control_leds(request):
                 else:
                     debug_logs.append(f"Failed to start red effect: {response[1]}")
                     return JsonResponse({'status': 'error', 'message': 'Failed to start red effect', 'logs': debug_logs}, status=500)
+            elif effect == 'mold_positioning':
+                current_effect = "mold_positioning"
+                debug_logs.append("Starting mold positioning effect...")
+                
+                response = mold_positioning_with_logs()
+                if response[0]:
+                    debug_logs.append("mold positioning effect started successfully.")
+                    return JsonResponse({'status': 'success', 'message': 'mold positioning effect started', 'logs': debug_logs})
+                else:                 
+                    debug_logs.append(f"Failed to start mold positioning effect: {response[1]}")
+                    return JsonResponse({'status': 'error', 'message': 'Failed to start mold positioning effect', 'logs': debug_logs}, status=500)
             elif effect == 'stop':
                 current_effect = "none"
                 # Ferma gli effetti LED
@@ -170,6 +181,19 @@ def red_static_with_logs():
         response = requests.get(f'{ESPurl}redstatic', timeout=5)
         if response.status_code == 200:
             logging.info("Successo! Effetto static red impostato.")
+            return True, response.text
+        else:
+            logging.warning(f"Errore: l'ESP32 ha risposto con codice {response.status_code}")
+            return False, f"Status Code: {response.status_code}"
+    except requests.exceptions.RequestException as e:
+        logging.error(f"Errore di connessione all'ESP32: {e}")
+        return False, str(e)
+    
+def mold_positioning_with_logs():
+    try:
+        response = requests.get(f'{ESPurl}moldpositioning', timeout=5)
+        if response.status_code == 200:
+            logging.info("Successo! Effetto mold positioning impostato.")
             return True, response.text
         else:
             logging.warning(f"Errore: l'ESP32 ha risposto con codice {response.status_code}")
