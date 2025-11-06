@@ -762,7 +762,6 @@ def camera_feed(request):
                     print(f"Error in camera_feed loop: {e}")
                     time.sleep(1)
     return StreamingHttpResponse(gen_frames(), content_type='multipart/x-mixed-replace; boundary=frame')
-
 @csrf_exempt
 @require_GET
 def reproject_points_feed(request):
@@ -834,18 +833,14 @@ def reproject_points_feed(request):
                     fixed_perspective_frame = cv2.warpPerspective(undistorted_frame, H_fixed, (OUTPUT_WIDTH, OUTPUT_HEIGHT))
 
                     # --- Funzione helper per la rotazione di 180° ---
-                    # Ruota un punto (x, y) attorno al centro dell'immagine
                     def rotate_180(p, w=OUTPUT_WIDTH, h=OUTPUT_HEIGHT):
                         return (int(round(w - p[0])), int(round(h - p[1])))
                     # --------------------------------------------------
 
                     world_coords_data = get_world_coordinates_data()
                     
-                    # --- Preparazione delle coordinate dei blob rilevati ---
-                    # Questi sono i punti originali rilevati dal blob detection
                     raw_blob_points_world = []
                     if world_coords_data.get('status') == 'success' and world_coords_data.get('coordinates'):
-                        # world_coords_data['coordinates'] sono già coordinate mondo
                         raw_blob_points_world = world_coords_data['coordinates']
 
 
@@ -854,6 +849,26 @@ def reproject_points_feed(request):
                         
                         # Disegna il rettangolo snappato (ruotato)
                         if box_corners_world_snapped:
+                            
+                            # --- NUOVO CODICE PER STAMPARE LE DIMENSIONI ---
+                            # 1. Ricalcola il rettangolo dai suoi angoli per estrarre le dimensioni
+                            #    (Questi sono gli angoli del rettangolo PRIMA della rotazione 180)
+                            rect_snapped = cv2.minAreaRect(np.array(box_corners_world_snapped, dtype=np.float32))
+                            (w_rect, h_rect) = rect_snapped[1]
+
+                            # 2. Prepara le stringhe (ordina w e h per coerenza)
+                            side_1 = max(w_rect, h_rect)
+                            side_2 = min(w_rect, h_rect)
+                            dim_str_1 = f"H: {side_1:.1f} mm" # Lato lungo
+                            dim_str_2 = f"W: {side_2:.1f} mm" # Lato corto
+                            
+                            # 3. Disegna il testo sul frame in alto a sinistra.
+                            #    Queste coordinate (es. 30, 50) sono fisse
+                            #    e non vengono ruotate di 180°.
+                            cv2.putText(fixed_perspective_frame, dim_str_1, (30, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 0), 2) # Ciano
+                            cv2.putText(fixed_perspective_frame, dim_str_2, (30, 90), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 0), 2) # Ciano
+                            # --- FINE NUOVO CODICE ---
+
                             rotated_box_points = [rotate_180(p) for p in box_corners_world_snapped]
                             box_contour_np = np.array(rotated_box_points, dtype=np.int32).reshape(-1, 1, 2)
                             cv2.drawContours(fixed_perspective_frame, [box_contour_np], 0, (0, 255, 255), 2) # Giallo
@@ -861,13 +876,10 @@ def reproject_points_feed(request):
                         # Disegna la linea verticale dell'estrusore (ruotata)
                         if ordered_path_world:
                             start_x_world = ordered_path_world[0][0]
-                            
                             pt1_line_orig = (start_x_world, 0)
                             pt2_line_orig = (start_x_world, OUTPUT_HEIGHT)
-                            
                             pt1_line_rotated = rotate_180(pt1_line_orig)
                             pt2_line_rotated = rotate_180(pt2_line_orig)
-                            
                             cv2.line(fixed_perspective_frame, pt1_line_rotated, pt2_line_rotated, (0, 255, 255), 2) # Giallo
 
                         # Disegna i punti della griglia ideale (ruotati - VERDI)
@@ -888,9 +900,8 @@ def reproject_points_feed(request):
                     # --- DISEGNA I PUNTI ROSSI DEI BLOB RILEVATI (SOPRA TUTTO) ---
                     if raw_blob_points_world:
                         for pt_world in raw_blob_points_world:
-                            # Ruota il punto
                             pt_rotated = rotate_180(pt_world)
-                            cv2.circle(fixed_perspective_frame, pt_rotated, 3, (0, 0, 255), -1) # Rosso, raggio 3 (più piccolo del verde)
+                            cv2.circle(fixed_perspective_frame, pt_rotated, 3, (0, 0, 255), -1) # Rosso, raggio 3
                     # -------------------------------------------------------------
 
                     # Codifica e invia il frame
@@ -906,7 +917,6 @@ def reproject_points_feed(request):
                     time.sleep(1)
 
     return StreamingHttpResponse(gen_frames(), content_type='multipart/x-mixed-replace; boundary=frame')
-
 @csrf_exempt
 @require_POST
 def reset_camera_calibration(request):
