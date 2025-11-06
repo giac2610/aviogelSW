@@ -517,8 +517,8 @@ def _generate_grid_and_path(world_coords, camera_settings, velocita_x=4.0, veloc
     if height < width:
         height, width = width, height
         angle += 90
-    # width = min(width*1.029, 250.0)
-    # height = min(height*1.041, 350.0)
+    width = min(width*1.029, 250.0)
+    height = min(height*1.041, 350.0)
     width = max(50, min(250, round(width / 50) * 50))
     height = max(50, min(350, round(height / 50) * 50))
     print(f"box width: {width}, height: {height}, angle: {angle}")
