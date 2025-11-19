@@ -2,8 +2,6 @@ import { CommonModule } from '@angular/common';
 import { Component, Input, forwardRef, ChangeDetectorRef } from '@angular/core';
 import { IonicModule, ModalController } from '@ionic/angular';
 import { ControlValueAccessor, NG_VALUE_ACCESSOR} from '@angular/forms';
-
-// Importa il nuovo modal
 import { KeyboardModalComponent } from '../../keyboard-modal/keyboard-modal.component';
 
 @Component({
@@ -11,7 +9,6 @@ import { KeyboardModalComponent } from '../../keyboard-modal/keyboard-modal.comp
   imports: [
     IonicModule,
     CommonModule,
-    // FormsModule
   ],
   templateUrl: './virtual-keyboard.component.html',
   styleUrls: ['./virtual-keyboard.component.scss'],
@@ -60,33 +57,19 @@ export class VirtualKeyboardComponent implements ControlValueAccessor {
     this.cdr.markForCheck();
   }
 
-  // Rileva l'input (non dovrebbe succedere con readonly, ma per sicurezza)
-  // onIonInputChange(event: any) {
-  //   const newValue = event?.target?.value;
-  //   if (this.value !== newValue) {
-  //      this.value = newValue;
-  //      this.onChange(newValue);
-  //   }
-  // }
-
   // --- Gestione Apertura Modal ---
   async onInputClick(): Promise<void> {
     if (this.isDisabled) return;
 
-    this.onTouched(); // Segna come "toccato"
+    this.onTouched();
 
     const modal = await this.modalCtrl.create({
       component: KeyboardModalComponent,
       componentProps: {
         layout: this.layout,
         initialValue: this.value,
-        inputLabel: this.label // Passa la label al modal
+        inputLabel: this.label
       },
-      // cssClass: 'keyboard-modal-sheet',
-      // // *** MODIFICA: Aggiunto breakpoint 1 per altezza massima ***
-      // breakpoints: [0, 0.5, 1], // Permette 0%, 50% e 100%
-      // initialBreakpoint: 0.5, // Parte da 50%
-      // handleBehavior: "cycle" // Permette di ciclare tra i breakpoint
       cssClass:'keyboard-modal-bottom'
     });
 
@@ -95,7 +78,7 @@ export class VirtualKeyboardComponent implements ControlValueAccessor {
     const { data, role } = await modal.onWillDismiss();
 
     if (role === 'confirm') { 
-            let valueToEmit: string | number | null; // Il valore che invieremo a ngModel
+            let valueToEmit: string | number | null;
 
             if (data === null || data === undefined || data === '') {
                 // Se l'utente ha cancellato o chiuso senza valore
