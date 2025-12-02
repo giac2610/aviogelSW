@@ -4,7 +4,7 @@ E' possibile trovare **l'intera documentazione** [qui](https://docs.google.com/d
 
 ## TODO FUTURI POST GIACOMO
 
-Se stai leggendo questo readme, vuol dire che sei il successore di colui che l'ha scritta, ti sto dando un consiglio dal passato per il futuro:
+Se stai leggendo questo readme, vuol dire che sei il successore di colui che l'ha scritto, ti sto dando **un consiglio** dal passato per il futuro:
 
 Sulla raspberry crea la repository di deploy (duplicando quella attuale) e continuare a lavorare su quella attuale come repo di testing,
 così da evitare di compromettere eventualmente la versione di deploy nel caso venisse qualche investitore per una demo, 
