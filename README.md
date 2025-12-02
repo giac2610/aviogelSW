@@ -2,7 +2,7 @@
 
 E' possibile trovare **l'intera documentazione** [qui](https://docs.google.com/document/d/1HzIDs8MNS6pjdDcSqwxV5OlhAUNFD5ezyQfqX5_XvMQ/edit?tab=t.0)
 
-## TODO FUTURI POST GIACOMO
+## TODO FUTURI POST GIACOMO
 
 Se stai leggendo questo readme, vuol dire che sei il successore di colui che l'ha scritta, ti sto dando un consiglio dal passato per il futuro:
 
