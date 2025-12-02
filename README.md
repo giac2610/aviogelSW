@@ -2,6 +2,14 @@
 
 E' possibile trovare **l'intera documentazione** [qui](https://docs.google.com/document/d/1HzIDs8MNS6pjdDcSqwxV5OlhAUNFD5ezyQfqX5_XvMQ/edit?tab=t.0)
 
+## TODO FUTURI POST GIACOMO
+
+Se stai leggendo questo readme, vuol dire che sei il successore di colui che l'ha scritta, ti sto dando un consiglio dal passato per il futuro:
+
+Sulla raspberry crea la repository di deploy (duplicando quella attuale) e continuare a lavorare su quella attuale come repo di testing,
+così da evitare di compromettere eventualmente la versione di deploy nel caso venisse qualche investitore per una demo, 
+una volta testata quelli di testing si può aggiornare anche quella di deployment, ma prima devi essere molto convinto di non aver fatto danni.
+
 ## Update aviogel on raspberry
 
 ### Update all
