@@ -6,9 +6,12 @@ E' possibile trovare **l'intera documentazione** [qui](https://docs.google.com/d
 
 Se stai leggendo questo readme, vuol dire che sei il successore di colui che l'ha scritto, ti sto dando **un consiglio** dal passato per il futuro:
 
-Sulla raspberry crea la repository di deploy (duplicando quella attuale) e continuare a lavorare su quella attuale come repo di testing,
-così da evitare di compromettere eventualmente la versione di deploy nel caso venisse qualche investitore per una demo, 
-una volta testata quelli di testing si può aggiornare anche quella di deployment, ma prima devi essere molto convinto di non aver fatto danni.
+Sulla raspberry crea una repository di _deploy_, duplicando quella attuale che diventerà repo di _testing_.
+
+**Perchè?**
+
+Per evitare di compromettere eventualmente la versione di deploy nel caso venisse qualche investitore per una demo. Il bug insensato è sempre dietro l'angolo con aviogel.
+Una volta testata quelli di testing si può aggiornare anche quella di deployment, ma prima devi essere molto convinto di non aver fatto danni.
 
 ## Update aviogel on raspberry
 
