@@ -1,6 +1,6 @@
 # Aviogel Software
 
-E' possibile trovare l'intera documentazione [qui](https://docs.google.com/document/d/1HzIDs8MNS6pjdDcSqwxV5OlhAUNFD5ezyQfqX5_XvMQ/edit?tab=t.0)
+E' possibile trovare **l'intera documentazione** [qui](https://docs.google.com/document/d/1HzIDs8MNS6pjdDcSqwxV5OlhAUNFD5ezyQfqX5_XvMQ/edit?tab=t.0)
 
 ## Update aviogel on raspberry
 
