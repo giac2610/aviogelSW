@@ -43,4 +43,4 @@ source aviogelEnv/bin/activate
 
 ## OS image
 
-[un file immagine](https://drive.google.com/file/d/1aDWKli4Vgne-sSIcQFIgW6Ttj_DsgID8/view?usp=drive_link) del sistema operativo da cui si può ripartire per poi aggiornare l'app
+[un file immagine](https://drive.google.com/file/d/1aDWKli4Vgne-sSIcQFIgW6Ttj_DsgID8/view?usp=drive_link) del sistema operativo da cui si può ripartire per poi aggiornare l'app, infatti una volta caricata l'immagine è possibile fare un aggiornamento alle ultime modifiche. [update](#update-all)
