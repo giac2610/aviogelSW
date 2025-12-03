@@ -17,6 +17,8 @@ Una volta testata quelli di testing si può aggiornare anche quella di deploymen
 
 ## AVVIO
 
+Se chiede la password, è a casusa del comando SUDO, quindi è il pin del pc
+
 ### macOS
 
 dentro la cartella aviogelSW basta dare il comando
