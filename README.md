@@ -37,9 +37,12 @@ Non è mai stato testato però, potrebbe non funzionare
 
 ### Update all
 
+Con questo comando si può eseguire l'aggiornamento direttamente dal github, da eseguire su terminale raspberry.
+
 ```shell
 sh updateAviogel.sh
 ```
+(fondamentalmente è git pull --recurse-submodules)
 
 this one often need a reboot
 
