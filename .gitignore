@@ -16,3 +16,5 @@ backend/config/setup.json
 backend/aviogelMotor/motorLog.log
 backend/calibrationMedia/*.jpg
 backend/calibrationMedia
+
+nohup.out
