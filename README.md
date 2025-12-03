@@ -13,6 +13,22 @@ Sulla raspberry crea una repository di _deploy_, duplicando quella attuale che d
 Per evitare di compromettere eventualmente la versione di deploy nel caso venisse qualche investitore per una demo. Il bug insensato è sempre dietro l'angolo con aviogel.
 Una volta testata quelli di testing si può aggiornare anche quella di deployment, ma prima devi essere molto convinto di non aver fatto danni.
 
+## AVVIO
+
+### macOS
+
+dentro la cartella aviogelSW basta dare il comando
+
+> sh startMacOS.sh
+
+### windows
+
+dentro la cartella aviogelSW basta fare doppio click su:
+
+> startWin.bat
+
+Non è mai stato testato però, potrebbe non funzionare
+
 ## Update aviogel on raspberry
 
 ### Update all
