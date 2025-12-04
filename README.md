@@ -22,7 +22,7 @@ Il metodo consigliato per scaricare la repo è tramite comando git su terminale,
 dopo essere entrati da terminale nella cartella dove voler copiare il progetto, lanciare il comando:
 
 ```bash
-git clone --recurse-submodules https://github.com/Ventiseidieci/aviogelSW/
+git clone --recurse-submodules https://github.com/Ventiseidieci/aviogelSW
 ```
 
 ## AVVIO
