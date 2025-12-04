@@ -19,6 +19,8 @@ Una volta testata quelli di testing si può aggiornare anche quella di deploymen
 
 Il metodo consigliato per scaricare la repo è tramite comando git su terminale, [guida con submodules](https://git-scm.com/book/en/v2/Git-Tools-Submodules)
 
+dopo essere entrati da terminale nella cartella dove voler copiare il progetto, lanciare il comando:
+
 ```bash
 git clone --recurse-submodules https://github.com/Ventiseidieci/aviogelSW/
 ```
