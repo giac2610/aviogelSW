@@ -15,6 +15,14 @@ Sulla raspberry crea una repository di _deploy_, duplicando quella attuale che d
 Per evitare di compromettere eventualmente la versione di deploy nel caso venisse qualche investitore per una demo. Il bug insensato è sempre dietro l'angolo con aviogel.
 Una volta testata quelli di testing si può aggiornare anche quella di deployment, ma prima devi essere molto convinto di non aver fatto danni.
 
+## DOWNLOAD
+
+Il metodo consigliato per scaricare la repo è tramite comando git su terminale, [guida con submodules](https://git-scm.com/book/en/v2/Git-Tools-Submodules)
+
+```bash
+git clone --recurse-submodules https://github.com/Ventiseidieci/aviogelSW/
+```
+
 ## AVVIO
 
 Se chiede la password, è a casusa del comando SUDO, quindi è il pin del pc
